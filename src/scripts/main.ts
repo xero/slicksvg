@@ -121,7 +121,7 @@ class SVGEditor {
 		const svgElement = this.svgPreview.querySelector('svg');
 		if (svgElement) {
 			svgElement.style.border = '2px dashed rgba(0,0,0,0.3)';
-			
+
 			// Build transform string with all transformations
 			const transforms = [
 				`translate(${this.panX}px, ${this.panY}px)`,
@@ -130,7 +130,7 @@ class SVGEditor {
 				`scaleX(${this.flipX ? -1 : 1})`,
 				`scaleY(${this.flipY ? -1 : 1})`
 			];
-			
+
 			svgElement.style.transform = transforms.join(' ');
 			svgElement.style.transformOrigin = 'center center';
 			svgElement.style.transition = 'transform 0.1s ease-out';
@@ -202,7 +202,7 @@ class SVGEditor {
 		const svgCode = this.editor.state.doc.toString();
 		try {
 			// Basic SVG optimization - remove comments, extra whitespace, and redundant attributes
-			let optimized = svgCode
+			const optimized = svgCode
 				// Remove comments
 				.replace(/<!--[\s\S]*?-->/g, '')
 				// Remove extra whitespace between tags
@@ -215,8 +215,8 @@ class SVGEditor {
 			// Update the editor with optimized SVG
 			const transaction = this.editor.state.update({
 				changes: {
-					from: 0, 
-					to: this.editor.state.doc.length, 
+					from: 0,
+					to: this.editor.state.doc.length,
 					insert: optimized
 				}
 			});
