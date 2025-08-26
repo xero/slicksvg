@@ -3,9 +3,9 @@
 @custom-variant dark (&:where(.dark, .dark *)) {}
 /* <--//------------------------------------------------------------[colors] */
 @theme {
-	--color-editor: var(--slick-neutral-600);
-	--color-menu: var(--slick-neutral-800);
-	--color-face: var(--slick-nurtral-950);
+	--color-menu: #F7F8F9;
+	--color-menu-alt: #e5e6e7;
+	--color-face: #fff;
 	--color-preview: #fff;
 	--current-color: #fff;
   --breakpoint-xs: 30rem;
@@ -15,10 +15,10 @@
     "Liberation Mono", "Courier New", monospace;
 }
 .dark {
-	--color-editor: var(--slick-neutral-800);
-	--color-menu: var(--slick-neutral-950);
-	--color-face: var(--slick-secondary-300);
-	--color-preview: #000;
+	--color-face: #fff;
+	--color-menu: #252931;
+	--color-preview: #2b2f37;
+	--color-menu-alt: #282c34;
 }
 /* <--//----------------------------------------------------------[document] */
 :root {
@@ -35,20 +35,20 @@
     @apply bg-menu rounded-none;
   }
   ::-webkit-scrollbar-track {
-    @apply bg-editor;
+    @apply bg-menu-alt;
   }
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-editor;
+    @apply bg-menu-alt;
   }
   ::-webkit-scrollbar-button {
-    @apply bg-editor w-5 h-5 text-face;
+    @apply bg-menu-alt w-5 h-5 text-face;
   }
   ::-webkit-scrollbar-corner {
-    @apply bg-editor w-5 h-5 text-face;
+    @apply bg-menu-alt w-5 h-5 text-face;
   }
   .scrollable {
     scrollbar-width: auto;
-    scrollbar-color: var(--color-menu-bg) var(--color-editor-bg);
+    scrollbar-color: var(--color-menu) var(--color-menu-alt);
   }
   html,
   body {
@@ -57,7 +57,7 @@
   body {
     @apply flex flex-col h-screen w-screen m-0 p-0;
     * {
-      @apply text-face font-ui transition-all ease-in-out;
+      @apply font-ui transition-all ease-in-out;
       &:focus {
         outline: none !important;
       }
@@ -84,24 +84,26 @@
 /* <--//---------------------------------------------------------[interface] */
 	main,
 	aside {
-		@apply w-full;
 		nav {
-			@apply flex flex-row bg-editor p-0 m-0 w-full;
+			@apply flex flex-row items-center bg-menu p-0 m-0 w-full;
+			label {
+				@apply text-face pr-5;
+			}
 		}
 	}
 	#editor {
-		@apply flex flex-col bg-editor flex-1;
+		@apply flex flex-col flex-1;
 		.cm-editor {
 			@apply flex-1 h-full;
 		}
 		nav {
-			@apply p-2 bg-menu;
+			@apply p-2;
 		}
 	}
 	#preview {
 		@apply flex flex-col bg-preview flex-1 relative overflow-hidden;
 		nav {
-			@apply absolute top-0 left-0 z-10 p-2 bg-menu/80;
+			@apply absolute top-0 left-0 z-10 p-2;
 		}
 		.svg-preview-wrapper {
 			@apply flex-1 flex items-center justify-center overflow-hidden;
@@ -118,12 +120,16 @@
 		}
 	}
 	body {
-		@apply flex flex-col;
+		@apply flex flex-row;
+		main,
+		aside {
+			@apply w-1/2;
+		}
 		&.vertical {
-			@apply flex-row;
+			@apply flex-col;
 			main,
 			aside {
-				@apply w-1/2
+				@apply w-full
 			}
 		}
 	}
