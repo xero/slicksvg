@@ -10,12 +10,17 @@ class SVGEditor {
 	private previewContainer: HTMLElement;
 	private svgPreview: HTMLElement;
 	private isVerticalLayout = false;
+	private isDarkMode = false;
 	private zoomLevel = 1;
 	private panX = 0;
 	private panY = 0;
 	private isPanning = false;
 	private lastPanX = 0;
 	private lastPanY = 0;
+	private rotationDegrees = 0; // Track current rotation: 0, 90, 180, 270
+	private flipX = false; // Track horizontal flip state
+	private flipY = false; // Track vertical flip state
+
 
 	constructor() {
 		this.initializeEditor();
@@ -24,8 +29,20 @@ class SVGEditor {
 		this.updateSVGPreview();
 	}
 
+	private get(i: string) {
+		const e = document.getElementById(i);
+		if (!e) throw new Error(`Element #${i} not found`);
+		return e
+	}
+
+  private getTyped = <T extends Element = HTMLElement>(q: string): T=>{
+		const e = document.querySelector(q);
+		if (!e) throw new Error(`Element ${q} was not found`);
+		return e as T;
+	}
+
 	private initializeEditor(): void {
-		const editorContainer = document.getElementById('editor');
+		const editorContainer = this.get('editor');
 		if (!editorContainer) throw new Error('Editor container not found');
 
 		// Create CodeMirror editor
@@ -54,9 +71,7 @@ class SVGEditor {
 	}
 
 	private initializePreview(): void {
-		this.previewContainer = document.getElementById('preview');
-		// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-		if (!this.previewContainer) throw new Error('Preview container not found');
+		this.previewContainer = this.get('preview');
 
 		// Create SVG preview wrapper
 		this.svgPreview = document.createElement('div');
@@ -65,16 +80,33 @@ class SVGEditor {
 	}
 
 	private setupEventListeners(): void {
+		if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+			this.toggleMode();
+		}
+		this.get('dark').addEventListener('click', ()=>this.toggleMode());
+
 		// Flip button
-		const flipButton = document.getElementById('flip');
-		flipButton?.addEventListener('click', ()=>this.toggleLayout());
+		this.get('flip').addEventListener('click', ()=>this.toggleLayout());
 
 		// Zoom controls
-		const zoomInButton = document.getElementById('zoomin');
-		const zoomOutButton = document.getElementById('zoomout');
+		const zoomInButton = this.get('zoomin');
+		const zoomOutButton = this.get('zoomout');
 
 		zoomInButton?.addEventListener('click', ()=>this.zoomIn());
 		zoomOutButton?.addEventListener('click', ()=>this.zoomOut());
+
+		// Transform controls
+		const rotateButton = this.get('rotate');
+		const flipXButton = this.get('flipx');
+		const flipYButton = this.get('flipy');
+
+		rotateButton?.addEventListener('click', ()=>this.rotateSVG());
+		flipXButton?.addEventListener('click', ()=>this.flipSVGX());
+		flipYButton?.addEventListener('click', ()=>this.flipSVGY());
+
+		// Tools
+		const optimizeButton = this.get('optimize');
+		optimizeButton?.addEventListener('click', ()=>this.optimizeSVG());
 
 		// Pan controls
 		this.svgPreview.addEventListener('mousedown', (e)=>this.startPan(e));
@@ -105,19 +137,26 @@ class SVGEditor {
 		const svgElement = this.svgPreview.querySelector('svg');
 		if (svgElement) {
 			svgElement.style.border = '2px dashed rgba(0,0,0,0.3)';
-			svgElement.style.transform = `translate(${this.panX}px, ${this.panY}px) scale(${this.zoomLevel})`;
-			svgElement.style.transformOrigin = 'center center';
-			svgElement.style.transition = 'transform 0.1s ease-out';
+			
+			// Apply CSS transforms for zoom/pan only, preserving SVG transform attributes
+			// We use CSS transforms on a wrapper div instead of directly on the SVG element
+			const svgContainer = svgElement.parentElement;
+			if (svgContainer && svgContainer.classList.contains('svg-container')) {
+				svgContainer.style.transform = `translate(${this.panX}px, ${this.panY}px) scale(${this.zoomLevel})`;
+				svgContainer.style.transformOrigin = 'center center';
+				svgContainer.style.transition = 'transform 0.1s ease-out';
+			}
 		}
 	}
 
 	private toggleLayout(): void {
 		this.isVerticalLayout = !this.isVerticalLayout;
-		if (this.isVerticalLayout) {
-			document.body.classList.add('vertical');
-		} else {
-			document.body.classList.remove('vertical');
-		}
+		document.body.classList.toggle('vertical');
+	}
+
+	private toggleMode(): void {
+		this.isDarkMode = !this.isDarkMode;
+		document.body.classList.toggle('dark');
 	}
 
 	private zoomIn(): void {
@@ -155,6 +194,174 @@ class SVGEditor {
 
 	private endPan(): void {
 		this.isPanning = false;
+	}
+
+	private parseCurrentTransforms(svgCode: string): void {
+		// Reset states
+		this.rotationDegrees = 0;
+		this.flipX = false;
+		this.flipY = false;
+
+		// Extract existing transform attribute
+		const transformMatch = svgCode.match(/transform="([^"]*)"/);
+		if (!transformMatch) return;
+
+		const transformValue = transformMatch[1];
+
+		// Parse rotation - look for rotate(angle ...)
+		const rotateMatch = transformValue.match(/rotate\((\d+)[^)]*\)/);
+		if (rotateMatch) {
+			const angle = parseInt(rotateMatch[1]);
+			this.rotationDegrees = angle % 360;
+		}
+
+		// Parse horizontal flip - look for matrix(-1,0,0,1,0,0)
+		if (transformValue.includes('matrix(-1,0,0,1,0,0)')) {
+			this.flipX = true;
+		}
+
+		// Parse vertical flip - look for matrix(1,0,0,-1,0,0)
+		if (transformValue.includes('matrix(1,0,0,-1,0,0)')) {
+			this.flipY = true;
+		}
+	}
+
+	private buildTransformAttribute(width: number, height: number): string {
+		const transforms = [];
+
+		// Add rotation if needed
+		if (this.rotationDegrees > 0) {
+			const centerX = width / 2;
+			const centerY = height / 2;
+			transforms.push(`rotate(${this.rotationDegrees} ${centerX} ${centerY})`);
+		}
+
+		// Add horizontal flip if needed
+		if (this.flipX) {
+			transforms.push('matrix(-1,0,0,1,0,0)');
+		}
+
+		// Add vertical flip if needed
+		if (this.flipY) {
+			transforms.push('matrix(1,0,0,-1,0,0)');
+		}
+
+		return transforms.join(' ');
+	}
+
+	private applyTransformToSVG(): void {
+		const svgCode = this.editor.state.doc.toString();
+		try {
+			// Extract width and height from SVG
+			const widthMatch = svgCode.match(/width="([^"]+)"/);
+			const heightMatch = svgCode.match(/height="([^"]+)"/);
+			const width = widthMatch ? parseInt(widthMatch[1]) : 100;
+			const height = heightMatch ? parseInt(heightMatch[1]) : 100;
+
+			// Build the new transform attribute
+			const transformValue = this.buildTransformAttribute(width, height);
+
+			let transformedSVG;
+			if (transformValue.trim()) {
+				// Check if SVG already has a transform attribute
+				const transformMatch = svgCode.match(/(<svg[^>]*)\s+transform="[^"]*"([^>]*>)/);
+				if (transformMatch) {
+					// Replace existing transform
+					transformedSVG = svgCode.replace(
+						/(<svg[^>]*)\s+transform="[^"]*"([^>]*>)/,
+						`$1 transform="${transformValue}"$2`
+					);
+				} else {
+					// Add new transform attribute
+					transformedSVG = svgCode.replace(
+						/(<svg[^>]*)(>)/,
+						`$1 transform="${transformValue}"$2`
+					);
+				}
+			} else {
+				// Remove transform attribute if no transforms are needed
+				transformedSVG = svgCode.replace(/\s+transform="[^"]*"/, '');
+			}
+
+			// Update editor with transformed SVG
+			const transaction = this.editor.state.update({
+				changes: {
+					from: 0,
+					to: this.editor.state.doc.length,
+					insert: transformedSVG
+				}
+			});
+			this.editor.dispatch(transaction);
+		} catch (error) {
+			console.error('SVG transformation failed:', error);
+		}
+	}
+
+	private rotateSVG(): void {
+		const svgCode = this.editor.state.doc.toString();
+		
+		// Parse current transforms to get current state
+		this.parseCurrentTransforms(svgCode);
+		
+		// Increment rotation by 90 degrees (cycle through 0, 90, 180, 270, then back to 0)
+		this.rotationDegrees = (this.rotationDegrees + 90) % 360;
+		
+		// Apply the consolidated transform
+		this.applyTransformToSVG();
+	}
+
+	private flipSVGX(): void {
+		const svgCode = this.editor.state.doc.toString();
+		
+		// Parse current transforms to get current state
+		this.parseCurrentTransforms(svgCode);
+		
+		// Toggle horizontal flip
+		this.flipX = !this.flipX;
+		
+		// Apply the consolidated transform
+		this.applyTransformToSVG();
+	}
+
+	private flipSVGY(): void {
+		const svgCode = this.editor.state.doc.toString();
+		
+		// Parse current transforms to get current state
+		this.parseCurrentTransforms(svgCode);
+		
+		// Toggle vertical flip
+		this.flipY = !this.flipY;
+		
+		// Apply the consolidated transform
+		this.applyTransformToSVG();
+	}
+
+	private optimizeSVG(): void {
+		const svgCode = this.editor.state.doc.toString();
+		try {
+			// Basic SVG optimization - remove comments, extra whitespace, and redundant attributes
+			const optimized = svgCode
+				// Remove comments
+				.replace(/<!--[\s\S]*?-->/g, '')
+				// Remove extra whitespace between tags
+				.replace(/>\s+</g, '><')
+				// Remove unnecessary precision in numbers
+				.replace(/(\d+\.\d{3})\d+/g, '$1')
+				// Trim whitespace
+				.trim();
+
+			// Update the editor with optimized SVG
+			const transaction = this.editor.state.update({
+				changes: {
+					from: 0,
+					to: this.editor.state.doc.length,
+					insert: optimized
+				}
+			});
+			this.editor.dispatch(transaction);
+		} catch (error) {
+			console.error('SVG optimization failed:', error);
+		}
 	}
 }
 
