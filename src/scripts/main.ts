@@ -17,6 +17,9 @@ class SVGEditor {
 	private isPanning = false;
 	private lastPanX = 0;
 	private lastPanY = 0;
+	private rotationDegrees = 0; // Track current rotation: 0, 90, 180, 270
+	private flipX = false; // Track horizontal flip state
+	private flipY = false; // Track vertical flip state
 
 
 	constructor() {
@@ -134,9 +137,15 @@ class SVGEditor {
 		const svgElement = this.svgPreview.querySelector('svg');
 		if (svgElement) {
 			svgElement.style.border = '2px dashed rgba(0,0,0,0.3)';
-			svgElement.style.transform = `translate(${this.panX}px, ${this.panY}px) scale(${this.zoomLevel})`;
-			svgElement.style.transformOrigin = 'center center';
-			svgElement.style.transition = 'transform 0.1s ease-out';
+			
+			// Apply CSS transforms for zoom/pan only, preserving SVG transform attributes
+			// We use CSS transforms on a wrapper div instead of directly on the SVG element
+			const svgContainer = svgElement.parentElement;
+			if (svgContainer && svgContainer.classList.contains('svg-container')) {
+				svgContainer.style.transform = `translate(${this.panX}px, ${this.panY}px) scale(${this.zoomLevel})`;
+				svgContainer.style.transformOrigin = 'center center';
+				svgContainer.style.transition = 'transform 0.1s ease-out';
+			}
 		}
 	}
 
@@ -187,7 +196,60 @@ class SVGEditor {
 		this.isPanning = false;
 	}
 
-	private rotateSVG(): void {
+	private parseCurrentTransforms(svgCode: string): void {
+		// Reset states
+		this.rotationDegrees = 0;
+		this.flipX = false;
+		this.flipY = false;
+
+		// Extract existing transform attribute
+		const transformMatch = svgCode.match(/transform="([^"]*)"/);
+		if (!transformMatch) return;
+
+		const transformValue = transformMatch[1];
+
+		// Parse rotation - look for rotate(angle ...)
+		const rotateMatch = transformValue.match(/rotate\((\d+)[^)]*\)/);
+		if (rotateMatch) {
+			const angle = parseInt(rotateMatch[1]);
+			this.rotationDegrees = angle % 360;
+		}
+
+		// Parse horizontal flip - look for matrix(-1,0,0,1,0,0)
+		if (transformValue.includes('matrix(-1,0,0,1,0,0)')) {
+			this.flipX = true;
+		}
+
+		// Parse vertical flip - look for matrix(1,0,0,-1,0,0)
+		if (transformValue.includes('matrix(1,0,0,-1,0,0)')) {
+			this.flipY = true;
+		}
+	}
+
+	private buildTransformAttribute(width: number, height: number): string {
+		const transforms = [];
+
+		// Add rotation if needed
+		if (this.rotationDegrees > 0) {
+			const centerX = width / 2;
+			const centerY = height / 2;
+			transforms.push(`rotate(${this.rotationDegrees} ${centerX} ${centerY})`);
+		}
+
+		// Add horizontal flip if needed
+		if (this.flipX) {
+			transforms.push('matrix(-1,0,0,1,0,0)');
+		}
+
+		// Add vertical flip if needed
+		if (this.flipY) {
+			transforms.push('matrix(1,0,0,-1,0,0)');
+		}
+
+		return transforms.join(' ');
+	}
+
+	private applyTransformToSVG(): void {
 		const svgCode = this.editor.state.doc.toString();
 		try {
 			// Extract width and height from SVG
@@ -195,28 +257,30 @@ class SVGEditor {
 			const heightMatch = svgCode.match(/height="([^"]+)"/);
 			const width = widthMatch ? parseInt(widthMatch[1]) : 100;
 			const height = heightMatch ? parseInt(heightMatch[1]) : 100;
-			const centerX = width / 2;
-			const centerY = height / 2;
+
+			// Build the new transform attribute
+			const transformValue = this.buildTransformAttribute(width, height);
 
 			let transformedSVG;
-			const rotateTransform = `rotate(90 ${centerX} ${centerY})`;
-
-			// Check if SVG already has a transform attribute
-			const transformMatch = svgCode.match(/(<svg[^>]*)\s+transform="([^"]*)"([^>]*>)/);
-			if (transformMatch) {
-				// Combine with existing transform
-				const existingTransform = transformMatch[2];
-				const newTransform = `${existingTransform} ${rotateTransform}`;
-				transformedSVG = svgCode.replace(
-					/(<svg[^>]*)\s+transform="[^"]*"([^>]*>)/,
-					`$1 transform="${newTransform}"$2`
-				);
+			if (transformValue.trim()) {
+				// Check if SVG already has a transform attribute
+				const transformMatch = svgCode.match(/(<svg[^>]*)\s+transform="[^"]*"([^>]*>)/);
+				if (transformMatch) {
+					// Replace existing transform
+					transformedSVG = svgCode.replace(
+						/(<svg[^>]*)\s+transform="[^"]*"([^>]*>)/,
+						`$1 transform="${transformValue}"$2`
+					);
+				} else {
+					// Add new transform attribute
+					transformedSVG = svgCode.replace(
+						/(<svg[^>]*)(>)/,
+						`$1 transform="${transformValue}"$2`
+					);
+				}
 			} else {
-				// Add transform attribute to SVG element
-				transformedSVG = svgCode.replace(
-					/(<svg[^>]*)(>)/,
-					`$1 transform="${rotateTransform}"$2`
-				);
+				// Remove transform attribute if no transforms are needed
+				transformedSVG = svgCode.replace(/\s+transform="[^"]*"/, '');
 			}
 
 			// Update editor with transformed SVG
@@ -229,84 +293,47 @@ class SVGEditor {
 			});
 			this.editor.dispatch(transaction);
 		} catch (error) {
-			console.error('SVG rotation failed:', error);
+			console.error('SVG transformation failed:', error);
 		}
+	}
+
+	private rotateSVG(): void {
+		const svgCode = this.editor.state.doc.toString();
+		
+		// Parse current transforms to get current state
+		this.parseCurrentTransforms(svgCode);
+		
+		// Increment rotation by 90 degrees (cycle through 0, 90, 180, 270, then back to 0)
+		this.rotationDegrees = (this.rotationDegrees + 90) % 360;
+		
+		// Apply the consolidated transform
+		this.applyTransformToSVG();
 	}
 
 	private flipSVGX(): void {
 		const svgCode = this.editor.state.doc.toString();
-		try {
-			let transformedSVG;
-			const flipTransform = 'matrix(-1,0,0,1,0,0)';
-
-			// Check if SVG already has a transform attribute
-			const transformMatch = svgCode.match(/(<svg[^>]*)\s+transform="([^"]*)"([^>]*>)/);
-			if (transformMatch) {
-				// Combine with existing transform
-				const existingTransform = transformMatch[2];
-				const newTransform = `${existingTransform} ${flipTransform}`;
-				transformedSVG = svgCode.replace(
-					/(<svg[^>]*)\s+transform="[^"]*"([^>]*>)/,
-					`$1 transform="${newTransform}"$2`
-				);
-			} else {
-				// Add transform attribute to SVG element
-				transformedSVG = svgCode.replace(
-					/(<svg[^>]*)(>)/,
-					`$1 transform="${flipTransform}"$2`
-				);
-			}
-
-			// Update editor with transformed SVG
-			const transaction = this.editor.state.update({
-				changes: {
-					from: 0,
-					to: this.editor.state.doc.length,
-					insert: transformedSVG
-				}
-			});
-			this.editor.dispatch(transaction);
-		} catch (error) {
-			console.error('SVG horizontal flip failed:', error);
-		}
+		
+		// Parse current transforms to get current state
+		this.parseCurrentTransforms(svgCode);
+		
+		// Toggle horizontal flip
+		this.flipX = !this.flipX;
+		
+		// Apply the consolidated transform
+		this.applyTransformToSVG();
 	}
 
 	private flipSVGY(): void {
 		const svgCode = this.editor.state.doc.toString();
-		try {
-			let transformedSVG;
-			const flipTransform = 'matrix(1,0,0,-1,0,0)';
-
-			// Check if SVG already has a transform attribute
-			const transformMatch = svgCode.match(/(<svg[^>]*)\s+transform="([^"]*)"([^>]*>)/);
-			if (transformMatch) {
-				// Combine with existing transform
-				const existingTransform = transformMatch[2];
-				const newTransform = `${existingTransform} ${flipTransform}`;
-				transformedSVG = svgCode.replace(
-					/(<svg[^>]*)\s+transform="[^"]*"([^>]*>)/,
-					`$1 transform="${newTransform}"$2`
-				);
-			} else {
-				// Add transform attribute to SVG element
-				transformedSVG = svgCode.replace(
-					/(<svg[^>]*)(>)/,
-					`$1 transform="${flipTransform}"$2`
-				);
-			}
-
-			// Update editor with transformed SVG
-			const transaction = this.editor.state.update({
-				changes: {
-					from: 0,
-					to: this.editor.state.doc.length,
-					insert: transformedSVG
-					}
-			});
-			this.editor.dispatch(transaction);
-		} catch (error) {
-			console.error('SVG vertical flip failed:', error);
-		}
+		
+		// Parse current transforms to get current state
+		this.parseCurrentTransforms(svgCode);
+		
+		// Toggle vertical flip
+		this.flipY = !this.flipY;
+		
+		// Apply the consolidated transform
+		this.applyTransformToSVG();
 	}
 
 	private optimizeSVG(): void {
