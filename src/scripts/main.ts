@@ -151,6 +151,20 @@ class SVGEditor {
 		if (svgElement) {
 			svgElement.style.border = '2px dashed rgba(0,0,0,0.3)';
 
+			// Apply fallback sizing if width or height attributes are missing
+			const hasWidth = svgElement.hasAttribute('width');
+			const hasHeight = svgElement.hasAttribute('height');
+
+			if (!hasWidth || !hasHeight) {
+				// Apply default dimensions for SVGs without width/height attributes
+				if (!hasWidth) {
+					svgElement.style.width = '200px';
+				}
+				if (!hasHeight) {
+					svgElement.style.height = '200px';
+				}
+			}
+
 			// Apply CSS transforms for zoom/pan only, preserving SVG transform attributes
 			// We use CSS transforms on a wrapper div instead of directly on the SVG element
 			const svgContainer = svgElement.parentElement;
