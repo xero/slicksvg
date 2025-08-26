@@ -121,7 +121,7 @@ class SVGEditor {
 	}
 
 	private zoomIn(): void {
-		this.zoomLevel = Math.min(this.zoomLevel * 1.2, 5);
+		this.zoomLevel = Math.min(this.zoomLevel * 1.2, 50);
 		this.applySVGStyles();
 	}
 

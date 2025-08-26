@@ -113,7 +113,7 @@
 	body {
 		@apply flex;
 		&.vertical {
-			@apply flex-col;
+			@apply flex-row;
 		}
 	}
 }
