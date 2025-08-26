@@ -83,10 +83,38 @@
   }
 /* <--//---------------------------------------------------------[interface] */
 	#editor {
-		@apply flex bg-editor;
+		@apply flex flex-col bg-editor flex-1;
+		.cm-editor {
+			@apply flex-1 h-full;
+		}
+		nav {
+			@apply p-2 bg-menu;
+		}
 	}
 	#preview {
-		@apply flex bg-preview;
+		@apply flex flex-col bg-preview flex-1 relative overflow-hidden;
+		nav {
+			@apply absolute top-0 left-0 z-10 p-2 bg-menu/80;
+		}
+		.svg-preview-wrapper {
+			@apply flex-1 flex items-center justify-center overflow-hidden;
+			cursor: grab;
+			&:active {
+				cursor: grabbing;
+			}
+		}
+		.svg-container {
+			@apply flex items-center justify-center;
+		}
+		.error {
+			@apply text-red-500 p-4 text-center;
+		}
+	}
+	body {
+		@apply flex;
+		&.vertical {
+			@apply flex-col;
+		}
 	}
 }
 /* <--//--------------------------------------------------------[components] */

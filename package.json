@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev": "npm run build && node serve.js",
+    "build": "npm run style && npm run scripts && cp dist/editor.min.css src/www/ && cp dist/app.min.js src/www/",
     "style": "mkdir -p ./dist; postcss src/style/editor.css -o dist/editor.min.css",
     "scripts": "esbuild src/scripts/main.ts --bundle --minify --outfile=dist/app.min.js",
     "lint": "eslint .",
@@ -37,9 +39,9 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
-    "@codemirror/basic-setup": "^0.20.0",
     "@codemirror/lang-xml": "^6.1.0",
     "@codemirror/state": "^6.5.2",
-    "@codemirror/view": "^6.38.1"
+    "@codemirror/view": "^6.38.1",
+    "codemirror": "^6.0.2"
   }
 }

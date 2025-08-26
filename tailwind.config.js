@@ -2,7 +2,7 @@ module.exports={
 	darkMode:'class',
 	content:[
     './src/www/index.html',
-		'./src/css/editor.css',
-		'./src/css/palette.css',
+		'./src/style/editor.css',
+		'./src/style/palette.css',
 	],
 }
