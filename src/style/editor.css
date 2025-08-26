@@ -78,7 +78,7 @@
 		&:active,
 		&:focus,
 		&:focus-within {
-			@apply bg-slick-800;
+			@apply bg-slick-700;
 		}
   }
 /* <--//---------------------------------------------------------[interface] */
