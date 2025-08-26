@@ -116,4 +116,58 @@ test.describe('SVG Editor', () => {
     // SVG should still be visible after flipping
     await expect(page.locator('svg')).toBeVisible();
   });
+
+  test('should support pinch zoom gestures on touch devices', async ({ page }) => {
+    // Get the SVG preview area
+    const svgPreview = page.locator('.svg-preview-wrapper');
+    await expect(svgPreview).toBeVisible();
+
+    // Get initial transform to compare later
+    const svgContainer = page.locator('.svg-container');
+    const initialTransform = await svgContainer.evaluate(el => 
+      window.getComputedStyle(el).transform
+    );
+
+    // Simulate pinch zoom with touch events
+    // We'll simulate two touch points moving apart (zoom in)
+    await svgPreview.dispatchEvent('touchstart', {
+      touches: [
+        { clientX: 400, clientY: 300, identifier: 0 },
+        { clientX: 500, clientY: 300, identifier: 1 }
+      ],
+      targetTouches: [
+        { clientX: 400, clientY: 300, identifier: 0 },
+        { clientX: 500, clientY: 300, identifier: 1 }
+      ]
+    });
+
+    // Move touches apart to simulate zoom in
+    await svgPreview.dispatchEvent('touchmove', {
+      touches: [
+        { clientX: 350, clientY: 300, identifier: 0 },
+        { clientX: 550, clientY: 300, identifier: 1 }
+      ],
+      targetTouches: [
+        { clientX: 350, clientY: 300, identifier: 0 },
+        { clientX: 550, clientY: 300, identifier: 1 }
+      ]
+    });
+
+    // End the touch gesture
+    await svgPreview.dispatchEvent('touchend', {
+      touches: [],
+      targetTouches: []
+    });
+
+    // Check that the transform has changed (indicating zoom occurred)
+    const finalTransform = await svgContainer.evaluate(el => 
+      window.getComputedStyle(el).transform
+    );
+    
+    // The transform should be different from initial (indicating zoom worked)
+    expect(finalTransform).not.toBe(initialTransform);
+    
+    // SVG should still be visible after pinch zoom
+    await expect(page.locator('svg')).toBeVisible();
+  });
 });
