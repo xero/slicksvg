@@ -1,8 +1,9 @@
 // main entrypoint
 import {EditorView} from '@codemirror/view';
-import {EditorState} from '@codemirror/state';
+import {EditorState, Compartment} from '@codemirror/state';
 import {xml} from '@codemirror/lang-xml';
 import {basicSetup} from 'codemirror';
+import {oneDark} from '@codemirror/theme-one-dark';
 
 // SVG Editor Application
 class SVGEditor {
@@ -20,6 +21,7 @@ class SVGEditor {
 	private rotationDegrees = 0; // Track current rotation: 0, 90, 180, 270
 	private flipX = false; // Track horizontal flip state
 	private flipY = false; // Track vertical flip state
+	private themeCompartment = new Compartment();
 
 
 	constructor() {
@@ -59,6 +61,7 @@ class SVGEditor {
 				extensions: [
 					basicSetup,
 					xml(),
+					this.themeCompartment.of([]), // Start with light theme (no theme extension)
 					EditorView.updateListener.of((update)=>{
 						if (update.docChanged) {
 							this.updateSVGPreview();
@@ -137,7 +140,7 @@ class SVGEditor {
 		const svgElement = this.svgPreview.querySelector('svg');
 		if (svgElement) {
 			svgElement.style.border = '2px dashed rgba(0,0,0,0.3)';
-			
+
 			// Apply CSS transforms for zoom/pan only, preserving SVG transform attributes
 			// We use CSS transforms on a wrapper div instead of directly on the SVG element
 			const svgContainer = svgElement.parentElement;
@@ -157,6 +160,13 @@ class SVGEditor {
 	private toggleMode(): void {
 		this.isDarkMode = !this.isDarkMode;
 		document.body.classList.toggle('dark');
+
+		// Update CodeMirror theme
+		this.editor.dispatch({
+			effects: this.themeCompartment.reconfigure(
+				this.isDarkMode ? [oneDark] : []
+			)
+		});
 	}
 
 	private zoomIn(): void {
@@ -299,39 +309,39 @@ class SVGEditor {
 
 	private rotateSVG(): void {
 		const svgCode = this.editor.state.doc.toString();
-		
+
 		// Parse current transforms to get current state
 		this.parseCurrentTransforms(svgCode);
-		
+
 		// Increment rotation by 90 degrees (cycle through 0, 90, 180, 270, then back to 0)
 		this.rotationDegrees = (this.rotationDegrees + 90) % 360;
-		
+
 		// Apply the consolidated transform
 		this.applyTransformToSVG();
 	}
 
 	private flipSVGX(): void {
 		const svgCode = this.editor.state.doc.toString();
-		
+
 		// Parse current transforms to get current state
 		this.parseCurrentTransforms(svgCode);
-		
+
 		// Toggle horizontal flip
 		this.flipX = !this.flipX;
-		
+
 		// Apply the consolidated transform
 		this.applyTransformToSVG();
 	}
 
 	private flipSVGY(): void {
 		const svgCode = this.editor.state.doc.toString();
-		
+
 		// Parse current transforms to get current state
 		this.parseCurrentTransforms(svgCode);
-		
+
 		// Toggle vertical flip
 		this.flipY = !this.flipY;
-		
+
 		// Apply the consolidated transform
 		this.applyTransformToSVG();
 	}
