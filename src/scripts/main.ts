@@ -1,8 +1,8 @@
 // main entrypoint
-import { EditorView } from '@codemirror/view';
-import { EditorState } from '@codemirror/state';
-import { xml } from '@codemirror/lang-xml';
-import { basicSetup } from 'codemirror';
+import {EditorView} from '@codemirror/view';
+import {EditorState} from '@codemirror/state';
+import {xml} from '@codemirror/lang-xml';
+import {basicSetup} from 'codemirror';
 
 // SVG Editor Application
 class SVGEditor {
@@ -42,7 +42,7 @@ class SVGEditor {
 				extensions: [
 					basicSetup,
 					xml(),
-					EditorView.updateListener.of((update) => {
+					EditorView.updateListener.of((update)=>{
 						if (update.docChanged) {
 							this.updateSVGPreview();
 						}
@@ -55,6 +55,7 @@ class SVGEditor {
 
 	private initializePreview(): void {
 		this.previewContainer = document.getElementById('preview');
+		// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
 		if (!this.previewContainer) throw new Error('Preview container not found');
 
 		// Create SVG preview wrapper
@@ -66,19 +67,19 @@ class SVGEditor {
 	private setupEventListeners(): void {
 		// Flip button
 		const flipButton = document.getElementById('flip');
-		flipButton?.addEventListener('click', () => this.toggleLayout());
+		flipButton?.addEventListener('click', ()=>this.toggleLayout());
 
 		// Zoom controls
 		const zoomInButton = document.getElementById('zoomin');
 		const zoomOutButton = document.getElementById('zoomout');
-		
-		zoomInButton?.addEventListener('click', () => this.zoomIn());
-		zoomOutButton?.addEventListener('click', () => this.zoomOut());
+
+		zoomInButton?.addEventListener('click', ()=>this.zoomIn());
+		zoomOutButton?.addEventListener('click', ()=>this.zoomOut());
 
 		// Pan controls
-		this.svgPreview.addEventListener('mousedown', (e) => this.startPan(e));
-		document.addEventListener('mousemove', (e) => this.doPan(e));
-		document.addEventListener('mouseup', () => this.endPan());
+		this.svgPreview.addEventListener('mousedown', (e)=>this.startPan(e));
+		document.addEventListener('mousemove', (e)=>this.doPan(e));
+		document.addEventListener('mouseup', ()=>this.endPan());
 	}
 
 	private updateSVGPreview(): void {
@@ -86,17 +87,17 @@ class SVGEditor {
 		try {
 			// Clear previous content
 			this.svgPreview.innerHTML = '';
-			
+
 			// Create container for the SVG
 			const svgContainer = document.createElement('div');
 			svgContainer.className = 'svg-container';
 			svgContainer.innerHTML = svgCode;
-			
+
 			this.svgPreview.appendChild(svgContainer);
 			this.applySVGStyles();
 		} catch (error) {
 			// Display error message if SVG is invalid
-			this.svgPreview.innerHTML = `<div class="error">Invalid SVG: ${error}</div>`;
+			this.svgPreview.innerHTML = `<div class="error">Invalid SVG: ${String(error)}</div>`;
 		}
 	}
 
@@ -138,16 +139,16 @@ class SVGEditor {
 
 	private doPan(e: MouseEvent): void {
 		if (!this.isPanning) return;
-		
+
 		const deltaX = e.clientX - this.lastPanX;
 		const deltaY = e.clientY - this.lastPanY;
-		
+
 		this.panX += deltaX;
 		this.panY += deltaY;
-		
+
 		this.lastPanX = e.clientX;
 		this.lastPanY = e.clientY;
-		
+
 		this.applySVGStyles();
 		e.preventDefault();
 	}
@@ -159,7 +160,7 @@ class SVGEditor {
 
 // Initialize the application when DOM is loaded
 if (document.readyState === 'loading') {
-	document.addEventListener('DOMContentLoaded', () => new SVGEditor());
+	document.addEventListener('DOMContentLoaded', ()=>new SVGEditor());
 } else {
 	new SVGEditor();
 }
