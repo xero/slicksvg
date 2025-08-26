@@ -16,6 +16,9 @@ class SVGEditor {
 	private isPanning = false;
 	private lastPanX = 0;
 	private lastPanY = 0;
+	private rotation = 0;
+	private flipX = false;
+	private flipY = false;
 
 	constructor() {
 		this.initializeEditor();
@@ -76,6 +79,19 @@ class SVGEditor {
 		zoomInButton?.addEventListener('click', ()=>this.zoomIn());
 		zoomOutButton?.addEventListener('click', ()=>this.zoomOut());
 
+		// Transform controls
+		const rotateButton = document.getElementById('rotate');
+		const flipXButton = document.getElementById('flipx');
+		const flipYButton = document.getElementById('flipy');
+
+		rotateButton?.addEventListener('click', ()=>this.rotateSVG());
+		flipXButton?.addEventListener('click', ()=>this.flipSVGX());
+		flipYButton?.addEventListener('click', ()=>this.flipSVGY());
+
+		// Tools
+		const optimizeButton = document.getElementById('optimize');
+		optimizeButton?.addEventListener('click', ()=>this.optimizeSVG());
+
 		// Pan controls
 		this.svgPreview.addEventListener('mousedown', (e)=>this.startPan(e));
 		document.addEventListener('mousemove', (e)=>this.doPan(e));
@@ -105,7 +121,17 @@ class SVGEditor {
 		const svgElement = this.svgPreview.querySelector('svg');
 		if (svgElement) {
 			svgElement.style.border = '2px dashed rgba(0,0,0,0.3)';
-			svgElement.style.transform = `translate(${this.panX}px, ${this.panY}px) scale(${this.zoomLevel})`;
+			
+			// Build transform string with all transformations
+			const transforms = [
+				`translate(${this.panX}px, ${this.panY}px)`,
+				`scale(${this.zoomLevel})`,
+				`rotate(${this.rotation}deg)`,
+				`scaleX(${this.flipX ? -1 : 1})`,
+				`scaleY(${this.flipY ? -1 : 1})`
+			];
+			
+			svgElement.style.transform = transforms.join(' ');
 			svgElement.style.transformOrigin = 'center center';
 			svgElement.style.transition = 'transform 0.1s ease-out';
 		}
@@ -155,6 +181,49 @@ class SVGEditor {
 
 	private endPan(): void {
 		this.isPanning = false;
+	}
+
+	private rotateSVG(): void {
+		this.rotation = (this.rotation + 90) % 360;
+		this.applySVGStyles();
+	}
+
+	private flipSVGX(): void {
+		this.flipX = !this.flipX;
+		this.applySVGStyles();
+	}
+
+	private flipSVGY(): void {
+		this.flipY = !this.flipY;
+		this.applySVGStyles();
+	}
+
+	private optimizeSVG(): void {
+		const svgCode = this.editor.state.doc.toString();
+		try {
+			// Basic SVG optimization - remove comments, extra whitespace, and redundant attributes
+			let optimized = svgCode
+				// Remove comments
+				.replace(/<!--[\s\S]*?-->/g, '')
+				// Remove extra whitespace between tags
+				.replace(/>\s+</g, '><')
+				// Remove unnecessary precision in numbers
+				.replace(/(\d+\.\d{3})\d+/g, '$1')
+				// Trim whitespace
+				.trim();
+
+			// Update the editor with optimized SVG
+			const transaction = this.editor.state.update({
+				changes: {
+					from: 0, 
+					to: this.editor.state.doc.length, 
+					insert: optimized
+				}
+			});
+			this.editor.dispatch(transaction);
+		} catch (error) {
+			console.error('SVG optimization failed:', error);
+		}
 	}
 }
 
