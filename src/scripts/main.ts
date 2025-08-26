@@ -22,6 +22,10 @@ class SVGEditor {
 	private flipX = false; // Track horizontal flip state
 	private flipY = false; // Track vertical flip state
 	private themeCompartment = new Compartment();
+	// Touch/pinch zoom properties
+	private isMultiTouch = false;
+	private initialPinchDistance = 0;
+	private initialZoomLevel = 1;
 
 
 	constructor() {
@@ -116,6 +120,11 @@ class SVGEditor {
 		this.svgPreview.addEventListener('mousedown', (e)=>this.startPan(e));
 		document.addEventListener('mousemove', (e)=>this.doPan(e));
 		document.addEventListener('mouseup', ()=>this.endPan());
+
+		// Touch/pinch zoom controls (always add listeners, check support in handlers)
+		this.svgPreview.addEventListener('touchstart', (e)=>this.handleTouchStart(e), {passive: false});
+		this.svgPreview.addEventListener('touchmove', (e)=>this.handleTouchMove(e), {passive: false});
+		this.svgPreview.addEventListener('touchend', (e)=>this.handleTouchEnd(e), {passive: false});
 	}
 
 	private updateSVGPreview(): void {
@@ -205,6 +214,44 @@ class SVGEditor {
 
 	private endPan(): void {
 		this.isPanning = false;
+	}
+
+	private handleTouchStart(e: TouchEvent): void {
+		if (e.touches.length === 2) {
+			// Start pinch zoom
+			this.isMultiTouch = true;
+			this.initialPinchDistance = this.calculatePinchDistance(e.touches[0], e.touches[1]);
+			this.initialZoomLevel = this.zoomLevel;
+			e.preventDefault();
+		} else {
+			this.isMultiTouch = false;
+		}
+	}
+
+	private handleTouchMove(e: TouchEvent): void {
+		if (this.isMultiTouch && e.touches.length === 2) {
+			const currentDistance = this.calculatePinchDistance(e.touches[0], e.touches[1]);
+			const scale = currentDistance / this.initialPinchDistance;
+
+			// Apply zoom based on pinch scale
+			const newZoomLevel = this.initialZoomLevel * scale;
+			this.zoomLevel = Math.max(0.1, Math.min(newZoomLevel, 50));
+
+			this.applySVGStyles();
+			e.preventDefault();
+		}
+	}
+
+	private handleTouchEnd(e: TouchEvent): void {
+		if (e.touches.length < 2) {
+			this.isMultiTouch = false;
+		}
+	}
+
+	private calculatePinchDistance(touch1: Touch, touch2: Touch): number {
+		const dx = touch1.clientX - touch2.clientX;
+		const dy = touch1.clientY - touch2.clientY;
+		return Math.sqrt(dx * dx + dy * dy);
 	}
 
 	private parseCurrentTransforms(svgCode: string): void {
