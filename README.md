@@ -47,11 +47,22 @@ A **Node.js**-based, web SVG editor written in **TypeScript**, with no frontend 
 - `npm run scripts` - Build JavaScript only
 - `npm run lint` - Run ESLint
 - `npm run lint:fix` - Run ESLint with auto-fix
-- `npm run check` - Run unit tests with Vitest
-- `npm run check:watch` - Run unit tests in watch mode
-- `npm run check:e2e` - Run end-to-end tests with Playwright
-- `npm run check:e2e:headed` - Run E2E tests with browser UI
-- `npm run check:e2e:debug` - Debug E2E tests
+
+### Testing
+
+The project uses separate test runners for different types of tests:
+
+- **Unit/Integration Tests (Vitest)**: Place in `tests/` directory
+  - `npm run check` - Run unit tests with Vitest
+  - `npm run check:watch` - Run unit tests in watch mode
+  - `npm run check:ui` - Run unit tests with UI
+
+- **End-to-End Tests (Playwright)**: Place in `e2e/` directory  
+  - `npm run check:e2e` - Run end-to-end tests with Playwright
+  - `npm run check:e2e:headed` - Run E2E tests with browser UI
+  - `npm run check:e2e:debug` - Debug E2E tests
+
+> **Note**: Keep test files in their respective directories to avoid runner conflicts. Vitest will exclude the `e2e/` directory, and Playwright only looks in the `e2e/` directory.
 
 ## Project Structure
 
@@ -65,8 +76,12 @@ src/
 └── www/             # Static web assets
     └── index.html   # Main HTML file
 
-tests/               # End-to-end tests
+tests/               # Unit and integration tests (Vitest)
+├── .gitkeep         # Keep directory tracked in git
+
+e2e/                 # End-to-end tests (Playwright)
 ├── svg-editor.spec.ts
+└── .gitkeep         # Keep directory tracked in git
 
 dist/                # Built assets (generated)
 ├── editor.min.css
@@ -99,6 +114,14 @@ The project uses modern development practices:
 - **Vitest** for fast unit testing
 - **Playwright** for reliable end-to-end testing
 - **PostCSS** with Tailwind for efficient CSS processing
+
+### Contributing
+
+When adding tests, place them in the appropriate directory:
+- Unit/integration tests → `tests/` (run with Vitest)
+- End-to-end tests → `e2e/` (run with Playwright)
+
+This separation prevents test runner conflicts and ensures tests run with the correct environment.
 
 ## Browser Support
 
