@@ -1,0 +1,98 @@
+@import "tailwindcss";
+@import "./palette.css";
+@custom-variant dark (&:where(.dark, .dark *)) {}
+/* <--//------------------------------------------------------------[colors] */
+@theme {
+	--color-editor: var(--slick-neutral-600);
+	--color-menu: var(--slick-neutral-800);
+	--color-face: var(--slick-secondary-100);
+	--color-preview: #fff;
+	--current-color: #fff;
+  --breakpoint-xs: 30rem;
+  --breakpoint-2xl: 100rem;
+  --breakpoint-3xl: 120rem;
+  --font-ui: ui-monospace, Consolas, SFMono-Regular, Menlo, Monaco,
+    "Liberation Mono", "Courier New", monospace;
+}
+.dark {
+	--color-editor: var(--slick-neutral-800);
+	--color-menu: var(--slick-neutral-950);
+	--color-face: var(--slick-secondary-300);
+	--color-preview: #000;
+}
+/* <--//----------------------------------------------------------[document] */
+:root {
+  overscroll-behavior: none;
+  overflow-x: hidden;
+  overflow-x: clip;
+}
+/* <--//-----------------------i-----------------------------------[globalz] */
+@layer base {
+  ::-webkit-scrollbar {
+    @apply w-5 h-5;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-menu rounded-none;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-editor;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-editor;
+  }
+  ::-webkit-scrollbar-button {
+    @apply bg-editor w-5 h-5 text-face;
+  }
+  ::-webkit-scrollbar-corner {
+    @apply bg-editor w-5 h-5 text-face;
+  }
+  .scrollable {
+    scrollbar-width: auto;
+    scrollbar-color: var(--color-menu-bg) var(--color-editor-bg);
+  }
+  html,
+  body {
+    overscroll-behavior: none;
+  }
+  body {
+    @apply flex flex-col h-screen w-screen m-0 p-0;
+    * {
+      @apply text-face font-ui transition-all ease-in-out;
+      &:focus {
+        outline: none !important;
+      }
+    }
+  }
+  h1 {
+    @apply text-3xl md:text-4xl;
+  }
+  h2 {
+    @apply text-2xl md:text-3xl 3xl:text-4xl;
+  }
+  h3 {
+    @apply text-xl md:text-2xl;
+  }
+  button {
+		@apply flex cursor-pointer items-center bg-slick-500;
+		&:hover,
+		&:active,
+		&:focus,
+		&:focus-within {
+			@apply bg-slick-800;
+		}
+  }
+/* <--//---------------------------------------------------------[interface] */
+	#editor {
+		@apply flex bg-editor;
+	}
+	#preview {
+		@apply flex bg-preview;
+	}
+}
+/* <--//--------------------------------------------------------[components] */
+@layer components {
+  .hide {
+    @apply hidden opacity-0;
+  }
+}
+/* <--//---------------------------------------------------------------[eof] */
