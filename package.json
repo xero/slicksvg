@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev": "npm run build && node serve.js",
+    "build": "npm run style && npm run scripts && cp dist/editor.min.css src/www/ && cp dist/app.min.js src/www/",
     "style": "mkdir -p ./dist; postcss src/style/editor.css -o dist/editor.min.css",
     "scripts": "esbuild src/scripts/main.ts --bundle --minify --outfile=dist/app.min.js",
     "lint": "eslint .",
@@ -17,6 +19,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",
+    "@playwright/test": "^1.55.0",
     "@tailwindcss/postcss": "^4.1.12",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.7.0",
@@ -35,5 +38,11 @@
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.40.0",
     "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "@codemirror/lang-xml": "^6.1.0",
+    "@codemirror/state": "^6.5.2",
+    "@codemirror/view": "^6.38.1",
+    "codemirror": "^6.0.2"
   }
 }
