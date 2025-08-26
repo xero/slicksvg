@@ -5,7 +5,7 @@
 @theme {
 	--color-editor: var(--slick-neutral-600);
 	--color-menu: var(--slick-neutral-800);
-	--color-face: var(--slick-secondary-100);
+	--color-face: var(--slick-nurtral-950);
 	--color-preview: #fff;
 	--current-color: #fff;
   --breakpoint-xs: 30rem;
@@ -73,7 +73,7 @@
     @apply text-xl md:text-2xl;
   }
   button {
-		@apply flex cursor-pointer items-center bg-slick-500;
+		@apply flex cursor-pointer items-center text-face bg-slick-500 mr-5 px-3 py-1;
 		&:hover,
 		&:active,
 		&:focus,
@@ -82,6 +82,13 @@
 		}
   }
 /* <--//---------------------------------------------------------[interface] */
+	main,
+	aside {
+		@apply w-full;
+		nav {
+			@apply flex flex-row bg-editor p-0 m-0 w-full;
+		}
+	}
 	#editor {
 		@apply flex flex-col bg-editor flex-1;
 		.cm-editor {
@@ -111,9 +118,13 @@
 		}
 	}
 	body {
-		@apply flex;
+		@apply flex flex-col;
 		&.vertical {
 			@apply flex-row;
+			main,
+			aside {
+				@apply w-1/2
+			}
 		}
 	}
 }

@@ -10,6 +10,7 @@ class SVGEditor {
 	private previewContainer: HTMLElement;
 	private svgPreview: HTMLElement;
 	private isVerticalLayout = false;
+	private isDarkMode = false;
 	private zoomLevel = 1;
 	private panX = 0;
 	private panY = 0;
@@ -25,8 +26,20 @@ class SVGEditor {
 		this.updateSVGPreview();
 	}
 
+	private get(i: string) {
+		const e = document.getElementById(i);
+		if (!e) throw new Error(`Element #${i} not found`);
+		return e
+	}
+
+  private getTyped = <T extends Element = HTMLElement>(q: string): T=>{
+		const e = document.querySelector(q);
+		if (!e) throw new Error(`Element ${q} was not found`);
+		return e as T;
+	}
+
 	private initializeEditor(): void {
-		const editorContainer = document.getElementById('editor');
+		const editorContainer = this.get('editor');
 		if (!editorContainer) throw new Error('Editor container not found');
 
 		// Create CodeMirror editor
@@ -55,9 +68,7 @@ class SVGEditor {
 	}
 
 	private initializePreview(): void {
-		this.previewContainer = document.getElementById('preview');
-		// eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-		if (!this.previewContainer) throw new Error('Preview container not found');
+		this.previewContainer = this.get('preview');
 
 		// Create SVG preview wrapper
 		this.svgPreview = document.createElement('div');
@@ -66,28 +77,32 @@ class SVGEditor {
 	}
 
 	private setupEventListeners(): void {
+		if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+			this.toggleMode();
+		}
+		this.get('dark').addEventListener('click', ()=>this.toggleMode());
+
 		// Flip button
-		const flipButton = document.getElementById('flip');
-		flipButton?.addEventListener('click', ()=>this.toggleLayout());
+		this.get('flip').addEventListener('click', ()=>this.toggleLayout());
 
 		// Zoom controls
-		const zoomInButton = document.getElementById('zoomin');
-		const zoomOutButton = document.getElementById('zoomout');
+		const zoomInButton = this.get('zoomin');
+		const zoomOutButton = this.get('zoomout');
 
 		zoomInButton?.addEventListener('click', ()=>this.zoomIn());
 		zoomOutButton?.addEventListener('click', ()=>this.zoomOut());
 
 		// Transform controls
-		const rotateButton = document.getElementById('rotate');
-		const flipXButton = document.getElementById('flipx');
-		const flipYButton = document.getElementById('flipy');
+		const rotateButton = this.get('rotate');
+		const flipXButton = this.get('flipx');
+		const flipYButton = this.get('flipy');
 
 		rotateButton?.addEventListener('click', ()=>this.rotateSVG());
 		flipXButton?.addEventListener('click', ()=>this.flipSVGX());
 		flipYButton?.addEventListener('click', ()=>this.flipSVGY());
 
 		// Tools
-		const optimizeButton = document.getElementById('optimize');
+		const optimizeButton = this.get('optimize');
 		optimizeButton?.addEventListener('click', ()=>this.optimizeSVG());
 
 		// Pan controls
@@ -127,11 +142,12 @@ class SVGEditor {
 
 	private toggleLayout(): void {
 		this.isVerticalLayout = !this.isVerticalLayout;
-		if (this.isVerticalLayout) {
-			document.body.classList.add('vertical');
-		} else {
-			document.body.classList.remove('vertical');
-		}
+		document.body.classList.toggle('vertical');
+	}
+
+	private toggleMode(): void {
+		this.isDarkMode = !this.isDarkMode;
+		document.body.classList.toggle('dark');
 	}
 
 	private zoomIn(): void {
