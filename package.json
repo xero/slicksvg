@@ -1,7 +1,7 @@
 {
   "name": "slicksvg",
   "version": "0.0.0",
-  "private": false,
+  "private": true,
   "type": "module",
   "scripts": {
     "style": "mkdir -p ./dist; postcss src/style/editor.css -o dist/editor.min.css",
