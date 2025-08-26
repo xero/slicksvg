@@ -35,5 +35,11 @@
     "typescript": "^5.9.2",
     "typescript-eslint": "^8.40.0",
     "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "@codemirror/basic-setup": "^0.20.0",
+    "@codemirror/lang-xml": "^6.1.0",
+    "@codemirror/state": "^6.5.2",
+    "@codemirror/view": "^6.38.1"
   }
 }
