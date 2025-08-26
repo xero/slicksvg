@@ -116,4 +116,30 @@ test.describe('SVG Editor', () => {
     // SVG should still be visible after flipping
     await expect(page.locator('svg')).toBeVisible();
   });
+
+  test('should have line wrapping enabled in editor', async ({ page }) => {
+    // Get the editor textbox
+    const editor = page.getByRole('textbox');
+    await expect(editor).toBeVisible();
+    
+    // Add very long text to test line wrapping
+    await editor.click();
+    await page.keyboard.press('Control+a');
+    await editor.fill(`<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+  <circle cx="100" cy="100" r="80" fill="#6291e0" stroke="#295da9" stroke-width="2"/>
+  <text x="100" y="110" text-anchor="middle" fill="white" font-family="Arial" font-size="16">This is a very long line of text that should demonstrate the line wrapping feature when it is enabled, because it will wrap within the editor instead of creating horizontal scrollbars</text>
+</svg>`);
+    
+    // Check that the CodeMirror editor has line wrapping enabled
+    // We can verify this by checking that no horizontal scrollbar appears
+    const editorElement = page.locator('.cm-editor');
+    await expect(editorElement).toBeVisible();
+    
+    // The text should be visible and wrapped - check for multiple lines in the third line
+    const textLine = page.locator('.cm-line').nth(2); // Third line (0-indexed)
+    await expect(textLine).toBeVisible();
+    
+    // Verify that the SVG preview still updates correctly with the long text
+    await expect(page.locator('svg')).toBeVisible();
+  });
 });

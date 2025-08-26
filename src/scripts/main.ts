@@ -61,6 +61,7 @@ class SVGEditor {
 				extensions: [
 					basicSetup,
 					xml(),
+					EditorView.lineWrapping,
 					this.themeCompartment.of([]), // Start with light theme (no theme extension)
 					EditorView.updateListener.of((update)=>{
 						if (update.docChanged) {
