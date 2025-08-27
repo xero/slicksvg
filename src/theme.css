@@ -1,0 +1,231 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *)) {
+}
+/* <--//------------------------------------------------------------[colors] */
+@theme {
+	--color-slick:#305ab6;
+	--color-slick-50:#faf8ff;
+	--color-slick-100:#eef0ff;
+	--color-slick-200:#dae2ff;
+	--color-slick-300:#b2c5ff;
+	--color-slick-400:#88a9ff;
+	--color-slick-500:#678ded;
+	--color-slick-600:#4c73d1;
+	--color-slick-700:#305ab6;
+	--color-slick-800:#0a419d;
+	--color-slick-900:#002b73;
+	--color-slick-950:#001847;
+	--color-mono:#585e71;
+	--color-mono-50:#faf8ff;
+	--color-mono-100:#eef0ff;
+	--color-mono-200:#dce2f9;
+	--color-mono-300:#c0c6dd;
+	--color-mono-400:#a5aac1;
+	--color-mono-500:#8a90a5;
+	--color-mono-600:#71768b;
+	--color-mono-700:#585e71;
+	--color-mono-800:#404659;
+	--color-mono-900:#2a3042;
+	--color-mono-950:#151b2c;
+  --color-face: var(--color-mono-50);
+	--color-lbl: var(--color-mono-950);
+	--color-frm: var(--color-mono-100);
+	--color-menu: var(--color-mono-200);
+  --color-menu-alt:  var(--color-mono-50);
+  --color-menu-outside: var(--color-mono-300);
+  --color-preview: var(--color-mono-50);
+	--color-header: var(--color-slick-700);
+	--color-btn: var(--color-slick-500);
+	--color-btn-h: var(--color-slick-700);
+  --current-color: #fff;
+  --breakpoint-xs: 30rem;
+  --breakpoint-2xl: 100rem;
+  --breakpoint-3xl: 120rem;
+  --font-ui:
+    ui-monospace, Consolas, SFMono-Regular, Menlo, Monaco, "Liberation Mono",
+    "Courier New", monospace;
+}
+.dark {
+	--color-header: var(--color-slick-300);
+	--color-face: var(--color-mono-50);
+	--color-lbl: var(--color-mono-50);
+	--color-frm: var(--color-mono-800);
+  --color-menu-alt: #282c34;
+  --color-menu-outside: #1d2129;
+  --color-menu: #252931;
+  --color-preview: #2b2f37;
+	--color-btn: var(--color-slick-700);
+	--color-btn-h: var(--color-slick-500);
+}
+/* <--//----------------------------------------------------------[document] */
+:root {
+  overscroll-behavior: none;
+  overflow-x: hidden;
+  overflow-x: clip;
+}
+/* <--//-----------------------i-----------------------------------[globalz] */
+@layer base {
+  ::-webkit-scrollbar {
+    @apply w-5 h-5;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-menu rounded-none;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-menu-alt;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-menu-alt;
+  }
+  ::-webkit-scrollbar-button {
+    @apply bg-menu-alt w-5 h-5 text-face;
+  }
+  ::-webkit-scrollbar-corner {
+    @apply bg-menu-alt w-5 h-5 text-face;
+  }
+  .scrollable {
+    scrollbar-width: auto;
+    scrollbar-color: var(--color-menu) var(--color-menu-alt);
+  }
+  html,
+  body {
+    overscroll-behavior: none;
+  }
+  body {
+    @apply flex flex-row h-screen w-screen m-0 p-0 bg-preview;
+		* {
+			@apply font-ui transition-all ease-in-out;
+			&:focus {
+				outline: none !important;
+			}
+		}
+    main,
+    aside {
+      @apply w-1/2;
+    }
+    &.vertical {
+      @apply flex-col;
+      main,
+      aside {
+        @apply w-full;
+      }
+    }
+  }
+  button {
+    @apply flex cursor-pointer items-center
+					 text-face bg-btn mr-5 px-3 py-1;
+    &:hover,
+    &:active,
+    &:focus,
+    &:focus-within {
+      @apply bg-btn-h;
+    }
+  }
+/* <--//---------------------------------------------------------[interface] */
+  main,
+  aside {
+    nav {
+      @apply flex flex-row items-center bg-menu p-0 m-0 w-full;
+      label {
+        @apply text-lbl pr-5;
+      }
+    }
+  }
+  #editor {
+    @apply flex flex-col flex-1;
+    .cm-editor {
+      @apply flex-1 h-full;
+    }
+    nav {
+      @apply p-2;
+    }
+  }
+  #preview {
+    @apply flex flex-col bg-preview flex-1 relative overflow-hidden;
+    nav {
+      @apply absolute top-0 left-0 z-10 p-2;
+    }
+    .svg-preview-wrapper {
+      @apply flex-1 flex items-center justify-center overflow-hidden;
+      cursor: grab;
+      &:active {
+        cursor: grabbing;
+      }
+    }
+    .svg-container {
+      --current-color: #fff;
+      @apply flex items-center justify-center;
+    }
+    .error {
+      @apply text-red-500 p-4 text-center;
+    }
+  }
+  dialog {
+    @apply border-4 border-menu-outside fixed flex flex-col bg-menu-alt
+					 left-1/2 opacity-0 scale-y-0 top-1/2 h-fit w-fit z-50;
+    -webkit-transform: translateX(-50%) translateY(-50%);
+    -moz-transform: translateX(-50%) translateY(-50%);
+    -ms-transform: translateX(-50%) translateY(-50%);
+    transform: translateX(-50%) translateY(-50%);
+    transform-origin: top;
+    transition:
+      scale 0.7s ease-out,
+      opacity 0.7s ease-out,
+      transform 0.7s ease-out;
+    &[open] {
+      @apply opacity-100 scale-y-100 p-1.5 z-50 min-w-3xs pointer-events-auto;
+      @starting-style {
+        @apply opacity-1 scale-y-0;
+      }
+    }
+    &.closing {
+      @apply opacity-1 scale-y-0 pointer-events-none;
+      &::backdrop {
+        @apply opacity-1;
+      }
+    }
+    &::backdrop {
+      @apply bg-black opacity-100;
+      background: #000000;
+      background: radial-gradient(
+        circle,
+        rgba(0, 0, 0, 0.33) 0%,
+        rgba(0, 0, 0, 0.43) 50%,
+        rgba(0, 0, 0, 0.73) 100%
+      );
+      transition: opacity 0.7s ease-out;
+      @starting-style {
+        @apply opacity-1;
+      }
+    }
+    header,
+    article,
+    footer,
+    label {
+      @apply flex p-5;
+    }
+    header {
+      @apply text-xl text-header bg-menu;
+    }
+    article {
+      @apply flex-row p-6;
+      label {
+        @apply text-lbl mr-5 justify-center align-middle;
+				input {
+					@apply border-2 border-menu-outside bg-frm pl-1 ml-2;
+					line-height: 2em;
+				}
+      }
+    }
+    footer {
+      @apply bg-menu;
+    }
+  }
+}
+/* <--//--------------------------------------------------------[components] */
+@layer components {
+  .hide {
+    @apply hidden opacity-0;
+  }
+}
+/* <--//---------------------------------------------------------------[eof] */

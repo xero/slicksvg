@@ -10,6 +10,7 @@ class SVGEditor {
 	private editor: EditorView;
 	private previewContainer: HTMLElement;
 	private svgPreview: HTMLElement;
+	private modal: HTMLDialogElement;
 	private isVerticalLayout = false;
 	private isDarkMode = false;
 	private zoomLevel = 1;
@@ -29,6 +30,7 @@ class SVGEditor {
 
 
 	constructor() {
+		this.modal = this.getTyped('dialog');
 		this.initializeEditor();
 		this.initializePreview();
 		this.setupEventListeners();
@@ -45,6 +47,21 @@ class SVGEditor {
 		const e = document.querySelector(q);
 		if (!e) throw new Error(`Element ${q} was not found`);
 		return e as T;
+	}
+
+	private modalIsOpen=(): boolean=>this.modal.open;
+
+	private modalShow(): void {
+		this.modal.classList.remove('closing');
+		void (!this.modalIsOpen() && this.modal.showModal());
+	};
+
+	private modalClose():void {
+		this.modal.classList.add('closing');
+		setTimeout(()=>{
+			this.modal.classList.remove('closing');
+			this.modal.close();
+		}, 700);
 	}
 
 	private initializeEditor(): void {
@@ -88,6 +105,10 @@ class SVGEditor {
 	}
 
 	private setupEventListeners(): void {
+		this.get("cancel").addEventListener("click", ()=>this.modalClose());
+		this.get("resolution").addEventListener("click", ()=>this.modalShow());
+		this.get("resize").addEventListener("click", ()=>this.resizeSVG());
+
 		if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
 			this.toggleMode();
 		}
@@ -406,6 +427,12 @@ class SVGEditor {
 
 		// Apply the consolidated transform
 		this.applyTransformToSVG();
+	}
+
+	private resizeSVG(): void {
+		/* @TODO: add resize logic */
+
+		this.modalClose();
 	}
 
 	private optimizeSVG(): void {
