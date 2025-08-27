@@ -19,15 +19,15 @@ test.describe('SVG Editor Accessibility E2E Tests', () => {
     // Tab through all interactive elements
     const interactiveElements = [
       'upload',
-      'resolution', 
+      'resize', 
       'optimize',
       'rotate',
-      'flipx',
-      'flipy',
-      'dark',
-      'flip',
-      'zoomin',
-      'zoomout'
+      'flip horizontal',
+      'flip vertical', 
+      'dark mode',
+      'flip screen',
+      'zoom in',
+      'zoom out'
     ];
 
     for (const elementId of interactiveElements) {

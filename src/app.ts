@@ -5,7 +5,7 @@ import {basicSetup} from 'codemirror';
 import {nord} from '@uiw/codemirror-theme-nord';
 
 class SVGEditor {
-	private editor: EditorView;
+	public editor: EditorView;
 	private previewContainer: HTMLElement;
 	private svgPreview: HTMLElement;
 	private modal: HTMLDialogElement;
@@ -32,6 +32,7 @@ class SVGEditor {
 		this.setupEventListeners();
 		this.setupUploadButton();
 		this.setupDragAndDrop();
+		this.setupReducedMotion();
 		this.updateSVGPreview();
 	}
 
@@ -89,20 +90,78 @@ class SVGEditor {
 	private modalShow(): void {
 		this.modal.classList.remove('closing');
 		void (!this.modalIsOpen() && this.modal.showModal());
+		
+		// Focus the first input when modal opens
+		const firstInput = this.modal.querySelector('#width') as HTMLInputElement;
+		if (firstInput) {
+			firstInput.focus();
+		}
+		
+		// Add focus trapping
+		this.modal.addEventListener('keydown', this.handleModalKeydown);
 	};
 
 	private modalClose():void {
 		this.modal.classList.add('closing');
+		
+		// Remove focus trapping
+		this.modal.removeEventListener('keydown', this.handleModalKeydown);
+		
 		setTimeout(()=>{
 			this.modal.classList.remove('closing');
 			this.modal.close();
 		}, 700);
 	}
 
+	private handleModalKeydown = (e: KeyboardEvent): void => {
+		if (e.key !== 'Tab') return;
+		
+		const focusableElements = this.modal.querySelectorAll(
+			'input, button, select, textarea, [tabindex]:not([tabindex="-1"])'
+		) as NodeListOf<HTMLElement>;
+		
+		const firstElement = focusableElements[0];
+		const lastElement = focusableElements[focusableElements.length - 1];
+		
+		if (e.shiftKey) {
+			// Shift+Tab - going backwards
+			if (document.activeElement === firstElement) {
+				e.preventDefault();
+				lastElement.focus();
+			}
+		} else {
+			// Tab - going forwards
+			if (document.activeElement === lastElement) {
+				e.preventDefault();
+				firstElement.focus();
+			}
+		}
+	};
+
 	private announceAction(message: string): void {
 		const announcer = document.getElementById('test-announcements');
 		if (announcer) {
 			announcer.textContent = message;
+		}
+	}
+
+	public announceError(message: string): void {
+		let liveRegion = document.getElementById('error-announcements');
+		if (!liveRegion) {
+			liveRegion = document.createElement('div');
+			liveRegion.id = 'error-announcements';
+			liveRegion.setAttribute('aria-live', 'assertive');
+			liveRegion.setAttribute('aria-atomic', 'true');
+			liveRegion.style.position = 'absolute';
+			liveRegion.style.left = '-10000px';
+			document.body.appendChild(liveRegion);
+		}
+		liveRegion.textContent = message;
+	}
+
+	private setupReducedMotion(): void {
+		if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+			document.body.classList.add('reduced-motion');
 		}
 	}
 
@@ -372,7 +431,7 @@ class SVGEditor {
 		this.parseCurrentTransforms(svgCode);
 		this.rotationDegrees = (this.rotationDegrees + 90) % 360;
 		this.applyTransformToSVG();
-		this.announceAction(`SVG rotated to ${this.rotationDegrees} degrees`);
+		this.announceAction(`SVG rotated 90 degrees`);
 	}
 
 	private flipSVGX(): void {
@@ -642,7 +701,17 @@ class SVGEditor {
 }
 
 if (document.readyState === 'loading') {
-	document.addEventListener('DOMContentLoaded', ()=>new SVGEditor());
+	document.addEventListener('DOMContentLoaded', ()=>{
+		const editor = new SVGEditor();
+		// Expose error announcement function globally for testing
+		(window as any).announceError = editor.announceError.bind(editor);
+		// Expose editor instance for testing
+		(window as any).svgEditor = editor;
+	});
 } else {
-	new SVGEditor();
+	const editor = new SVGEditor();
+	// Expose error announcement function globally for testing
+	(window as any).announceError = editor.announceError.bind(editor);
+	// Expose editor instance for testing
+	(window as any).svgEditor = editor;
 }

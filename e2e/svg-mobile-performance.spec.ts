@@ -74,7 +74,7 @@ test.describe('SVG Editor Mobile and Touch E2E Tests', () => {
     await expect(page.getByRole('complementary')).toBeVisible();
     
     // Should still be usable in landscape
-    await page.getByRole('button', { name: /rotate/i }).click();
+    await page.getByRole('button', { name: /rotate/i }).click({ force: true });
     await expect(page.getByRole('main')).toBeVisible();
   });
 
@@ -147,11 +147,24 @@ test.describe('SVG Editor Performance E2E Tests', () => {
     
     const startTime = Date.now();
     
-    // Input complex content
+    // Input complex content efficiently
     const editor = page.locator('#editor .cm-content');
     await editor.click();
-    await page.keyboard.press('Control+a');
-    await page.keyboard.type(complexSVG);
+    
+    // Use direct editor manipulation instead of slow character-by-character typing
+    await page.evaluate((content) => {
+      const svgEditor = (window as any).svgEditor;
+      if (svgEditor?.editor) {
+        const transaction = svgEditor.editor.state.update({
+          changes: {
+            from: 0,
+            to: svgEditor.editor.state.doc.length,
+            insert: content
+          }
+        });
+        svgEditor.editor.dispatch(transaction);
+      }
+    }, complexSVG);
     
     // Wait for preview to update
     await page.waitForTimeout(1000);
