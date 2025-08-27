@@ -6,9 +6,9 @@
   "scripts": {
     "make": "npm run clean && npm run style && npm run scripts && npm run www",
     "clean": "rm -rf ./dist; mkdir -p ./dist",
-		"style": "postcss src/theme.css -o dist/theme.css",
+    "style": "postcss src/theme.css -o dist/theme.css",
     "scripts": "esbuild src/app.ts --bundle --minify --outfile=dist/app.js",
-		"www": "cp ./src/index.html ./dist/index.html",
+    "www": "cp ./src/index.html ./dist/index.html",
     "dev": "npm run make && node serve.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -53,8 +53,8 @@
   "dependencies": {
     "@codemirror/lang-xml": "^6.1.0",
     "@codemirror/state": "^6.5.2",
-    "@codemirror/theme-one-dark": "^6.1.3",
     "@codemirror/view": "^6.38.1",
+    "@uiw/codemirror-theme-nord": "^4.25.1",
     "codemirror": "^6.0.2"
   }
 }
