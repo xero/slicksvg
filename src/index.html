@@ -10,8 +10,9 @@
 		<link rel="stylesheet" href="theme.css" />
 	</head>
 	<body>
-		<dialog>
-			<header>Change Resolution</header>
+		<div id="test-announcements" aria-live="polite" aria-atomic="true" class="sr-only"></div>
+		<dialog aria-labelledby="dialog-title" role="dialog">
+			<header id="dialog-title">Change Resolution</header>
 			<article>
 				<label>Width:<input type="number" min="1" id="width"></label>
 				<label>Height:<input type="number" min="1" id="height"></label>
@@ -21,24 +22,24 @@
 				<button id="cancel">Cancel</button>
 			</footer>
 		</dialog>
-		<main id="editor">
+		<main id="editor" aria-label="SVG Code Editor">
 			<nav>
 				<button id="upload">upload</button>
 				<button id="resolution">resize</button>
 				<button id="optimize">optimize&nbsp; <i>⚡</i></button>
 				<label>transform:</label>
-				<button id="rotate"><i>↻</i></button>
-				<button id="flipx"><i>⇔</i></button>
-				<button id="flipy"><i>⥮</i></button>
+				<button id="rotate" aria-label="rotate"><i>↻</i></button>
+				<button id="flipx" aria-label="flip horizontal"><i>⇔</i></button>
+				<button id="flipy" aria-label="flip vertical"><i>⥮</i></button>
 			</nav>
 		</main>
-		<aside id="preview">
+		<aside id="preview" role="complementary" aria-label="SVG Preview">
 			<nav>
 				<button id="dark">dark mode</button>
 				<button id="flip">flip screen</button>
 				<label>zoom:</label>
-				<button id="zoomin"><i>+</i></button>
-				<button id="zoomout"><i>-</i></button>
+				<button id="zoomin" aria-label="zoom in"><i>+</i></button>
+				<button id="zoomout" aria-label="zoom out"><i>-</i></button>
 			</nav>
 		</aside>
 		<script type="module" src="app.js"></script>
