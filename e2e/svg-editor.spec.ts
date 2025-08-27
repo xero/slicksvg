@@ -41,14 +41,14 @@ test.describe('SVG Editor', () => {
 
   test('should have working zoom controls', async ({ page }) => {
     // Click zoom in button multiple times
-    await page.getByRole('button', { name: '+' }).click();
-    await page.getByRole('button', { name: '+' }).click();
+    await page.getByRole('button', { name: /zoom in/i }).click();
+    await page.getByRole('button', { name: /zoom in/i }).click();
     
     // Check that the SVG is still visible (zoom functionality working)
     await expect(page.locator('svg')).toBeVisible();
     
     // Click zoom out button
-    await page.getByRole('button', { name: '-' }).click();
+    await page.getByRole('button', { name: /zoom out/i }).click();
     
     // SVG should still be visible
     await expect(page.locator('svg')).toBeVisible();
@@ -78,12 +78,12 @@ test.describe('SVG Editor', () => {
 
   test('should have SVG transform controls', async ({ page }) => {
     // Check that transform controls exist
-    await expect(page.getByRole('button', { name: '↻' })).toBeVisible();
-    await expect(page.getByRole('button', { name: '⇔' })).toBeVisible();
-    await expect(page.getByRole('button', { name: '⥮' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /rotate/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /flip.*horizontal/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /flip.*vertical/i })).toBeVisible();
     
     // Test rotation functionality
-    const rotateButton = page.getByRole('button', { name: '↻' });
+    const rotateButton = page.getByRole('button', { name: /rotate/i });
     await rotateButton.click();
     
     // SVG should still be visible after rotation
@@ -92,7 +92,7 @@ test.describe('SVG Editor', () => {
 
   test('should have SVG optimization button', async ({ page }) => {
     // Check that optimize button exists
-    const optimizeButton = page.getByRole('button', { name: '⚡' });
+    const optimizeButton = page.getByRole('button', { name: /optimize/i });
     await expect(optimizeButton).toBeVisible();
     
     // Click the optimize button
@@ -104,12 +104,12 @@ test.describe('SVG Editor', () => {
 
   test('should have flip functionality', async ({ page }) => {
     // Test flip X button
-    const flipXButton = page.getByRole('button', { name: '⇔' });
+    const flipXButton = page.getByRole('button', { name: /flip.*horizontal/i });
     await expect(flipXButton).toBeVisible();
     await flipXButton.click();
     
     // Test flip Y button  
-    const flipYButton = page.getByRole('button', { name: '⥮' });
+    const flipYButton = page.getByRole('button', { name: /flip.*vertical/i });
     await expect(flipYButton).toBeVisible();
     await flipYButton.click();
     

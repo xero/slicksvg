@@ -372,7 +372,7 @@ class SVGEditor {
 		this.parseCurrentTransforms(svgCode);
 		this.rotationDegrees = (this.rotationDegrees + 90) % 360;
 		this.applyTransformToSVG();
-		this.announceAction(`SVG rotated to ${this.rotationDegrees} degrees`);
+		this.announceAction(`SVG rotated 90 degrees`);
 	}
 
 	private flipSVGX(): void {
