@@ -1,6 +1,6 @@
 {
   "name": "slicksvg",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -15,9 +15,9 @@
     "check": "vitest run",
     "check:watch": "vitest",
     "check:ui": "vitest --ui",
-    "check:e2e": "playwright test",
-    "check:e2e:headed": "playwright test --headed",
-    "check:e2e:debug": "playwright test --debug"
+    "check:e2e": "playwright test --workers=2",
+    "check:e2e:headed": "playwright test --headed --workers=2",
+    "check:e2e:debug": "playwright test --debug --workers=2"
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",
