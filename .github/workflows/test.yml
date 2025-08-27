@@ -61,8 +61,13 @@ jobs:
       - name: Install Playwright Browsers
         run: bunx playwright install --with-deps
 
+      - name: Start Web Server
+        run: bunx vite preview --port 4173 &
+
       - name: Run E2E tests
         run: bun check:e2e
+        env:
+          PLAYWRIGHT_TEST_BASE_URL: http://localhost:4173
 
       - name: Upload test results
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
