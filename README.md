@@ -42,7 +42,8 @@ A **Node.js**-based, web SVG editor written in **TypeScript**, with no frontend 
 ## Available Scripts
 
 - `npm run dev` - Start development server with auto-rebuild
-- `npm run build` - Build CSS and JavaScript bundles
+- `npm run make` - Build CSS and JavaScript bundles (separate files)
+- `npm run make:mini` - Build CSS and JavaScript into a single HTML file
 - `npm run style` - Build CSS only
 - `npm run scripts` - Build JavaScript only
 - `npm run lint` - Run ESLint
