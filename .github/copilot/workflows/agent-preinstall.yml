@@ -1,0 +1,19 @@
+name: Copilot Agent Preinstall
+on:
+  copilot-agent:
+    types: [preinstall]
+jobs:
+  setup-tools:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install Playwright & browsers
+        run: |
+          npm i -g playwright
+          npx playwright install --with-deps
+      - name: Install Bun
+        run: |
+          curl -fsSL https://bun.sh/install | bash
+          echo "$HOME/.bun/bin" >> $GITHUB_PATH

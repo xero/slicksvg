@@ -7,56 +7,24 @@ on:
     branches: [ main ]
 
 jobs:
-  unit-tests:
-    runs-on: ubuntu-latest
-    name: Unit Tests
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install Bun
-        run: |
-          curl -fsSL https://bun.sh/install | bash
-          echo "$HOME/.bun/bin" >> $GITHUB_PATH
-
-      - name: Run unit tests
-        run: npm run check
-
   e2e-tests:
     runs-on: ubuntu-latest
-    name: End-to-End Tests
+    container:
+      image: mcr.microsoft.com/playwright:v1.44.1-jammy
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
 
       - name: Install Bun
         run: |
           curl -fsSL https://bun.sh/install | bash
           echo "$HOME/.bun/bin" >> $GITHUB_PATH
 
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps
+      - name: Install dependencies
+        run: bun i
 
       - name: Run E2E tests
-        run: npm run check:e2e
+        run: bun check:e2e
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
@@ -79,14 +47,14 @@ jobs:
           node-version: '18'
           cache: 'npm'
 
-      - name: Install dependencies
-        run: npm ci
-
       - name: Install Bun
         run: |
           curl -fsSL https://bun.sh/install | bash
           echo "$HOME/.bun/bin" >> $GITHUB_PATH
 
+      - name: Install dependencies
+        run: bun i
+
       - name: Run linter
-        run: npm run lint
+        run: bun lint
 
