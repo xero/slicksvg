@@ -15,9 +15,18 @@
     "check": "vitest run",
     "check:watch": "vitest",
     "check:ui": "vitest --ui",
+    "check:coverage": "vitest run --coverage",
     "check:e2e": "playwright test",
     "check:e2e:headed": "playwright test --headed",
-    "check:e2e:debug": "playwright test --debug"
+    "check:e2e:debug": "playwright test --debug",
+    "check:e2e:ui": "playwright test --ui",
+    "test": "npm run check && npm run check:e2e",
+    "test:unit": "npm run check",
+    "test:integration": "npm run check:coverage",
+    "test:e2e": "npm run check:e2e",
+    "test:all": "npm run check:coverage && npm run check:e2e",
+    "playwright:install": "npx playwright install",
+    "playwright:install-deps": "npx playwright install-deps"
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",
