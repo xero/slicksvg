@@ -52,13 +52,15 @@ try {
 
   console.log('🔄 Combining JS into HTML...');
 
-  // Replace the JS script tag with inline script
+  // Replace the JS script tag with inline script (remove type="module" to avoid issues)
   const jsScriptRegex = /<script type="module" src="app\.js"><\/script>/;
   if (!jsScriptRegex.test(htmlContent)) {
     throw new Error('Could not find JS script tag in HTML file');
   }
 
-  const inlineJS = `<script type="module">${jsContent}</script>`;
+  // Encode the JavaScript as base64 to avoid escaping issues
+  const jsBase64 = Buffer.from(jsContent).toString('base64');
+  const inlineJS = `<script>eval(atob("${jsBase64}"));</script>`;
   htmlContent = htmlContent.replace(jsScriptRegex, inlineJS);
 
   console.log('💾 Writing combined HTML file...');
