@@ -57,6 +57,7 @@
   },
   "dependencies": {
     "@codemirror/lang-xml": "^6.1.0",
+    "@codemirror/lint": "^6.8.5",
     "@codemirror/state": "^6.5.2",
     "@codemirror/view": "^6.38.1",
     "@uiw/codemirror-theme-nord": "^4.25.1",

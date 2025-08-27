@@ -3,6 +3,87 @@ import {EditorState, Compartment} from '@codemirror/state';
 import {xml} from '@codemirror/lang-xml';
 import {basicSetup} from 'codemirror';
 import {nord} from '@uiw/codemirror-theme-nord';
+import {linter, lintGutter} from '@codemirror/lint';
+
+// SVG/XML linter function using DOMParser
+const svgLinter = linter(view=>{
+	const text = view.state.doc.toString();
+	const diagnostics = [];
+
+	try {
+		// Skip empty documents
+		if (!text.trim()) {
+			return [];
+		}
+
+		const parser = new DOMParser();
+		const doc = parser.parseFromString(text, 'image/svg+xml');
+		const parserError = doc.querySelector('parsererror');
+
+		if (parserError) {
+			// Extract error message from parsererror element
+			let message = parserError.textContent || 'Invalid SVG/XML';
+
+			// Try to extract line/column info from error message if available
+			const lineMatch = message.match(/line\s+(\d+)/i);
+			const columnMatch = message.match(/column\s+(\d+)/i);
+
+			let from = 0;
+			let to = text.length;
+
+			if (lineMatch) {
+				const lineNumber = parseInt(lineMatch[1], 10) - 1; // Convert to 0-based
+				const lines = text.split('\n');
+				if (lineNumber >= 0 && lineNumber < lines.length) {
+					// Calculate position of the error line
+					let lineStart = 0;
+					for (let i = 0; i < lineNumber; i++) {
+						lineStart += lines[i].length + 1; // +1 for newline
+					}
+					from = lineStart;
+					to = lineStart + (lines[lineNumber]?.length || 0);
+
+					// If we have column info, make it more precise
+					if (columnMatch) {
+						const columnNumber = parseInt(columnMatch[1], 10) - 1; // Convert to 0-based
+						from = lineStart + Math.min(columnNumber, lines[lineNumber]?.length || 0);
+						to = Math.min(from + 1, lineStart + (lines[lineNumber]?.length || 0));
+					}
+				}
+			}
+			// Clean up the error message for better readability
+			message = message.match(/: ([^\n]+)\n/)?.[1] || '';
+
+			diagnostics.push({
+				from,
+				to,
+				severity: 'error' as const,
+				message: message
+			});
+		}
+
+		// Additional basic SVG validation
+		if (text.trim() && !text.includes('<svg')) {
+			diagnostics.push({
+				from: 0,
+				to: Math.min(50, text.length),
+				severity: 'warning' as const,
+				message: 'Document should contain an SVG element'
+			});
+		}
+
+	} catch (error) {
+		// Fallback for other parsing errors
+		diagnostics.push({
+			from: 0,
+			to: Math.min(100, text.length),
+			severity: 'error' as const,
+			message: `Parse Error: ${error instanceof Error ? error.message : 'Unknown error'}`
+		});
+	}
+
+	return diagnostics;
+});
 
 // Extend Window interface for testing functions
 declare global {
@@ -79,6 +160,8 @@ class SVGEditor {
 					basicSetup,
 					xml(),
 					EditorView.lineWrapping,
+					lintGutter(),
+					svgLinter,
 					this.themeCompartment.of([]), // Start with light theme (no theme extension)
 					EditorView.updateListener.of((update)=>{
 						if (update.docChanged) {
