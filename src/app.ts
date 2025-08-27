@@ -58,7 +58,7 @@ const svgLinter = linter(view=>{
 				from,
 				to,
 				severity: 'error' as const,
-				message: `${message}`
+				message: message
 			});
 		}
 
