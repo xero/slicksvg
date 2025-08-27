@@ -168,6 +168,9 @@ test.describe('SVG Editor', () => {
     expect(finalTransform).not.toBe(initialTransform);
     
     // SVG should still be visible after pinch zoom
+    await expect(page.locator('svg')).toBeVisible();
+  });
+
   test('should have line wrapping enabled in editor', async ({ page }) => {
     // Get the editor textbox
     const editor = page.getByRole('textbox');
