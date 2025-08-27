@@ -3,6 +3,7 @@
 }
 /* <--//------------------------------------------------------------[colors] */
 @theme {
+	/* --- palette */
 	--color-slick:#305ab6;
 	--color-slick-50:#faf8ff;
 	--color-slick-100:#eef0ff;
@@ -27,6 +28,7 @@
 	--color-mono-800:#404659;
 	--color-mono-900:#2a3042;
 	--color-mono-950:#151b2c;
+	/* --- interface */
   --color-face: var(--color-mono-50);
 	--color-lbl: var(--color-mono-950);
 	--color-frm: var(--color-mono-100);
@@ -93,6 +95,16 @@
   }
   body {
     @apply flex flex-row h-screen w-screen m-0 p-0 bg-preview;
+		&.drag-over {
+			@apply relative;
+			&::after {
+				@apply fixed flex z-50 top-[5%] left-[5%] bottom-[5%] right-[5%]
+							 align-middle justify-center justify-items-center items-center
+							 pointer-events-none text-3xl font-bold text-header bg-menu
+							 border-4 border-dashed border-btn;
+				content: 'Drop SVG file here';
+			}
+		}
 		* {
 			@apply font-ui transition-all ease-in-out;
 			&:focus {
@@ -231,39 +243,6 @@
 @layer components {
   .hide {
     @apply hidden opacity-0;
-  }
-  /* Drag and drop styling */
-  body.drag-over {
-    position: relative;
-  }
-  body.drag-over::before {
-    content: '';
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    border: 4px dashed var(--color-slick-500);
-    background: rgba(48, 90, 182, 0.2);
-    z-index: 50;
-    pointer-events: none;
-  }
-  body.drag-over #editor::after {
-    content: 'Drop SVG file here';
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 2rem;
-    font-weight: bold;
-    background: rgba(255, 255, 255, 0.9);
-    color: var(--color-slick-700);
-    z-index: 51;
-    pointer-events: none;
   }
 }
 /* <--//---------------------------------------------------------------[eof] */
