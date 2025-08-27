@@ -19,14 +19,6 @@ const mimeTypes = {
 };
 
 const server = createServer(async (req, res) => {
-  // Copy built files first
-  const { execSync } = await import('node:child_process');
-  try {
-    execSync('cp dist/editor.min.css src/www/ && cp dist/app.min.js src/www/', { cwd: __dirname });
-  } catch (e) {
-    console.log('Build files may not exist yet');
-  }
-
   let pathname = new URL(req.url, `http://${req.headers.host}`).pathname;
   
   // Default to index.html
@@ -34,7 +26,7 @@ const server = createServer(async (req, res) => {
     pathname = '/index.html';
   }
 
-  const filePath = join(__dirname, 'src/www', pathname);
+  const filePath = join(__dirname, 'dist', pathname);
   
   try {
     const stats = await stat(filePath);
