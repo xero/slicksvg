@@ -138,23 +138,91 @@ describe('SVG Resolution Change', () => {
     expect(resizedSVG).toContain('<rect x="10" y="10" width="80" height="80" fill="red"/>');
   });
 
-  it('should handle missing width or height attributes', () => {
-    const svgWithoutWidth = `<svg xmlns="http://www.w3.org/2000/svg" height="100">
+  it('should handle missing width or height attributes with viewBox fallback', () => {
+    const svgWithoutWidth = `<svg xmlns="http://www.w3.org/2000/svg" height="100" viewBox="0 0 300 150">
       <circle cx="50" cy="50" r="40" fill="green"/>
     </svg>`;
 
-    // Mock the extraction logic with defaults
+    // Mock the extraction logic with viewBox fallback
     const extractDimensions = (svg: string) => {
       const widthMatch = svg.match(/width="([^"]+)"/);
       const heightMatch = svg.match(/height="([^"]+)"/);
+      
+      let currentWidth = widthMatch ? parseInt(widthMatch[1]) : null;
+      let currentHeight = heightMatch ? parseInt(heightMatch[1]) : null;
+
+      // If width or height are missing, fall back to viewBox values
+      if (currentWidth === null || currentHeight === null) {
+        const viewBoxMatch = svg.match(/viewBox="([^"]+)"/);
+        if (viewBoxMatch) {
+          const viewBoxValues = viewBoxMatch[1].split(/\s+/);
+          if (viewBoxValues.length >= 4) {
+            if (currentWidth === null) {
+              currentWidth = parseInt(viewBoxValues[2]);
+            }
+            if (currentHeight === null) {
+              currentHeight = parseInt(viewBoxValues[3]);
+            }
+          }
+        }
+      }
+
+      // Final fallback to defaults if still null
+      currentWidth = currentWidth || 200;
+      currentHeight = currentHeight || 200;
+
       return {
-        width: widthMatch ? parseInt(widthMatch[1]) : 200,
-        height: heightMatch ? parseInt(heightMatch[1]) : 200
+        width: currentWidth,
+        height: currentHeight
       };
     };
 
     const dimensions = extractDimensions(svgWithoutWidth);
+    expect(dimensions.width).toBe(300); // From viewBox fallback
+    expect(dimensions.height).toBe(100); // From height attribute
+  });
+
+  it('should fall back to defaults when both attributes and viewBox are missing', () => {
+    const svgWithoutDimensions = `<svg xmlns="http://www.w3.org/2000/svg">
+      <circle cx="50" cy="50" r="40" fill="green"/>
+    </svg>`;
+
+    // Mock the extraction logic with viewBox fallback
+    const extractDimensions = (svg: string) => {
+      const widthMatch = svg.match(/width="([^"]+)"/);
+      const heightMatch = svg.match(/height="([^"]+)"/);
+      
+      let currentWidth = widthMatch ? parseInt(widthMatch[1]) : null;
+      let currentHeight = heightMatch ? parseInt(heightMatch[1]) : null;
+
+      // If width or height are missing, fall back to viewBox values
+      if (currentWidth === null || currentHeight === null) {
+        const viewBoxMatch = svg.match(/viewBox="([^"]+)"/);
+        if (viewBoxMatch) {
+          const viewBoxValues = viewBoxMatch[1].split(/\s+/);
+          if (viewBoxValues.length >= 4) {
+            if (currentWidth === null) {
+              currentWidth = parseInt(viewBoxValues[2]);
+            }
+            if (currentHeight === null) {
+              currentHeight = parseInt(viewBoxValues[3]);
+            }
+          }
+        }
+      }
+
+      // Final fallback to defaults if still null
+      currentWidth = currentWidth || 200;
+      currentHeight = currentHeight || 200;
+
+      return {
+        width: currentWidth,
+        height: currentHeight
+      };
+    };
+
+    const dimensions = extractDimensions(svgWithoutDimensions);
     expect(dimensions.width).toBe(200); // Default value
-    expect(dimensions.height).toBe(100); // Extracted value
+    expect(dimensions.height).toBe(200); // Default value
   });
 });

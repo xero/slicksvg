@@ -435,8 +435,28 @@ class SVGEditor {
 		const widthMatch = svgCode.match(/width="([^"]+)"/);
 		const heightMatch = svgCode.match(/height="([^"]+)"/);
 
-		const currentWidth = widthMatch ? parseInt(widthMatch[1]) : 200;
-		const currentHeight = heightMatch ? parseInt(heightMatch[1]) : 200;
+		let currentWidth = widthMatch ? parseInt(widthMatch[1]) : null;
+		let currentHeight = heightMatch ? parseInt(heightMatch[1]) : null;
+
+		// If width or height are missing, fall back to viewBox values
+		if (currentWidth === null || currentHeight === null) {
+			const viewBoxMatch = svgCode.match(/viewBox="([^"]+)"/);
+			if (viewBoxMatch) {
+				const viewBoxValues = viewBoxMatch[1].split(/\s+/);
+				if (viewBoxValues.length >= 4) {
+					if (currentWidth === null) {
+						currentWidth = parseInt(viewBoxValues[2]);
+					}
+					if (currentHeight === null) {
+						currentHeight = parseInt(viewBoxValues[3]);
+					}
+				}
+			}
+		}
+
+		// Final fallback to defaults if still null
+		currentWidth = currentWidth || 200;
+		currentHeight = currentHeight || 200;
 
 		// Populate the input fields
 		(this.get('width') as HTMLInputElement).value = currentWidth.toString();
