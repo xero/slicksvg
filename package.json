@@ -1,6 +1,6 @@
 {
   "name": "slicksvg",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -16,9 +16,9 @@
     "check:watch": "vitest",
     "check:ui": "vitest --ui",
     "check:coverage": "vitest run --coverage",
-    "check:e2e": "playwright test",
-    "check:e2e:headed": "playwright test --headed",
-    "check:e2e:debug": "playwright test --debug",
+    "check:e2e": "playwright test --workers=2",
+    "check:e2e:headed": "playwright test --headed --workers=2",
+    "check:e2e:debug": "playwright test --debug --workers=2",
     "check:e2e:ui": "playwright test --ui",
     "test": "npm run check && npm run check:e2e",
     "test:unit": "npm run check",
