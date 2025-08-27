@@ -4,6 +4,14 @@ import {xml} from '@codemirror/lang-xml';
 import {basicSetup} from 'codemirror';
 import {nord} from '@uiw/codemirror-theme-nord';
 
+// Extend Window interface for testing functions
+declare global {
+	interface Window {
+		announceError?: (message: string) => void;
+		svgEditor?: SVGEditor;
+	}
+}
+
 class SVGEditor {
 	public editor: EditorView;
 	private previewContainer: HTMLElement;
@@ -704,18 +712,18 @@ class SVGEditor {
 	}
 }
 
-if (document.readyState === 'loading') {
-	document.addEventListener('DOMContentLoaded', ()=>{
-		const editor = new SVGEditor();
-		// Expose error announcement function globally for testing
-		(window as any).announceError = editor.announceError.bind(editor);
-		// Expose editor instance for testing
-		(window as any).svgEditor = editor;
-	});
-} else {
+// Initialize editor and expose testing functions
+function initializeEditor(): void {
 	const editor = new SVGEditor();
 	// Expose error announcement function globally for testing
-	(window as any).announceError = editor.announceError.bind(editor);
+	window.announceError = editor.announceError.bind(editor);
 	// Expose editor instance for testing
-	(window as any).svgEditor = editor;
+	window.svgEditor = editor;
+}
+
+// Initialize when DOM is ready
+if (document.readyState === 'loading') {
+	document.addEventListener('DOMContentLoaded', initializeEditor);
+} else {
+	initializeEditor();
 }
