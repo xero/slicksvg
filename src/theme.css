@@ -232,5 +232,38 @@
   .hide {
     @apply hidden opacity-0;
   }
+  /* Drag and drop styling */
+  body.drag-over {
+    position: relative;
+  }
+  body.drag-over::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border: 4px dashed var(--color-slick-500);
+    background: rgba(48, 90, 182, 0.2);
+    z-index: 50;
+    pointer-events: none;
+  }
+  body.drag-over #editor::after {
+    content: 'Drop SVG file here';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    font-weight: bold;
+    background: rgba(255, 255, 255, 0.9);
+    color: var(--color-slick-700);
+    z-index: 51;
+    pointer-events: none;
+  }
 }
 /* <--//---------------------------------------------------------------[eof] */

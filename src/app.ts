@@ -30,6 +30,8 @@ class SVGEditor {
 		this.initializeEditor();
 		this.initializePreview();
 		this.setupEventListeners();
+		this.setupUploadButton();
+		this.setupDragAndDrop();
 		this.updateSVGPreview();
 	}
 
@@ -121,6 +123,9 @@ class SVGEditor {
 
 		// optimize
 		this.get('optimize').addEventListener('click', ()=>this.optimizeSVG());
+
+		// upload button
+		this.get('upload').addEventListener('click', ()=>this.triggerFileUpload());
 
 		// pan controls
 		this.svgPreview.addEventListener('mousedown', (e)=>this.startPan(e));
@@ -485,6 +490,107 @@ class SVGEditor {
 		} catch (error) {
 			console.error('SVG optimization failed:', error);
 		}
+	}
+
+	private loadSVGContent(content: string): void {
+		try {
+			// Update editor with new SVG content
+			const transaction = this.editor.state.update({
+				changes: {
+					from: 0,
+					to: this.editor.state.doc.length,
+					insert: content
+				}
+			});
+			this.editor.dispatch(transaction);
+		} catch (error) {
+			console.error('Failed to load SVG content:', error);
+			alert('Failed to load SVG content. Please check the file format.');
+		}
+	}
+
+	private handleFileUpload(file: File): void {
+		// Validate file type
+		if (!file.type.includes('svg') && !file.name.toLowerCase().endsWith('.svg')) {
+			alert('Please select a valid SVG file.');
+			return;
+		}
+
+		const reader = new FileReader();
+		reader.onload = (e)=>{
+			const content = e.target?.result as string;
+			if (content) {
+				// Basic validation that the content contains SVG
+				if (content.includes('<svg') && content.includes('</svg>')) {
+					this.loadSVGContent(content);
+				} else {
+					alert('The selected file does not contain valid SVG content.');
+				}
+			}
+		};
+		reader.onerror = ()=>{
+			alert('Error reading the file. Please try again.');
+		};
+		reader.readAsText(file);
+	}
+
+	private triggerFileUpload(): void {
+		const fileInput = document.createElement('input');
+		fileInput.type = 'file';
+		fileInput.accept = '.svg,image/svg+xml';
+		fileInput.style.display = 'none';
+
+		fileInput.addEventListener('change', (e)=>{
+			const target = e.target as HTMLInputElement;
+			const file = target.files?.[0];
+			if (file) {
+				this.handleFileUpload(file);
+			}
+		});
+
+		document.body.appendChild(fileInput);
+		fileInput.click();
+		document.body.removeChild(fileInput);
+	}
+
+	private setupUploadButton(): void {
+		// The upload button event listener is already set up in setupEventListeners
+		// This method is for any additional setup if needed
+	}
+
+	private setupDragAndDrop(): void {
+		let dragCounter = 0;
+
+		// Prevent default drag behaviors
+		document.addEventListener('dragenter', (e)=>{
+			e.preventDefault();
+			dragCounter++;
+			document.body.classList.add('drag-over');
+		});
+
+		document.addEventListener('dragover', (e)=>{
+			e.preventDefault();
+		});
+
+		document.addEventListener('dragleave', (e)=>{
+			e.preventDefault();
+			dragCounter--;
+			if (dragCounter === 0) {
+				document.body.classList.remove('drag-over');
+			}
+		});
+
+		document.addEventListener('drop', (e)=>{
+			e.preventDefault();
+			dragCounter = 0;
+			document.body.classList.remove('drag-over');
+
+			const files = e.dataTransfer?.files;
+			if (files && files.length > 0) {
+				const file = files[0];
+				this.handleFileUpload(file);
+			}
+		});
 	}
 }
 
