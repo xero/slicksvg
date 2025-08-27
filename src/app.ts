@@ -99,6 +99,13 @@ class SVGEditor {
 		}, 700);
 	}
 
+	private announceAction(message: string): void {
+		const announcer = document.getElementById('test-announcements');
+		if (announcer) {
+			announcer.textContent = message;
+		}
+	}
+
 	private setupEventListeners(): void {
 		this.get('cancel').addEventListener('click', ()=>this.modalClose());
 		this.get('resolution').addEventListener('click', ()=>this.showResolutionModal());
@@ -203,11 +210,13 @@ class SVGEditor {
 	private zoomIn(): void {
 		this.zoomLevel = Math.min(this.zoomLevel * 1.2, 50);
 		this.applySVGStyles();
+		this.announceAction(`Zoomed in to ${Math.round(this.zoomLevel * 100)}%`);
 	}
 
 	private zoomOut(): void {
 		this.zoomLevel = Math.max(this.zoomLevel / 1.2, 0.1);
 		this.applySVGStyles();
+		this.announceAction(`Zoomed out to ${Math.round(this.zoomLevel * 100)}%`);
 	}
 
 	private startPan(e: MouseEvent): void {
@@ -363,6 +372,7 @@ class SVGEditor {
 		this.parseCurrentTransforms(svgCode);
 		this.rotationDegrees = (this.rotationDegrees + 90) % 360;
 		this.applyTransformToSVG();
+		this.announceAction(`SVG rotated to ${this.rotationDegrees} degrees`);
 	}
 
 	private flipSVGX(): void {
@@ -370,6 +380,7 @@ class SVGEditor {
 		this.parseCurrentTransforms(svgCode);
 		this.flipX = !this.flipX;
 		this.applyTransformToSVG();
+		this.announceAction('SVG flipped horizontally');
 	}
 
 	private flipSVGY(): void {
@@ -377,6 +388,7 @@ class SVGEditor {
 		this.parseCurrentTransforms(svgCode);
 		this.flipY = !this.flipY;
 		this.applyTransformToSVG();
+		this.announceAction('SVG flipped vertically');
 	}
 
 	private showResolutionModal(): void {

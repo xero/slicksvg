@@ -50,22 +50,104 @@ A **Node.js**-based, web SVG editor written in **TypeScript**, with no frontend 
 
 ### Testing
 
-The project uses separate test runners for different types of tests:
+The project includes comprehensive automated testing with both unit/integration tests and end-to-end tests:
 
-- **Unit/Integration Tests (Vitest)**: Place in `tests/` directory
-  - `npm run check` - Run unit tests with Vitest
-  - `npm run check:watch` - Run unit tests in watch mode
-  - `npm run check:ui` - Run unit tests with UI
+#### Unit and Integration Tests (Vitest)
 
-- **End-to-End Tests (Playwright)**: Place in `e2e/` directory  
-  - `npm run check:e2e` - Run end-to-end tests with Playwright
-  - `npm run check:e2e:headed` - Run E2E tests with browser UI
-  - `npm run check:e2e:debug` - Debug E2E tests
+Place unit and integration tests in the `tests/` directory:
 
-- **Development Server**: For E2E testing
-  - `npm run dev` - Start development server at http://localhost:8080
+- `npm run test:unit` or `npm run check` - Run unit tests with Vitest
+- `npm run check:watch` - Run unit tests in watch mode
+- `npm run check:ui` - Run unit tests with interactive UI
+- `npm run check:coverage` or `npm run test:integration` - Run tests with coverage reporting
 
-> **Note**: Keep test files in their respective directories to avoid runner conflicts. Vitest will exclude the `e2e/` directory, and Playwright only looks in the `e2e/` directory.
+**Current Unit Test Coverage:**
+- **Core SVGEditor functionality** - Element selection, error handling, theme switching
+- **Transform operations** - Rotation, flipping, zoom controls, pan interactions
+- **SVG parsing and validation** - Content validation, dimension extraction, transform parsing
+- **Modal dialog functionality** - Show/hide, input validation, focus management
+- **Touch and pinch zoom** - Multi-touch calculations, gesture handling
+- **Error handling** - File upload errors, malformed SVG, input validation
+- **Accessibility features** - Keyboard navigation, screen reader support, focus management
+- **Performance optimization** - Event cleanup, memory management, transform caching
+
+#### End-to-End Tests (Playwright)
+
+Place E2E tests in the `e2e/` directory:
+
+- `npm run test:e2e` or `npm run check:e2e` - Run end-to-end tests with Playwright
+- `npm run check:e2e:headed` - Run E2E tests with browser UI visible
+- `npm run check:e2e:debug` - Debug E2E tests step by step
+- `npm run check:e2e:ui` - Run E2E tests with interactive UI
+
+**Current E2E Test Coverage:**
+- **Core editor functionality** - SVG editing, preview updates, UI interactions
+- **File upload workflows** - Drag & drop, file validation, error handling
+- **Transform operations** - Rotation, flipping, zoom, layout switching
+- **Accessibility testing** - Keyboard navigation, screen reader compatibility, focus management
+- **Error handling** - Invalid content, network failures, rapid interactions
+- **Mobile and touch support** - Responsive design, pinch-to-zoom, orientation changes
+- **Performance testing** - Load times, memory usage, rapid interactions
+- **Cross-browser compatibility** - Different browsers, screen densities, color schemes
+
+#### Running All Tests
+
+- `npm run test` - Run both unit and E2E tests
+- `npm run test:all` - Run all tests with coverage reporting
+
+#### Test Setup
+
+**First-time setup:**
+```bash
+# Install dependencies
+npm install
+
+# Install Playwright browsers (required for E2E tests)
+npm run playwright:install
+
+# If you encounter issues, also install system dependencies
+npm run playwright:install-deps
+```
+
+**Development workflow:**
+```bash
+# Run tests during development
+npm run check:watch          # Unit tests in watch mode
+npm run check:e2e:headed     # E2E tests with browser visible
+
+# Before committing
+npm run test:all             # Full test suite with coverage
+```
+
+#### Test Configuration
+
+- **Vitest config**: `vitest.config.ts` - Excludes E2E tests, includes coverage reporting
+- **Playwright config**: `playwright.config.ts` - Runs tests against local dev server
+- **Coverage**: Reports generated in `coverage/` directory (HTML, JSON, text formats)
+
+#### Test Organization
+
+```
+tests/                       # Unit and integration tests (Vitest)
+├── svg-editor-core.test.ts     # Core class functionality
+├── svg-transforms.test.ts      # Transform operations and SVG parsing
+├── svg-error-handling.test.ts  # Error scenarios and edge cases
+├── svg-accessibility.test.ts   # Accessibility features and integration
+├── svg-upload.test.ts          # File upload functionality
+├── svg-optimization.test.ts    # SVG optimization features
+├── svg-resolution-change.test.ts # Resolution modal and resizing
+├── svg-fallback-sizing.test.ts # SVG sizing logic
+└── pinch-zoom.test.ts          # Pinch zoom calculations
+
+e2e/                         # End-to-end tests (Playwright)
+├── svg-editor.spec.ts          # Core editor functionality
+├── svg-upload.spec.ts          # Upload workflows
+├── svg-accessibility.spec.ts   # Accessibility testing
+├── svg-error-handling.spec.ts  # Error scenarios
+└── svg-mobile-performance.spec.ts # Mobile, performance, compatibility
+```
+
+> **Note**: Keep test files in their respective directories to avoid runner conflicts. Vitest excludes the `e2e/` directory, and Playwright only looks in the `e2e/` directory.
 
 For comprehensive testing instructions, setup details, and CI configuration, see [TESTING_GUIDE.md](./TESTING_GUIDE.md).
 
