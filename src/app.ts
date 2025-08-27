@@ -49,7 +49,7 @@ class SVGEditor {
 		return e as T;
 	}
 
-	private modalIsOpen=(): boolean=>this.modal.open;
+	private modalIsOpen = (): boolean=>this.modal.open;
 
 	private modalShow(): void {
 		this.modal.classList.remove('closing');
@@ -105,9 +105,9 @@ class SVGEditor {
 	}
 
 	private setupEventListeners(): void {
-		this.get("cancel").addEventListener("click", ()=>this.modalClose());
-		this.get("resolution").addEventListener("click", ()=>this.modalShow());
-		this.get("resize").addEventListener("click", ()=>this.resizeSVG());
+		this.get('cancel').addEventListener('click', ()=>this.modalClose());
+		this.get('resolution').addEventListener('click', ()=>this.showResolutionModal());
+		this.get('resize').addEventListener('click', ()=>this.resizeSVG());
 
 		if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
 			this.toggleMode();
@@ -429,8 +429,77 @@ class SVGEditor {
 		this.applyTransformToSVG();
 	}
 
+	private showResolutionModal(): void {
+		// Extract current width and height from SVG
+		const svgCode = this.editor.state.doc.toString();
+		const widthMatch = svgCode.match(/width="([^"]+)"/);
+		const heightMatch = svgCode.match(/height="([^"]+)"/);
+
+		const currentWidth = widthMatch ? parseInt(widthMatch[1]) : 200;
+		const currentHeight = heightMatch ? parseInt(heightMatch[1]) : 200;
+
+		// Populate the input fields
+		(this.get('width') as HTMLInputElement).value = currentWidth.toString();
+		(this.get('height') as HTMLInputElement).value = currentHeight.toString();
+
+		this.modalShow();
+	}
+
 	private resizeSVG(): void {
-		/* @TODO: add resize logic */
+		const widthInput = this.get('width') as HTMLInputElement;
+		const heightInput = this.get('height') as HTMLInputElement;
+
+		const newWidth = parseInt(widthInput.value);
+		const newHeight = parseInt(heightInput.value);
+
+		// Validate inputs
+		if (!newWidth || newWidth <= 0 || !newHeight || newHeight <= 0) {
+			alert('Please enter valid positive numbers for width and height');
+			return;
+		}
+
+		const svgCode = this.editor.state.doc.toString();
+
+		try {
+			// Update width, height, and viewBox attributes
+			let updatedSVG = svgCode;
+
+			// Update or add width attribute
+			if (updatedSVG.includes('width="')) {
+				updatedSVG = updatedSVG.replace(/width="[^"]*"/, `width="${newWidth}"`);
+			} else {
+				updatedSVG = updatedSVG.replace(/(<svg[^>]*)(>)/, `$1 width="${newWidth}"$2`);
+			}
+
+			// Update or add height attribute
+			if (updatedSVG.includes('height="')) {
+				updatedSVG = updatedSVG.replace(/height="[^"]*"/, `height="${newHeight}"`);
+			} else {
+				updatedSVG = updatedSVG.replace(/(<svg[^>]*)(>)/, `$1 height="${newHeight}"$2`);
+			}
+
+			// Update or add viewBox attribute to match new dimensions
+			const viewBoxValue = `0 0 ${newWidth} ${newHeight}`;
+			if (updatedSVG.includes('viewBox="')) {
+				updatedSVG = updatedSVG.replace(/viewBox="[^"]*"/, `viewBox="${viewBoxValue}"`);
+			} else {
+				updatedSVG = updatedSVG.replace(/(<svg[^>]*)(>)/, `$1 viewBox="${viewBoxValue}"$2`);
+			}
+
+			// Update the editor with the new SVG
+			const transaction = this.editor.state.update({
+				changes: {
+					from: 0,
+					to: this.editor.state.doc.length,
+					insert: updatedSVG
+				}
+			});
+			this.editor.dispatch(transaction);
+
+		} catch (error) {
+			console.error('SVG resize failed:', error);
+			alert('Failed to resize SVG. Please check the SVG format.');
+		}
 
 		this.modalClose();
 	}
