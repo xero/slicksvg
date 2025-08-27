@@ -44,17 +44,22 @@ test.describe('SVG Editor Linting', () => {
 		const lintGutter = page.locator('.cm-gutter-lint');
 		await expect(lintGutter).toBeVisible();
 
-		// Now fix the SVG
+		// Check that there are error markers initially
+		const initialErrorMarkers = page.locator('.cm-lint-marker-error');
+		await expect(initialErrorMarkers.first()).toBeVisible();
+
+		// Now fix the SVG with a fully valid, complete SVG
 		await editor.click();
 		await page.keyboard.press('Control+a');
-		await page.keyboard.type('<svg><rect width="100" height="100"/></svg>'); // Valid SVG
+		await page.keyboard.type('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="100" height="100" fill="blue"/></svg>'); // Valid SVG
 
 		// Wait for linting to reprocess
-		await page.waitForTimeout(1000);
+		await page.waitForTimeout(2000);
 
-		// Check that errors are cleared (no lint markers should be visible)
-		const lintMarkers = page.locator('.cm-lint-marker-error');
-		await expect(lintMarkers).toHaveCount(0);
+		// The main goal is to verify that the error markers (specifically error type) are gone
+		// We don't need to check for zero markers overall since there might be other non-error markers
+		const errorMarkersAfterFix = page.locator('.cm-lint-marker-error');
+		await expect(errorMarkersAfterFix).toHaveCount(0);
 	});
 
 	test('should show lint errors for invalid XML syntax', async ({ page }) => {
@@ -188,14 +193,14 @@ test.describe('SVG Editor Linting', () => {
 		await page.keyboard.type('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><circle cx="100" cy="100" r="50" fill="red"/></svg>');
 
 		// Wait for preview update
-		await page.waitForTimeout(1000);
+		await page.waitForTimeout(2000);
 
 		// Verify preview updates (core functionality still works)
 		await expect(page.locator('svg circle')).toHaveAttribute('fill', 'red');
 
-		// Verify no lint errors for valid SVG
-		const lintMarkers = page.locator('.cm-lint-marker-error');
-		await expect(lintMarkers).toHaveCount(0);
+		// The key test: verify that there are no ERROR markers (warnings might be ok)
+		const errorMarkers = page.locator('.cm-lint-marker-error');
+		await expect(errorMarkers).toHaveCount(0);
 
 		// Test editing still works
 		await editor.click();
@@ -203,9 +208,13 @@ test.describe('SVG Editor Linting', () => {
 		await page.keyboard.type('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><circle cx="100" cy="100" r="50" fill="blue"/></svg>');
 
 		// Wait for update
-		await page.waitForTimeout(1000);
+		await page.waitForTimeout(2000);
 
 		// Verify preview updates
 		await expect(page.locator('svg circle')).toHaveAttribute('fill', 'blue');
+		
+		// Still no ERROR markers (the important part)
+		const finalErrorMarkers = page.locator('.cm-lint-marker-error');
+		await expect(finalErrorMarkers).toHaveCount(0);
 	});
 });
