@@ -39,7 +39,7 @@
 	--color-header: var(--color-slick-700);
 	--color-btn: var(--color-slick-500);
 	--color-btn-h: var(--color-slick-700);
-  --current-color: #fff;
+  --current-color: var(--color-mono-950);
   --breakpoint-xs: 30rem;
   --breakpoint-2xl: 100rem;
   --breakpoint-3xl: 120rem;
@@ -54,6 +54,7 @@
 	--color-frm: var(--color-mono-800);
   --color-menu-alt: #282c34;
   --color-menu-outside: #1d2129;
+  --current-color: var(--color-mono-50);
   --color-menu: #252931;
   --color-preview: #2b2f37;
 	--color-btn: var(--color-slick-700);
@@ -170,7 +171,7 @@
       }
     }
     .svg-container {
-      --current-color: #fff;
+			color: var(--current-color);
       @apply flex items-center justify-center;
     }
     .error {
