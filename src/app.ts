@@ -468,14 +468,49 @@ class SVGEditor {
 	private optimizeSVG(): void {
 		const svgCode = this.editor.state.doc.toString();
 		try {
-			// Basic SVG optimization - remove comments, extra whitespace, and redundant attributes
+			// Comprehensive SVG optimization
 			const optimized = svgCode
+				// Remove XML processing instructions
+				.replace(/<\?xml[^>]*\?>/g, '')
+				// Remove DOCTYPE declarations
+				.replace(/<!DOCTYPE[^>]*>/g, '')
 				// Remove comments
 				.replace(/<!--[\s\S]*?-->/g, '')
 				// Remove extra whitespace between tags
 				.replace(/>\s+</g, '><')
-				// Remove unnecessary precision in numbers
+				// Remove whitespace around attribute values
+				.replace(/\s*=\s*"/g, '="')
+				// Remove unnecessary precision in numbers (limit to 3 decimal places)
 				.replace(/(\d+\.\d{3})\d+/g, '$1')
+				// Remove redundant default attribute values
+				.replace(/\s+fill="none"/g, '')
+				.replace(/\s+stroke="none"/g, '')
+				.replace(/\s+stroke-width="1"/g, '')
+				.replace(/\s+opacity="1"/g, '')
+				.replace(/\s+fill-opacity="1"/g, '')
+				.replace(/\s+stroke-opacity="1"/g, '')
+				// Remove empty attributes
+				.replace(/\s+[a-zA-Z-]+=""/g, '')
+				// Remove redundant transform attributes
+				.replace(/\s+transform="matrix\(1,0,0,1,0,0\)"/g, '')
+				.replace(/\s+transform="translate\(0,0\)"/g, '')
+				.replace(/\s+transform="scale\(1\)"/g, '')
+				.replace(/\s+transform="rotate\(0\)"/g, '')
+				// Remove unnecessary namespace declarations if not used
+				.replace(/\s+xmlns:[a-z]+="[^"]*"/g, (match)=>{
+					const prefix = match.match(/xmlns:([a-z]+)=/)?.[1];
+					if (prefix && !svgCode.includes(`${prefix}:`)) {
+						return '';
+					}
+					return match;
+				})
+				// Remove metadata, desc, and title elements (optional optimization)
+				.replace(/<metadata[^>]*>[\s\S]*?<\/metadata>/g, '')
+				.replace(/<desc[^>]*>[\s\S]*?<\/desc>/g, '')
+				// Remove empty groups
+				.replace(/<g[^>]*>\s*<\/g>/g, '')
+				// Consolidate whitespace
+				.replace(/\s+/g, ' ')
 				// Trim whitespace
 				.trim();
 
