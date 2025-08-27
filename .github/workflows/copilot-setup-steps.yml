@@ -18,23 +18,6 @@ jobs:
       contents: write
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-
-      - name: Install Bun
+      - name: setuptools
         run: |
-          curl -fsSL https://bun.sh/install | bash
-          echo "$HOME/.bun/bin" >> $GITHUB_PATH
-          echo "$HOME/.bun/bin" >> $HOME/.profile
-          export PATH="$HOME/.bun/bin:$PATH"
-
-      - name: Install Dev Tools
-        run: |
-          bun i -g playwright eslint prettier
-          bunx playwright install --with-deps
+          npm i -g playwright eslint prettier && npx playwright install --with-deps
