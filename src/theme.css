@@ -149,6 +149,16 @@
       }
     }
   }
+	.cm-tooltip,
+	.cm-tooltip-lint,
+	.cm-tooltip-below {
+		@apply w-1/2! bg-menu! border-menu-outside!;
+		.cm-diagnostic-error {
+			.cm-diagnosticText {
+				@apply text-lbl!;
+			}
+		}
+	}
   #editor {
     @apply flex flex-col flex-1;
     .cm-editor {

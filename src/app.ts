@@ -51,15 +51,14 @@ const svgLinter = linter(view=>{
 					}
 				}
 			}
-
 			// Clean up the error message for better readability
-			message = message.replace(/^Error: /, '').replace(/\s+/g, ' ').trim();
+			message = message.match(/: ([^\n]+)\n/)?.[1] || '';
 
 			diagnostics.push({
 				from,
 				to,
 				severity: 'error' as const,
-				message: `XML/SVG Error: ${message}`
+				message: `${message}`
 			});
 		}
 
