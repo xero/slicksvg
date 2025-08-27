@@ -1,11 +1,9 @@
-// main entrypoint
 import {EditorView} from '@codemirror/view';
 import {EditorState, Compartment} from '@codemirror/state';
 import {xml} from '@codemirror/lang-xml';
 import {basicSetup} from 'codemirror';
 import {oneDark} from '@codemirror/theme-one-dark';
 
-// SVG Editor Application
 class SVGEditor {
 	private editor: EditorView;
 	private previewContainer: HTMLElement;
@@ -19,15 +17,13 @@ class SVGEditor {
 	private isPanning = false;
 	private lastPanX = 0;
 	private lastPanY = 0;
-	private rotationDegrees = 0; // Track current rotation: 0, 90, 180, 270
-	private flipX = false; // Track horizontal flip state
-	private flipY = false; // Track vertical flip state
+	private rotationDegrees = 0;
+	private flipX = false;
+	private flipY = false;
 	private themeCompartment = new Compartment();
-	// Touch/pinch zoom properties
 	private isMultiTouch = false;
 	private initialPinchDistance = 0;
 	private initialZoomLevel = 1;
-
 
 	constructor() {
 		this.modal = this.getTyped('dialog');
@@ -43,31 +39,15 @@ class SVGEditor {
 		return e
 	}
 
+	// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters
   private getTyped = <T extends Element = HTMLElement>(q: string): T=>{
 		const e = document.querySelector(q);
 		if (!e) throw new Error(`Element ${q} was not found`);
 		return e as T;
 	}
 
-	private modalIsOpen = (): boolean=>this.modal.open;
-
-	private modalShow(): void {
-		this.modal.classList.remove('closing');
-		void (!this.modalIsOpen() && this.modal.showModal());
-	};
-
-	private modalClose():void {
-		this.modal.classList.add('closing');
-		setTimeout(()=>{
-			this.modal.classList.remove('closing');
-			this.modal.close();
-		}, 700);
-	}
-
 	private initializeEditor(): void {
 		const editorContainer = this.get('editor');
-		if (!editorContainer) throw new Error('Editor container not found');
-
 		// Create CodeMirror editor
 		const startDoc = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
   <circle cx="100" cy="100" r="80" fill="#6291e0" stroke="#295da9" stroke-width="2"/>
@@ -97,11 +77,24 @@ class SVGEditor {
 
 	private initializePreview(): void {
 		this.previewContainer = this.get('preview');
-
-		// Create SVG preview wrapper
 		this.svgPreview = document.createElement('div');
 		this.svgPreview.className = 'svg-preview-wrapper';
 		this.previewContainer.appendChild(this.svgPreview);
+	}
+
+	private modalIsOpen = (): boolean=>this.modal.open;
+
+	private modalShow(): void {
+		this.modal.classList.remove('closing');
+		void (!this.modalIsOpen() && this.modal.showModal());
+	};
+
+	private modalClose():void {
+		this.modal.classList.add('closing');
+		setTimeout(()=>{
+			this.modal.classList.remove('closing');
+			this.modal.close();
+		}, 700);
 	}
 
 	private setupEventListeners(): void {
@@ -114,35 +107,27 @@ class SVGEditor {
 		}
 		this.get('dark').addEventListener('click', ()=>this.toggleMode());
 
-		// Flip button
+		// flip button
 		this.get('flip').addEventListener('click', ()=>this.toggleLayout());
 
-		// Zoom controls
-		const zoomInButton = this.get('zoomin');
-		const zoomOutButton = this.get('zoomout');
+		// zoom controls
+		this.get('zoomin').addEventListener('click', ()=>this.zoomIn());
+		this.get('zoomout').addEventListener('click', ()=>this.zoomOut());
 
-		zoomInButton?.addEventListener('click', ()=>this.zoomIn());
-		zoomOutButton?.addEventListener('click', ()=>this.zoomOut());
+		// transform controls
+		this.get('rotate').addEventListener('click', ()=>this.rotateSVG());
+		this.get('flipx').addEventListener('click', ()=>this.flipSVGX());
+		this.get('flipy').addEventListener('click', ()=>this.flipSVGY());
 
-		// Transform controls
-		const rotateButton = this.get('rotate');
-		const flipXButton = this.get('flipx');
-		const flipYButton = this.get('flipy');
+		// optimize
+		this.get('optimize').addEventListener('click', ()=>this.optimizeSVG());
 
-		rotateButton?.addEventListener('click', ()=>this.rotateSVG());
-		flipXButton?.addEventListener('click', ()=>this.flipSVGX());
-		flipYButton?.addEventListener('click', ()=>this.flipSVGY());
-
-		// Tools
-		const optimizeButton = this.get('optimize');
-		optimizeButton?.addEventListener('click', ()=>this.optimizeSVG());
-
-		// Pan controls
+		// pan controls
 		this.svgPreview.addEventListener('mousedown', (e)=>this.startPan(e));
 		document.addEventListener('mousemove', (e)=>this.doPan(e));
 		document.addEventListener('mouseup', ()=>this.endPan());
 
-		// Touch/pinch zoom controls (always add listeners, check support in handlers)
+		// touch/pinch zoom controls (support checks in handlers)
 		this.svgPreview.addEventListener('touchstart', (e)=>this.handleTouchStart(e), {passive: false});
 		this.svgPreview.addEventListener('touchmove', (e)=>this.handleTouchMove(e), {passive: false});
 		this.svgPreview.addEventListener('touchend', (e)=>this.handleTouchEnd(e), {passive: false});
@@ -151,10 +136,8 @@ class SVGEditor {
 	private updateSVGPreview(): void {
 		const svgCode = this.editor.state.doc.toString();
 		try {
-			// Clear previous content
 			this.svgPreview.innerHTML = '';
 
-			// Create container for the SVG
 			const svgContainer = document.createElement('div');
 			svgContainer.className = 'svg-container';
 			svgContainer.innerHTML = svgCode;
@@ -162,7 +145,6 @@ class SVGEditor {
 			this.svgPreview.appendChild(svgContainer);
 			this.applySVGStyles();
 		} catch (error) {
-			// Display error message if SVG is invalid
 			this.svgPreview.innerHTML = `<div class="error">Invalid SVG: ${String(error)}</div>`;
 		}
 	}
@@ -186,8 +168,8 @@ class SVGEditor {
 				}
 			}
 
-			// Apply CSS transforms for zoom/pan only, preserving SVG transform attributes
-			// We use CSS transforms on a wrapper div instead of directly on the SVG element
+			// apply CSS transforms for zoom/pan only, preserving SVG transform attributes
+			// uses CSS transforms on a wrapper div instead of directly on the SVG element
 			const svgContainer = svgElement.parentElement;
 			if (svgContainer && svgContainer.classList.contains('svg-container')) {
 				svgContainer.style.transform = `translate(${this.panX}px, ${this.panY}px) scale(${this.zoomLevel})`;
@@ -206,7 +188,6 @@ class SVGEditor {
 		this.isDarkMode = !this.isDarkMode;
 		document.body.classList.toggle('dark');
 
-		// Update CodeMirror theme
 		this.editor.dispatch({
 			effects: this.themeCompartment.reconfigure(
 				this.isDarkMode ? [oneDark] : []
@@ -253,7 +234,6 @@ class SVGEditor {
 
 	private handleTouchStart(e: TouchEvent): void {
 		if (e.touches.length === 2) {
-			// Start pinch zoom
 			this.isMultiTouch = true;
 			this.initialPinchDistance = this.calculatePinchDistance(e.touches[0], e.touches[1]);
 			this.initialZoomLevel = this.zoomLevel;
@@ -267,11 +247,8 @@ class SVGEditor {
 		if (this.isMultiTouch && e.touches.length === 2) {
 			const currentDistance = this.calculatePinchDistance(e.touches[0], e.touches[1]);
 			const scale = currentDistance / this.initialPinchDistance;
-
-			// Apply zoom based on pinch scale
 			const newZoomLevel = this.initialZoomLevel * scale;
 			this.zoomLevel = Math.max(0.1, Math.min(newZoomLevel, 50));
-
 			this.applySVGStyles();
 			e.preventDefault();
 		}
@@ -290,30 +267,23 @@ class SVGEditor {
 	}
 
 	private parseCurrentTransforms(svgCode: string): void {
-		// Reset states
 		this.rotationDegrees = 0;
 		this.flipX = false;
 		this.flipY = false;
 
-		// Extract existing transform attribute
 		const transformMatch = svgCode.match(/transform="([^"]*)"/);
 		if (!transformMatch) return;
 
 		const transformValue = transformMatch[1];
-
-		// Parse rotation - look for rotate(angle ...)
 		const rotateMatch = transformValue.match(/rotate\((\d+)[^)]*\)/);
+
 		if (rotateMatch) {
 			const angle = parseInt(rotateMatch[1]);
 			this.rotationDegrees = angle % 360;
 		}
-
-		// Parse horizontal flip - look for matrix(-1,0,0,1,0,0)
 		if (transformValue.includes('matrix(-1,0,0,1,0,0)')) {
 			this.flipX = true;
 		}
-
-		// Parse vertical flip - look for matrix(1,0,0,-1,0,0)
 		if (transformValue.includes('matrix(1,0,0,-1,0,0)')) {
 			this.flipY = true;
 		}
@@ -321,62 +291,55 @@ class SVGEditor {
 
 	private buildTransformAttribute(width: number, height: number): string {
 		const transforms = [];
-
-		// Add rotation if needed
 		if (this.rotationDegrees > 0) {
 			const centerX = width / 2;
 			const centerY = height / 2;
 			transforms.push(`rotate(${this.rotationDegrees} ${centerX} ${centerY})`);
 		}
-
-		// Add horizontal flip if needed
 		if (this.flipX) {
 			transforms.push('matrix(-1,0,0,1,0,0)');
 		}
-
-		// Add vertical flip if needed
 		if (this.flipY) {
 			transforms.push('matrix(1,0,0,-1,0,0)');
 		}
-
 		return transforms.join(' ');
 	}
 
 	private applyTransformToSVG(): void {
 		const svgCode = this.editor.state.doc.toString();
 		try {
-			// Extract width and height from SVG
+			// extract width and height from SVG
 			const widthMatch = svgCode.match(/width="([^"]+)"/);
 			const heightMatch = svgCode.match(/height="([^"]+)"/);
 			const width = widthMatch ? parseInt(widthMatch[1]) : 100;
 			const height = heightMatch ? parseInt(heightMatch[1]) : 100;
 
-			// Build the new transform attribute
+			// build the new transform attribute
 			const transformValue = this.buildTransformAttribute(width, height);
 
 			let transformedSVG;
 			if (transformValue.trim()) {
-				// Check if SVG already has a transform attribute
+				// check if SVG already has a transform attribute
 				const transformMatch = svgCode.match(/(<svg[^>]*)\s+transform="[^"]*"([^>]*>)/);
 				if (transformMatch) {
-					// Replace existing transform
+					// replace existing transform
 					transformedSVG = svgCode.replace(
 						/(<svg[^>]*)\s+transform="[^"]*"([^>]*>)/,
 						`$1 transform="${transformValue}"$2`
 					);
 				} else {
-					// Add new transform attribute
+					// add new transform attribute
 					transformedSVG = svgCode.replace(
 						/(<svg[^>]*)(>)/,
 						`$1 transform="${transformValue}"$2`
 					);
 				}
 			} else {
-				// Remove transform attribute if no transforms are needed
+				// remove transform attribute if no transforms are needed
 				transformedSVG = svgCode.replace(/\s+transform="[^"]*"/, '');
 			}
 
-			// Update editor with transformed SVG
+			// update editor with transformed SVG
 			const transaction = this.editor.state.update({
 				changes: {
 					from: 0,
@@ -392,45 +355,26 @@ class SVGEditor {
 
 	private rotateSVG(): void {
 		const svgCode = this.editor.state.doc.toString();
-
-		// Parse current transforms to get current state
 		this.parseCurrentTransforms(svgCode);
-
-		// Increment rotation by 90 degrees (cycle through 0, 90, 180, 270, then back to 0)
 		this.rotationDegrees = (this.rotationDegrees + 90) % 360;
-
-		// Apply the consolidated transform
 		this.applyTransformToSVG();
 	}
 
 	private flipSVGX(): void {
 		const svgCode = this.editor.state.doc.toString();
-
-		// Parse current transforms to get current state
 		this.parseCurrentTransforms(svgCode);
-
-		// Toggle horizontal flip
 		this.flipX = !this.flipX;
-
-		// Apply the consolidated transform
 		this.applyTransformToSVG();
 	}
 
 	private flipSVGY(): void {
 		const svgCode = this.editor.state.doc.toString();
-
-		// Parse current transforms to get current state
 		this.parseCurrentTransforms(svgCode);
-
-		// Toggle vertical flip
 		this.flipY = !this.flipY;
-
-		// Apply the consolidated transform
 		this.applyTransformToSVG();
 	}
 
 	private showResolutionModal(): void {
-		// Extract current width and height from SVG
 		const svgCode = this.editor.state.doc.toString();
 		const widthMatch = svgCode.match(/width="([^"]+)"/);
 		const heightMatch = svgCode.match(/height="([^"]+)"/);
@@ -438,7 +382,7 @@ class SVGEditor {
 		let currentWidth = widthMatch ? parseInt(widthMatch[1]) : null;
 		let currentHeight = heightMatch ? parseInt(heightMatch[1]) : null;
 
-		// If width or height are missing, fall back to viewBox values
+		// if width or height are missing, fall back to viewbox
 		if (currentWidth === null || currentHeight === null) {
 			const viewBoxMatch = svgCode.match(/viewBox="([^"]+)"/);
 			if (viewBoxMatch) {
@@ -453,12 +397,10 @@ class SVGEditor {
 				}
 			}
 		}
-
-		// Final fallback to defaults if still null
+		// final fallback to defaults if still null
 		currentWidth = currentWidth || 200;
 		currentHeight = currentHeight || 200;
 
-		// Populate the input fields
 		(this.get('width') as HTMLInputElement).value = currentWidth.toString();
 		(this.get('height') as HTMLInputElement).value = currentHeight.toString();
 
@@ -472,7 +414,6 @@ class SVGEditor {
 		const newWidth = parseInt(widthInput.value);
 		const newHeight = parseInt(heightInput.value);
 
-		// Validate inputs
 		if (!newWidth || newWidth <= 0 || !newHeight || newHeight <= 0) {
 			alert('Please enter valid positive numbers for width and height');
 			return;
@@ -481,24 +422,20 @@ class SVGEditor {
 		const svgCode = this.editor.state.doc.toString();
 
 		try {
-			// Update width, height, and viewBox attributes
 			let updatedSVG = svgCode;
 
-			// Update or add width attribute
 			if (updatedSVG.includes('width="')) {
 				updatedSVG = updatedSVG.replace(/width="[^"]*"/, `width="${newWidth}"`);
 			} else {
 				updatedSVG = updatedSVG.replace(/(<svg[^>]*)(>)/, `$1 width="${newWidth}"$2`);
 			}
 
-			// Update or add height attribute
 			if (updatedSVG.includes('height="')) {
 				updatedSVG = updatedSVG.replace(/height="[^"]*"/, `height="${newHeight}"`);
 			} else {
 				updatedSVG = updatedSVG.replace(/(<svg[^>]*)(>)/, `$1 height="${newHeight}"$2`);
 			}
 
-			// Update or add viewBox attribute to match new dimensions
 			const viewBoxValue = `0 0 ${newWidth} ${newHeight}`;
 			if (updatedSVG.includes('viewBox="')) {
 				updatedSVG = updatedSVG.replace(/viewBox="[^"]*"/, `viewBox="${viewBoxValue}"`);
@@ -506,7 +443,6 @@ class SVGEditor {
 				updatedSVG = updatedSVG.replace(/(<svg[^>]*)(>)/, `$1 viewBox="${viewBoxValue}"$2`);
 			}
 
-			// Update the editor with the new SVG
 			const transaction = this.editor.state.update({
 				changes: {
 					from: 0,
@@ -538,7 +474,6 @@ class SVGEditor {
 				// Trim whitespace
 				.trim();
 
-			// Update the editor with optimized SVG
 			const transaction = this.editor.state.update({
 				changes: {
 					from: 0,
@@ -553,7 +488,6 @@ class SVGEditor {
 	}
 }
 
-// Initialize the application when DOM is loaded
 if (document.readyState === 'loading') {
 	document.addEventListener('DOMContentLoaded', ()=>new SVGEditor());
 } else {
