@@ -49,6 +49,11 @@ class SVGEditor {
 		return e as T;
 	}
 
+	private getAllTyped = <T extends Element = HTMLHtmlElement>(
+		selector: string,
+		root: ParentNode = document
+	): NodeListOf<T>=>root.querySelectorAll(selector);
+
 	private initializeEditor(): void {
 		const editorContainer = this.get('editor');
 		// Create CodeMirror editor
@@ -90,39 +95,38 @@ class SVGEditor {
 	private modalShow(): void {
 		this.modal.classList.remove('closing');
 		void (!this.modalIsOpen() && this.modal.showModal());
-		
+
 		// Focus the first input when modal opens
 		const firstInput = this.modal.querySelector('#width') as HTMLInputElement;
-		if (firstInput) {
-			firstInput.focus();
-		}
-		
+		firstInput.focus();
+
 		// Add focus trapping
 		this.modal.addEventListener('keydown', this.handleModalKeydown);
 	};
 
 	private modalClose():void {
 		this.modal.classList.add('closing');
-		
+
 		// Remove focus trapping
 		this.modal.removeEventListener('keydown', this.handleModalKeydown);
-		
+
 		setTimeout(()=>{
 			this.modal.classList.remove('closing');
 			this.modal.close();
 		}, 700);
 	}
 
-	private handleModalKeydown = (e: KeyboardEvent): void => {
+	private handleModalKeydown = (e: KeyboardEvent): void=>{
 		if (e.key !== 'Tab') return;
-		
-		const focusableElements = this.modal.querySelectorAll(
-			'input, button, select, textarea, [tabindex]:not([tabindex="-1"])'
-		) as NodeListOf<HTMLElement>;
-		
+
+		const focusableElements = this.getAllTyped(
+			'input, button, select, textarea, [tabindex]:not([tabindex="-1"])',
+			this.modal
+		);
+
 		const firstElement = focusableElements[0];
 		const lastElement = focusableElements[focusableElements.length - 1];
-		
+
 		if (e.shiftKey) {
 			// Shift+Tab - going backwards
 			if (document.activeElement === firstElement) {
