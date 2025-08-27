@@ -115,8 +115,12 @@ test.describe('SVG Editor Error Handling E2E Tests', () => {
     await widthInput.fill('-50');
     await dialog.getByRole('button', { name: /update/i }).click();
     
-    // Test non-numeric values
-    await widthInput.fill('abc');
+    // Test non-numeric values - use setAttribute since browsers prevent typing text in number inputs
+    await widthInput.evaluate((input: HTMLInputElement) => {
+      input.setAttribute('type', 'text');
+      input.value = 'abc';
+      input.setAttribute('type', 'number');
+    });
     await dialog.getByRole('button', { name: /update/i }).click();
     
     // Close modal
@@ -267,11 +271,21 @@ test.describe('SVG Editor Error Handling E2E Tests', () => {
       ).join('')}
     </svg>`;
     
-    // Input large content into editor
-    const editor = page.locator('#editor .cm-content');
-    await editor.click();
-    await page.keyboard.press('Control+a');
-    await page.keyboard.type(largeSVGContent);
+    // Input large content into editor more efficiently using CodeMirror API
+    await page.evaluate((content) => {
+      // Access the global editor instance and set content directly
+      const svgEditor = (window as any).svgEditor;
+      if (svgEditor?.editor) {
+        const transaction = svgEditor.editor.state.update({
+          changes: {
+            from: 0,
+            to: svgEditor.editor.state.doc.length,
+            insert: content
+          }
+        });
+        svgEditor.editor.dispatch(transaction);
+      }
+    }, largeSVGContent);
     
     // Application should handle this without freezing
     await expect(page.getByRole('main')).toBeVisible();

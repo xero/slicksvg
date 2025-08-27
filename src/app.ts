@@ -5,7 +5,7 @@ import {basicSetup} from 'codemirror';
 import {nord} from '@uiw/codemirror-theme-nord';
 
 class SVGEditor {
-	private editor: EditorView;
+	public editor: EditorView;
 	private previewContainer: HTMLElement;
 	private svgPreview: HTMLElement;
 	private modal: HTMLDialogElement;
@@ -705,9 +705,13 @@ if (document.readyState === 'loading') {
 		const editor = new SVGEditor();
 		// Expose error announcement function globally for testing
 		(window as any).announceError = editor.announceError.bind(editor);
+		// Expose editor instance for testing
+		(window as any).svgEditor = editor;
 	});
 } else {
 	const editor = new SVGEditor();
 	// Expose error announcement function globally for testing
 	(window as any).announceError = editor.announceError.bind(editor);
+	// Expose editor instance for testing
+	(window as any).svgEditor = editor;
 }
