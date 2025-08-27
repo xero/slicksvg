@@ -4,11 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "make": "bun clean && bun style && bun scripts && bun www",
+    "make": "npm run clean && npm run style && npm run scripts && npm run www",
     "clean": "rm -rf ./dist; mkdir -p ./dist",
 		"style": "postcss src/theme.css -o dist/theme.css",
     "scripts": "esbuild src/app.ts --bundle --minify --outfile=dist/app.js",
 		"www": "cp ./src/index.html ./dist/index.html",
+    "dev": "npm run make && node serve.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "check": "vitest run",

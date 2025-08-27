@@ -62,30 +62,34 @@ The project uses separate test runners for different types of tests:
   - `npm run check:e2e:headed` - Run E2E tests with browser UI
   - `npm run check:e2e:debug` - Debug E2E tests
 
+- **Development Server**: For E2E testing
+  - `npm run dev` - Start development server at http://localhost:8080
+
 > **Note**: Keep test files in their respective directories to avoid runner conflicts. Vitest will exclude the `e2e/` directory, and Playwright only looks in the `e2e/` directory.
+
+For comprehensive testing instructions, setup details, and CI configuration, see [TESTING_GUIDE.md](./TESTING_GUIDE.md).
 
 ## Project Structure
 
 ```
 src/
-├── scripts/         # TypeScript source files
-│   └── main.ts      # Main application entry point
-├── style/           # CSS and styling
-│   ├── editor.css   # Main styles with Tailwind
-│   └── palette.css  # Color palette definitions
-└── www/             # Static web assets
-    └── index.html   # Main HTML file
+├── app.ts           # Main TypeScript application
+├── theme.css        # CSS styles with Tailwind
+└── index.html       # Main HTML file
 
 tests/               # Unit and integration tests (Vitest)
-├── .gitkeep         # Keep directory tracked in git
+├── pinch-zoom.test.ts
+├── svg-fallback-sizing.test.ts
+├── svg-resolution-change.test.ts
+└── svg-upload.test.ts
 
 e2e/                 # End-to-end tests (Playwright)
 ├── svg-editor.spec.ts
-└── .gitkeep         # Keep directory tracked in git
+└── svg-upload.spec.ts
 
 dist/                # Built assets (generated)
-├── editor.min.css
-└── app.min.js
+├── theme.css
+└── app.js
 ```
 
 ## Architecture

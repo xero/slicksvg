@@ -1,0 +1,24 @@
+name: Copilot Agent Preinstall
+on:
+  copilot-agent:
+    types: [preinstall]
+jobs:
+  setup-tools:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Bun
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unzip
+          curl -fsSL https://bun.sh/install | bash
+          echo "$HOME/.bun/bin" >> $GITHUB_PATH
+
+      - name: Install Dev Tools
+        run: |
+          bun i -g playwright eslint prettier
+          bunx playwright install --with-deps
+
