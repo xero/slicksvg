@@ -2,7 +2,7 @@ import {EditorView} from '@codemirror/view';
 import {EditorState, Compartment} from '@codemirror/state';
 import {xml} from '@codemirror/lang-xml';
 import {basicSetup} from 'codemirror';
-import {oneDark} from '@codemirror/theme-one-dark';
+import {nord} from '@uiw/codemirror-theme-nord';
 
 class SVGEditor {
 	private editor: EditorView;
@@ -202,7 +202,7 @@ class SVGEditor {
 
 		this.editor.dispatch({
 			effects: this.themeCompartment.reconfigure(
-				this.isDarkMode ? [oneDark] : []
+				this.isDarkMode ? [nord] : []
 			)
 		});
 	}
