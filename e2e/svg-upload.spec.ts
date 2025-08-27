@@ -59,7 +59,7 @@ test.describe('SVG Upload Functionality', () => {
     }, svgContent);
 
     // Check that the content was loaded into the editor
-    const editorContent = await page.getByRole('textbox').textContent();
+    const editorContent = await page.locator('#editor .cm-content').textContent();
     expect(editorContent).toContain('<circle cx="50" cy="50" r="40" fill="red"/>');
   });
 
