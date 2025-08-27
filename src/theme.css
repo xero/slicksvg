@@ -122,6 +122,9 @@
 		i {
 			@apply not-italic text-2xl
 		}
+		&:not(:has(i)) {
+			@apply py-2;
+		}
   }
 /* <--//---------------------------------------------------------[interface] */
   main,
