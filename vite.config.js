@@ -1,26 +1,21 @@
-import { defineConfig } from 'vite';
-import { viteSingleFile } from 'vite-plugin-singlefile';
-import postcss from './postcss.config.js';
+import { defineConfig } from 'vite'
+import { viteSingleFile } from 'vite-plugin-singlefile'
 
 export default defineConfig({
   plugins: [viteSingleFile()],
   css: {
-    postcss,
+    postcss: './postcss.config.js',
   },
   build: {
-    target: 'esnext',
     minify: 'terser',
     outDir: 'dist',
     rollupOptions: {
       input: 'src/index.html',
       output: {
-        entryFileNames: `[name].js`,
-        chunkFileNames: `[name].js`,
-        assetFileNames: `[name].[ext]`
+        entryFileNames: `index.js`,
+        chunkFileNames: `index.js`,
+        assetFileNames: `index.[ext]`
       }
     },
   },
-  server: {
-    port: 8080,
-  },
-});
+})

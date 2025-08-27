@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "make": "npm run clean && npm run style && npm run scripts && npm run www",
+    "make:mini": "vite build && mv dist/src/index.html dist/index.html && rmdir dist/src",
     "clean": "rm -rf ./dist; mkdir -p ./dist",
     "style": "postcss src/theme.css -o dist/theme.css",
     "scripts": "esbuild src/app.ts --bundle --minify --outfile=dist/app.js",
