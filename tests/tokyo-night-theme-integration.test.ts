@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { JSDOM } from 'jsdom';
 
-describe('Nord Theme Integration', () => {
+describe('Tokyo Night Theme Integration', () => {
   let dom: JSDOM;
   let window: Window;
   let document: Document;

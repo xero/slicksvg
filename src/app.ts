@@ -2,7 +2,8 @@ import {EditorView} from '@codemirror/view';
 import {EditorState, Compartment} from '@codemirror/state';
 import {xml} from '@codemirror/lang-xml';
 import {basicSetup} from 'codemirror';
-import {nord} from '@uiw/codemirror-theme-nord';
+import {tokyoNightDay} from '@fsegurai/codemirror-theme-tokyo-night-day';
+import {tokyoNightStorm} from '@fsegurai/codemirror-theme-tokyo-night-storm';
 import {linter, lintGutter} from '@codemirror/lint';
 
 // SVG/XML linter function using DOMParser
@@ -157,7 +158,7 @@ class SVGEditor {
 					EditorView.lineWrapping,
 					lintGutter(),
 					svgLinter,
-					this.themeCompartment.of([]),
+					this.themeCompartment.of([tokyoNightDay]),
 					EditorView.updateListener.of((update)=>{
 						if (update.docChanged) {
 							this.updateSVGPreview();
@@ -329,7 +330,7 @@ class SVGEditor {
 
 		this.editor.dispatch({
 			effects: this.themeCompartment.reconfigure(
-				this.isDarkMode ? [nord] : []
+				this.isDarkMode ? [tokyoNightStorm] : [tokyoNightDay]
 			)
 		});
 	}
