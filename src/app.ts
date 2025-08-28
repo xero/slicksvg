@@ -287,6 +287,9 @@ class SVGEditor {
 		// optimize
 		this.get('optimize').addEventListener('click', ()=>this.optimizeSVG());
 
+		// download
+		this.get('download').addEventListener('click', ()=>this.downloadSVG());
+
 		// upload button
 		this.get('upload').addEventListener('click', ()=>this.triggerFileUpload());
 
@@ -794,6 +797,69 @@ class SVGEditor {
 				this.handleFileUpload(file);
 			}
 		});
+	}
+
+	private generateRandomFilename(): string {
+		// Create a time-based random string for uniqueness
+		const now = Date.now();
+		const timeStr = now.toString(36); // Convert to base36 for shorter string
+
+		// Add additional random characters to ensure uniqueness and meet length requirement
+		const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+		let randomStr = timeStr;
+
+		// Ensure we have 5-8 characters total
+		while (randomStr.length < 5) {
+			randomStr += chars.charAt(Math.floor(Math.random() * chars.length));
+		}
+
+		// Limit to 8 characters max
+		if (randomStr.length > 8) {
+			randomStr = randomStr.substring(0, 8);
+		}
+
+		return `slicksvg-${randomStr}.svg`;
+	}
+
+	private downloadSVG(): void {
+		try {
+			// Get current SVG content from editor
+			const svgContent = this.editor.state.doc.toString();
+
+			// Validate that we have content
+			if (!svgContent.trim()) {
+				alert('No SVG content to download. Please create some SVG content first.');
+				return;
+			}
+
+			// Generate unique filename
+			const filename = this.generateRandomFilename();
+
+			// Create blob and download
+			const blob = new Blob([svgContent], {type: 'image/svg+xml'});
+			const url = URL.createObjectURL(blob);
+
+			// Create download link
+			const downloadLink = document.createElement('a');
+			downloadLink.href = url;
+			downloadLink.download = filename;
+			downloadLink.style.display = 'none';
+
+			// Trigger download
+			document.body.appendChild(downloadLink);
+			downloadLink.click();
+			document.body.removeChild(downloadLink);
+
+			// Clean up URL object
+			URL.revokeObjectURL(url);
+
+			// Announce successful download for accessibility
+			this.announceAction(`SVG downloaded as ${filename}`);
+
+		} catch (error) {
+			console.error('Download failed:', error);
+			alert('Failed to download SVG. Please try again.');
+		}
 	}
 }
 
