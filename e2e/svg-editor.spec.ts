@@ -12,7 +12,7 @@ test.describe('SVG Editor', () => {
     
     // Check that the default SVG is rendered
     await expect(page.locator('#editor .cm-content')).toBeVisible();
-    await expect(page.locator('svg')).toBeVisible();
+    await expect(page.locator('.svg-preview-wrapper svg')).toBeVisible();
     
     // Check for the "Hello SVG" text specifically in the SVG preview area
     await expect(page.locator('#preview svg text').filter({ hasText: 'Hello SVG' })).toBeVisible();
@@ -20,7 +20,7 @@ test.describe('SVG Editor', () => {
 
   test('should update SVG preview when code changes', async ({ page }) => {
     // Get the initial color
-    const initialSvg = page.locator('svg circle');
+    const initialSvg = page.locator('.svg-preview-wrapper svg circle');
     await expect(initialSvg).toHaveAttribute('fill', '#6291e0');
     
     // Change the SVG code - use more specific selector for CodeMirror editor
@@ -35,7 +35,7 @@ test.describe('SVG Editor', () => {
 </svg>`);
     
     // Check that the preview updates
-    await expect(page.locator('svg circle')).toHaveAttribute('fill', '#ff0000');
+    await expect(page.locator('.svg-preview-wrapper svg circle')).toHaveAttribute('fill', '#ff0000');
     await expect(page.locator('#preview svg text').filter({ hasText: 'Modified SVG' })).toBeVisible();
   });
 
@@ -45,13 +45,13 @@ test.describe('SVG Editor', () => {
     await page.getByRole('button', { name: /zoom in/i }).click();
     
     // Check that the SVG is still visible (zoom functionality working)
-    await expect(page.locator('svg')).toBeVisible();
+    await expect(page.locator('.svg-preview-wrapper svg')).toBeVisible();
     
     // Click zoom out button
     await page.getByRole('button', { name: /zoom out/i }).click();
     
     // SVG should still be visible
-    await expect(page.locator('svg')).toBeVisible();
+    await expect(page.locator('.svg-preview-wrapper svg')).toBeVisible();
   });
 
   test('should have flip screen button', async ({ page }) => {
@@ -68,12 +68,12 @@ test.describe('SVG Editor', () => {
   });
 
   test('should render SVG with dashed border', async ({ page }) => {
-    // Check that SVG has border styling
-    const svg = page.locator('svg');
-    await expect(svg).toBeVisible();
+    // Check that SVG container has border styling
+    const svgContainer = page.locator('.svg-container');
+    await expect(svgContainer).toBeVisible();
     
-    // Check that the SVG has the expected border style
-    await expect(svg).toHaveCSS('border', /dashed/);
+    // Check that the SVG container has the expected border style
+    await expect(svgContainer).toHaveCSS('border', /dashed/);
   });
 
   test('should have SVG transform controls', async ({ page }) => {
@@ -87,7 +87,7 @@ test.describe('SVG Editor', () => {
     await rotateButton.click();
     
     // SVG should still be visible after rotation
-    await expect(page.locator('svg')).toBeVisible();
+    await expect(page.locator('.svg-preview-wrapper svg')).toBeVisible();
   });
 
   test('should have SVG optimization button', async ({ page }) => {
@@ -99,7 +99,7 @@ test.describe('SVG Editor', () => {
     await optimizeButton.click();
     
     // SVG should still be visible after optimization
-    await expect(page.locator('svg')).toBeVisible();
+    await expect(page.locator('.svg-preview-wrapper svg')).toBeVisible();
   });
 
   test('should have flip functionality', async ({ page }) => {
@@ -114,7 +114,7 @@ test.describe('SVG Editor', () => {
     await flipYButton.click();
     
     // SVG should still be visible after flipping
-    await expect(page.locator('svg')).toBeVisible();
+    await expect(page.locator('.svg-preview-wrapper svg')).toBeVisible();
   });
 
   test('should support pinch zoom gestures on touch devices', async ({ page }) => {
@@ -185,7 +185,7 @@ test.describe('SVG Editor', () => {
     expect(finalTransform).not.toBe(initialTransform);
     
     // SVG should still be visible after pinch zoom
-    await expect(page.locator('svg')).toBeVisible();
+    await expect(page.locator('.svg-preview-wrapper svg')).toBeVisible();
   });
 
   test('should have line wrapping enabled in editor', async ({ page }) => {
@@ -211,6 +211,6 @@ test.describe('SVG Editor', () => {
     await expect(textLine).toBeVisible();
     
     // Verify that the SVG preview still updates correctly with the long text
-    await expect(page.locator('svg')).toBeVisible();
+    await expect(page.locator('.svg-preview-wrapper svg')).toBeVisible();
   });
 });

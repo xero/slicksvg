@@ -262,7 +262,7 @@ test.describe('SVG Editor Accessibility E2E Tests', () => {
     await page.keyboard.press('Enter');
     
     // Verify zoom action (in real implementation, would check transform styles)
-    const svgElement = page.locator('svg').first();
+    const svgElement = page.locator('.svg-preview-wrapper svg').first();
     if (await svgElement.count() > 0) {
       // Check that SVG is still visible after zoom
       await expect(svgElement).toBeVisible();

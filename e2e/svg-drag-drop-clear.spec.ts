@@ -72,7 +72,7 @@ test.describe('SVG Drag and Drop Content Clearing', () => {
 
     // Check that the view state was reset by looking for reset zoom level
     // The SVG should be back to normal size and position
-    const svgPreview = page.locator('#preview svg');
+    const svgPreview = page.locator('.svg-preview-wrapper svg');
     if (await svgPreview.count() > 0) {
       await expect(svgPreview).toBeVisible();
       // After reset, the SVG should be visible and not overly zoomed
