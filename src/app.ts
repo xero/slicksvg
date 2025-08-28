@@ -729,19 +729,45 @@ class SVGEditor {
 
 	private loadSVGContent(content: string): void {
 		try {
+			// Reset all view states before loading new content
+			this.resetViewState();
+
 			// Update editor with new SVG content
 			const transaction = this.editor.state.update({
 				changes: {
 					from: 0,
 					to: this.editor.state.doc.length,
 					insert: content
-				}
+				},
+				selection: {anchor: 0} // Reset cursor to start of document
 			});
 			this.editor.dispatch(transaction);
 		} catch (error) {
 			console.error('Failed to load SVG content:', error);
 			alert('Failed to load SVG content. Please check the file format.');
 		}
+	}
+
+	private resetViewState(): void {
+		// Reset zoom and pan state
+		this.zoomLevel = 1;
+		this.panX = 0;
+		this.panY = 0;
+
+		// Reset transform state
+		this.rotationDegrees = 0;
+		this.flipX = false;
+		this.flipY = false;
+
+		// Reset panning state
+		this.isPanning = false;
+		this.lastPanX = 0;
+		this.lastPanY = 0;
+
+		// Reset multi-touch state
+		this.isMultiTouch = false;
+		this.initialPinchDistance = 0;
+		this.initialZoomLevel = 1;
 	}
 
 	private handleFileUpload(file: File): void {
