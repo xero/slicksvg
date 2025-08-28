@@ -16,6 +16,7 @@ export default [{
     'src/www/*.min.js',
     'src/www/*.min.css',
     'serve.js',
+    'validate-css.js',
   ]},
   js.configs.recommended,
   ...tseslint.configs.recommended,
