@@ -39,6 +39,7 @@
 	--color-header: var(--color-slick-700);
 	--color-btn: var(--color-slick-500);
 	--color-btn-h: var(--color-slick-700);
+	--color-bounds: var(--color-mono-300);
   --current-color: var(--color-mono-950);
   --breakpoint-xs: 30rem;
   --breakpoint-2xl: 100rem;
@@ -59,6 +60,7 @@
   --color-preview: #2b2f37;
 	--color-btn: var(--color-slick-700);
 	--color-btn-h: var(--color-slick-500);
+	--color-bounds: var(--color-mono-500);
 }
 /* <--//----------------------------------------------------------[document] */
 :root {
@@ -191,7 +193,8 @@
     }
     .svg-container {
 			color: var(--current-color);
-      @apply flex items-center justify-center;
+			fill: var(--current-color);
+      @apply flex items-center justify-center border-4 border-dashed border-bounds;
     }
     .error {
       @apply text-red-500 p-4 text-center;
