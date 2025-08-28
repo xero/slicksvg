@@ -83,6 +83,8 @@ const svgLinter = linter(view=>{
 	}
 
 	return diagnostics;
+}, {
+	delay: 750  // Add explicit delay configuration
 });
 
 // Extend Window interface for testing functions
