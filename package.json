@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node validate-css.js && vite build && mv dist/src/index.html dist/index.html && rmdir dist/src",
+    "bake": "bun run build",
+    "build": "bun ./tests/validate-css.js && vite build && mv dist/src/index.html dist/index.html && rmdir dist/src",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "check": "vitest run",

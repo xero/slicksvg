@@ -6,6 +6,7 @@ export default defineConfig({
       '**/node_modules/**',
       '**/dist/**',
       '**/e2e/**',
+			'validate-css.js',
       '**/.{idea,git,cache,output,temp}/**',
       '**/{karma,rollup,webpack,vite,vitest,jest,ava,babel,nyc,cypress,tsup,build}.config.*'
     ],
@@ -18,7 +19,7 @@ export default defineConfig({
         '**/e2e/**',
         '**/*.config.*',
         '**/*.d.ts',
-        'serve.js',
+				'validate-css.js',
         '**/tests/**'
       ]
     },
