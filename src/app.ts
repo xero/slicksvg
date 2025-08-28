@@ -16,7 +16,7 @@ const svgLinter = linter(view=>{
 	try {
 		if (!text.trim()) {
 			if (statusBarUpdateCallback) {
-				statusBarUpdateCallback('Empty buffer', false);
+				statusBarUpdateCallback('svg valid', false);
 			}
 			return [];
 		}
@@ -74,7 +74,7 @@ const svgLinter = linter(view=>{
 			});
 		}
 		if (diagnostics.length === 0 && statusBarUpdateCallback) {
-			statusBarUpdateCallback('SVG Valid', false);
+			statusBarUpdateCallback('svg valid', false);
 		}
 	} catch (error) {
 		const errorMessage = `Parse Error: ${error instanceof Error ? error.message : 'Unknown error'}`;
