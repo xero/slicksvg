@@ -5,16 +5,16 @@ A **Node.js**-based, web SVG editor written in **TypeScript**, with no frontend 
 ## Screenshots
 
 **Light Mode:**
-![Light Mode](https://github.com/user-attachments/assets/cd5529a8-38d2-48fa-adba-e8e668829ab1)
+![Light Mode](https://github.com/user-attachments/assets/9ad9dd93-a0e4-4ab8-b4ef-7cd051ec37ea)
 
 **Dark Mode:**
-![Dark Mode](https://github.com/user-attachments/assets/dcf3c202-9c06-4553-9aee-25614517b83d)
+![Dark Mode](https://github.com/user-attachments/assets/b81b7e0d-4da8-4f3d-8c4c-e97b86898ce7)
 
 ## Features
 
 - **Full-Screen UI**: Editor and live preview split 50/50, with toggle for vertical/horizontal orientation
 - **Editor**:
-  - Top toolbar with file upload, resize, optimize, and transform controls
+  - Top toolbar with file upload, download, resize, optimize, and transform controls
   - SVG code input uses [CodeMirror 6](https://codemirror.net/) with XML syntax highlighting and real-time linting
   - Live SVG preview updates as code changes
   - Supports drag & drop file upload
@@ -25,6 +25,7 @@ A **Node.js**-based, web SVG editor written in **TypeScript**, with no frontend 
   - Dark/light mode toggle
 - **SVG Tools**:
   - **Upload**: Drag & drop or click to upload SVG files
+  - **Download**: Save current SVG code as a file
   - **Resize**: Change SVG dimensions with modal dialog
   - **Optimize**: Remove unnecessary whitespace, comments, and optimize SVG code
   - **Transform**: Rotate (90° increments), flip horizontal/vertical
@@ -32,7 +33,7 @@ A **Node.js**-based, web SVG editor written in **TypeScript**, with no frontend 
   - TypeScript with strict type checking
   - Tailwind CSS for styling
   - ESLint for code quality
-  - Vitest for unit testing (94 tests)
+  - Vitest for unit testing (111 tests)
   - Playwright for E2E testing
   - Tokyo Night themes for light/dark mode syntax highlighting
 
@@ -100,6 +101,7 @@ Place unit and integration tests in the `tests/` directory:
 - **Performance optimization** - Event cleanup, memory management, transform caching
 - **SVG optimization** - Code minification, whitespace removal, attribute optimization
 - **SVG linting** - Real-time XML/SVG validation, error reporting
+- **File operations** - Upload and download functionality, drag & drop support
 - **Tokyo Night theme integration** - Light/dark mode theming, syntax highlighting
 
 #### End-to-End Tests (Playwright)
@@ -121,6 +123,7 @@ Place E2E tests in the `e2e/` directory:
 - **Performance testing** - Load times, memory usage, rapid interactions
 - **Cross-browser compatibility** - Different browsers, screen densities, color schemes
 - **SVG linting integration** - Real-time validation feedback, error highlighting
+- **File operations** - Upload workflows, drag & drop functionality, clear operations
 
 #### Running All Tests
 
@@ -169,10 +172,12 @@ tests/                       # Unit and integration tests (Vitest)
 ├── svg-error-handling.test.ts  # Error scenarios and edge cases
 ├── svg-accessibility.test.ts   # Accessibility features and integration
 ├── svg-upload.test.ts          # File upload functionality
+├── svg-download.test.ts        # File download functionality
 ├── svg-optimization.test.ts    # SVG optimization features
 ├── svg-resolution-change.test.ts # Resolution modal and resizing
 ├── svg-fallback-sizing.test.ts # SVG sizing logic
 ├── svg-linting.test.ts         # SVG/XML linting functionality
+├── svg-drag-drop-clear.test.ts # Drag & drop and clear functionality
 ├── pinch-zoom.test.ts          # Pinch zoom calculations
 └── tokyo-night-theme-integration.test.ts # Tokyo Night theme integration
 
@@ -182,6 +187,7 @@ e2e/                         # End-to-end tests (Playwright)
 ├── svg-accessibility.spec.ts   # Accessibility testing
 ├── svg-error-handling.spec.ts  # Error scenarios
 ├── svg-linting.spec.ts         # Linting integration tests
+├── svg-drag-drop-clear.spec.ts # Drag & drop and clear functionality
 └── svg-mobile-performance.spec.ts # Mobile, performance, compatibility
 ```
 
@@ -204,10 +210,12 @@ tests/               # Unit and integration tests (Vitest)
 ├── svg-error-handling.test.ts  # Error scenarios and edge cases
 ├── svg-accessibility.test.ts   # Accessibility features and integration
 ├── svg-upload.test.ts          # File upload functionality
+├── svg-download.test.ts        # File download functionality
 ├── svg-optimization.test.ts    # SVG optimization features
 ├── svg-resolution-change.test.ts # Resolution modal and resizing
 ├── svg-fallback-sizing.test.ts # SVG sizing logic
 ├── svg-linting.test.ts         # SVG/XML linting functionality
+├── svg-drag-drop-clear.test.ts # Drag & drop and clear functionality
 ├── pinch-zoom.test.ts          # Pinch zoom calculations
 └── tokyo-night-theme-integration.test.ts # Tokyo Night theme integration
 
@@ -217,6 +225,7 @@ e2e/                 # End-to-end tests (Playwright)
 ├── svg-accessibility.spec.ts   # Accessibility testing
 ├── svg-error-handling.spec.ts  # Error scenarios
 ├── svg-linting.spec.ts         # Linting integration tests
+├── svg-drag-drop-clear.spec.ts # Drag & drop and clear functionality
 └── svg-mobile-performance.spec.ts # Mobile, performance, compatibility
 
 dist/                # Built assets (generated)
@@ -242,11 +251,12 @@ The application is built with:
 1. **Edit SVG Code**: Use the CodeMirror editor on the left to write/edit SVG markup with real-time syntax highlighting and error detection
 2. **Live Preview**: See your changes instantly in the preview panel on the right
 3. **Upload Files**: Drag & drop SVG files onto the editor or use the Upload button
-4. **Transform SVGs**: Use the toolbar buttons to rotate, flip, or optimize your SVG
-5. **Resize**: Click the Resize button to change SVG dimensions
-6. **Pan & Zoom**: Click and drag to pan the SVG; use +/- buttons to zoom in/out
-7. **Dark Mode**: Toggle between light and dark themes with the Dark Mode button
-8. **Layout Toggle**: Click "Flip Screen" to switch between horizontal and vertical layouts
+4. **Download Files**: Save your current SVG code as a file using the Download button
+5. **Transform SVGs**: Use the toolbar buttons to rotate, flip, or optimize your SVG
+6. **Resize**: Click the Resize button to change SVG dimensions
+7. **Pan & Zoom**: Click and drag to pan the SVG; use +/- buttons to zoom in/out
+8. **Dark Mode**: Toggle between light and dark themes with the Dark Mode button
+9. **Layout Toggle**: Click "Flip Screen" to switch between horizontal and vertical layouts
 
 ## Development
 
