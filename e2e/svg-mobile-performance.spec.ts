@@ -4,7 +4,7 @@ test.describe('SVG Editor Mobile and Touch E2E Tests', () => {
   test.beforeEach(async ({ page }) => {
     // Set mobile viewport
     await page.setViewportSize({ width: 375, height: 667 });
-    await page.goto('/');
+    await page.goto('/src/index.html');
   });
 
   test('should be responsive on mobile devices', async ({ page }) => {
@@ -13,8 +13,8 @@ test.describe('SVG Editor Mobile and Touch E2E Tests', () => {
     await expect(page.getByRole('complementary')).toBeVisible();
     
     // Check that buttons are still accessible
-    await expect(page.getByRole('button', { name: /upload/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /dark mode/i })).toBeVisible();
+    await expect(page.locator('#upload')).toBeVisible();
+    await expect(page.locator('#dark')).toBeVisible();
   });
 
   test('should handle touch interactions for zoom', async ({ page }) => {
@@ -56,7 +56,7 @@ test.describe('SVG Editor Mobile and Touch E2E Tests', () => {
     await expect(page.getByRole('complementary')).toBeVisible();
     
     // Test flip screen functionality on tablet
-    await page.getByRole('button', { name: /flip screen/i }).click();
+    await page.locator('#flip').click();
     
     // Should toggle layout
     const body = page.locator('body');
@@ -74,7 +74,7 @@ test.describe('SVG Editor Mobile and Touch E2E Tests', () => {
     await expect(page.getByRole('complementary')).toBeVisible();
     
     // Should still be usable in landscape
-    await page.getByRole('button', { name: /rotate/i }).click({ force: true });
+    await page.locator('#rotate').click({ force: true });
     await expect(page.getByRole('main')).toBeVisible();
   });
 
@@ -97,7 +97,7 @@ test.describe('SVG Editor Mobile and Touch E2E Tests', () => {
 
 test.describe('SVG Editor Performance E2E Tests', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/src/index.html');
   });
 
   test('should load quickly', async ({ page }) => {
@@ -118,10 +118,10 @@ test.describe('SVG Editor Performance E2E Tests', () => {
     
     // Perform rapid sequence of operations
     for (let i = 0; i < 5; i++) {
-      await page.getByRole('button', { name: /rotate/i }).click();
-      await page.getByRole('button', { name: /flip.*horizontal/i }).click();
-      await page.getByRole('button', { name: /zoom in/i }).click();
-      await page.getByRole('button', { name: /zoom out/i }).click();
+      await page.locator('#rotate').click();
+      await page.locator('#flipx').click();
+      await page.locator('#zoomin').click();
+      await page.locator('#zoomout').click();
     }
     
     const interactionTime = Date.now() - startTime;
@@ -182,14 +182,14 @@ test.describe('SVG Editor Performance E2E Tests', () => {
     // Perform many repeated operations
     for (let i = 0; i < 20; i++) {
       // Toggle dark mode
-      await page.getByRole('button', { name: /dark mode/i }).click();
+      await page.locator('#dark').click();
       
       // Rotate
-      await page.getByRole('button', { name: /rotate/i }).click();
+      await page.locator('#rotate').click();
       
       // Zoom operations
-      await page.getByRole('button', { name: /zoom in/i }).click();
-      await page.getByRole('button', { name: /zoom out/i }).click();
+      await page.locator('#zoomin').click();
+      await page.locator('#zoomout').click();
       
       // Every 5 iterations, check responsiveness
       if (i % 5 === 0) {
@@ -205,7 +205,7 @@ test.describe('SVG Editor Performance E2E Tests', () => {
 
 test.describe('SVG Editor Cross-Browser Compatibility E2E Tests', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/src/index.html');
   });
 
   test('should work with different user agent strings', async ({ page }) => {
@@ -225,8 +225,8 @@ test.describe('SVG Editor Cross-Browser Compatibility E2E Tests', () => {
       await expect(page.getByRole('complementary')).toBeVisible();
       
       // Test basic functionality
-      await page.getByRole('button', { name: /dark mode/i }).click();
-      await page.getByRole('button', { name: /rotate/i }).click();
+      await page.locator('#dark').click();
+      await page.locator('#rotate').click();
     }
   });
 
@@ -284,7 +284,7 @@ test.describe('SVG Editor Cross-Browser Compatibility E2E Tests', () => {
 
 test.describe('SVG Editor Integration E2E Tests', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/src/index.html');
   });
 
   test('should integrate editor and preview seamlessly', async ({ page }) => {
@@ -314,20 +314,20 @@ test.describe('SVG Editor Integration E2E Tests', () => {
     // Perform a series of operations and verify state is maintained
     
     // Start with dark mode
-    await page.getByRole('button', { name: /dark mode/i }).click();
+    await page.locator('#dark').click();
     const body = page.locator('body');
     
     // Check dark mode is applied
     // Note: In real implementation, would check actual CSS classes
     
     // Rotate SVG
-    await page.getByRole('button', { name: /rotate/i }).click();
+    await page.locator('#rotate').click();
     
     // Zoom in
-    await page.getByRole('button', { name: /zoom in/i }).click();
+    await page.locator('#zoomin').click();
     
     // Flip layout
-    await page.getByRole('button', { name: /flip screen/i }).click();
+    await page.locator('#flip').click();
     
     // All operations should be preserved
     await expect(page.getByRole('main')).toBeVisible();
@@ -341,29 +341,29 @@ test.describe('SVG Editor Integration E2E Tests', () => {
     // Simulate a complete user workflow
     
     // 1. User opens resolution modal
-    await page.getByRole('button', { name: /resize|resolution/i }).click();
+    await page.locator('#resolution').click();
     const modal = page.locator('dialog');
     await expect(modal).toBeVisible();
     
     // 2. User changes dimensions
     await modal.locator('#width').fill('300');
     await modal.locator('#height').fill('400');
-    await modal.getByRole('button', { name: /update/i }).click();
+    await modal.locator('#resize').click();
     
     // 3. User rotates the SVG
-    await page.getByRole('button', { name: /rotate/i }).click();
+    await page.locator('#rotate').click();
     
     // 4. User flips horizontally
-    await page.getByRole('button', { name: /flip.*horizontal/i }).click();
+    await page.locator('#flipx').click();
     
     // 5. User zooms in
-    await page.getByRole('button', { name: /zoom in/i }).click();
+    await page.locator('#zoomin').click();
     
     // 6. User toggles dark mode
-    await page.getByRole('button', { name: /dark mode/i }).click();
+    await page.locator('#dark').click();
     
     // 7. User toggles layout
-    await page.getByRole('button', { name: /flip screen/i }).click();
+    await page.locator('#flip').click();
     
     // Application should handle the complete workflow smoothly
     await expect(page.getByRole('main')).toBeVisible();

@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('SVG Editor Error Handling E2E Tests', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/src/index.html');
   });
 
   test('should handle invalid SVG content gracefully', async ({ page }) => {
