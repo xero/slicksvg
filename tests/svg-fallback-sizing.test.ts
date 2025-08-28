@@ -31,12 +31,12 @@ describe('SVG Fallback Sizing', () => {
 
     const svgElement = svgContainer.querySelector('svg') as SVGElement;
     expect(svgElement).toBeTruthy();
-    
+
     // Mock the applySVGStyles behavior - this will be our fix
     const applySVGFallbackSizing = (svg: SVGElement) => {
       const hasWidth = svg.hasAttribute('width');
       const hasHeight = svg.hasAttribute('height');
-      
+
       if (!hasWidth || !hasHeight) {
         // Apply fallback dimensions
         if (!hasWidth) {
@@ -71,7 +71,7 @@ describe('SVG Fallback Sizing', () => {
     const applySVGFallbackSizing = (svg: SVGElement) => {
       const hasWidth = svg.hasAttribute('width');
       const hasHeight = svg.hasAttribute('height');
-      
+
       if (!hasWidth || !hasHeight) {
         if (!hasWidth) {
           svg.style.width = '200px';
@@ -105,7 +105,7 @@ describe('SVG Fallback Sizing', () => {
     const applySVGFallbackSizing = (svg: SVGElement) => {
       const hasWidth = svg.hasAttribute('width');
       const hasHeight = svg.hasAttribute('height');
-      
+
       if (!hasWidth || !hasHeight) {
         if (!hasWidth) {
           svg.style.width = '200px';
@@ -139,7 +139,7 @@ describe('SVG Fallback Sizing', () => {
     const applySVGFallbackSizing = (svg: SVGElement) => {
       const hasWidth = svg.hasAttribute('width');
       const hasHeight = svg.hasAttribute('height');
-      
+
       if (!hasWidth || !hasHeight) {
         if (!hasWidth) {
           svg.style.width = '200px';

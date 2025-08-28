@@ -51,7 +51,7 @@ describe('SVG Optimization', () => {
       .replace(/\s+/g, ' ')
       // Trim whitespace
       .trim();
-    
+
     return optimized;
   };
 
@@ -61,9 +61,9 @@ describe('SVG Optimization', () => {
     <svg xmlns="http://www.w3.org/2000/svg">
       <circle cx="50" cy="50" r="40" fill="red"/>
     </svg>`;
-    
+
     const result = optimizeSVG(svgWithXML);
-    
+
     expect(result).not.toContain('<?xml');
     expect(result).not.toContain('<!DOCTYPE');
     expect(result).toContain('<svg xmlns="http://www.w3.org/2000/svg">');
@@ -75,9 +75,9 @@ describe('SVG Optimization', () => {
       <circle cx="50" cy="50" r="40" fill="red"/>
       <!-- Another comment -->
     </svg>`;
-    
+
     const result = optimizeSVG(svgWithComments);
-    
+
     expect(result).not.toContain('<!--');
     expect(result).not.toContain('-->');
     expect(result).toContain('<circle cx="50" cy="50" r="40" fill="red"/>');
@@ -88,9 +88,9 @@ describe('SVG Optimization', () => {
       <circle cx="50" cy="50" r="40" fill="red"/>
       <rect x="10" y="10" width="80" height="80" fill="blue"/>
     </svg>`;
-    
+
     const result = optimizeSVG(svgWithWhitespace);
-    
+
     expect(result).not.toMatch(/>\s+</);
     expect(result).toContain('><circle');
     expect(result).toContain('/><rect');
@@ -100,9 +100,9 @@ describe('SVG Optimization', () => {
     const svgWithPrecision = `<svg xmlns="http://www.w3.org/2000/svg">
       <circle cx="50.123456" cy="50.789012" r="40.555555" fill="red"/>
     </svg>`;
-    
+
     const result = optimizeSVG(svgWithPrecision);
-    
+
     expect(result).toContain('cx="50.123"');
     expect(result).toContain('cy="50.789"');
     expect(result).toContain('r="40.555"');
@@ -113,9 +113,9 @@ describe('SVG Optimization', () => {
       <circle cx="50" cy="50" r="40" fill="red" stroke="none" stroke-width="1" opacity="1"/>
       <rect x="10" y="10" width="80" height="80" fill="none" fill-opacity="1" stroke-opacity="1"/>
     </svg>`;
-    
+
     const result = optimizeSVG(svgWithDefaults);
-    
+
     expect(result).not.toContain('stroke="none"');
     expect(result).not.toContain('stroke-width="1"');
     expect(result).not.toContain('opacity="1"');
@@ -132,9 +132,9 @@ describe('SVG Optimization', () => {
       <rect x="10" y="10" width="80" height="80" transform="scale(1)" fill="blue"/>
       <path d="M10 10 L50 50" transform="rotate(0)"/>
     </svg>`;
-    
+
     const result = optimizeSVG(svgWithTransforms);
-    
+
     expect(result).not.toContain('transform="matrix(1,0,0,1,0,0)"');
     expect(result).not.toContain('transform="translate(0,0)"');
     expect(result).not.toContain('transform="scale(1)"');
@@ -153,9 +153,9 @@ describe('SVG Optimization', () => {
       <desc>This is a description of the SVG</desc>
       <circle cx="50" cy="50" r="40" fill="red"/>
     </svg>`;
-    
+
     const result = optimizeSVG(svgWithMetadata);
-    
+
     expect(result).not.toContain('<metadata>');
     expect(result).not.toContain('</metadata>');
     expect(result).not.toContain('<desc>');
@@ -171,9 +171,9 @@ describe('SVG Optimization', () => {
       </g>
       <g> </g>
     </svg>`;
-    
+
     const result = optimizeSVG(svgWithEmptyGroups);
-    
+
     // Should not contain empty groups
     expect(result).not.toMatch(/<g[^>]*>\s*<\/g>/);
     // Should keep non-empty group
@@ -192,43 +192,43 @@ describe('SVG Optimization', () => {
       <g transform="matrix(1,0,0,1,0,0)">
         <circle cx="100.123456" cy="100.789012" r="50.555555" fill="red" stroke="none" opacity="1"/>
       </g>
-      
+
       <!-- Rectangle element -->
       <rect x="10.111111" y="10.222222" width="80.333333" height="80.444444" fill="blue" stroke-width="1"/>
-      
+
       <!-- Empty group -->
       <g></g>
-      
+
       <!-- Path element -->
       <path d="M 10.123456 10.789012 L 50.111111 50.222222" stroke="green" transform="translate(0,0)"/>
     </svg>`;
-    
+
     const result = optimizeSVG(complexSVG);
-    
+
     // Should not contain processing instructions, doctype, comments
     expect(result).not.toContain('<?xml');
     expect(result).not.toContain('<!DOCTYPE');
     expect(result).not.toContain('<!--');
     expect(result).not.toContain('-->');
-    
+
     // Should not contain metadata
     expect(result).not.toContain('<metadata>');
-    
+
     // Should not have extra whitespace between tags
     expect(result).not.toMatch(/>\s+</);
-    
+
     // Should have reduced precision
     expect(result).toContain('100.123');
     expect(result).toContain('100.789');
     expect(result).toContain('50.555');
-    
+
     // Should not contain redundant attributes
     expect(result).not.toContain('stroke="none"');
     expect(result).not.toContain('opacity="1"');
     expect(result).not.toContain('stroke-width="1"');
     expect(result).not.toContain('transform="matrix(1,0,0,1,0,0)"');
     expect(result).not.toContain('transform="translate(0,0)"');
-    
+
     // Should not contain empty groups
     expect(result).not.toMatch(/<g[^>]*>\s*<\/g>/);
   });
@@ -237,9 +237,9 @@ describe('SVG Optimization', () => {
     const basicSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
       <circle cx="50" cy="50" r="40" fill="red" stroke="blue" stroke-width="2"/>
     </svg>`;
-    
+
     const result = optimizeSVG(basicSVG);
-    
+
     // Should preserve essential attributes
     expect(result).toContain('xmlns="http://www.w3.org/2000/svg"');
     expect(result).toContain('width="100"');
@@ -254,9 +254,9 @@ describe('SVG Optimization', () => {
 
   it('should remove trailing zeros from decimal numbers', () => {
     const svgWithTrailingZeros = `<svg xmlns="http://www.w3.org/2000/svg" width="200.0" height="200" viewBox="0 0 200.00 200"><circle cx="100.000000" cy="100.0000" r="80" fill="#6291e0" stroke="#295da9" stroke-width="2"/></svg>`;
-    
+
     const result = optimizeSVG(svgWithTrailingZeros);
-    
+
     // Should remove trailing zeros after decimal points
     expect(result).toContain('width="200"');
     expect(result).toContain('viewBox="0 0 200 200"');
@@ -273,9 +273,9 @@ describe('SVG Optimization', () => {
       <circle cx="50.123456" cy="50.0" r="40.55000"/>
       <rect x="10.0000" y="10.000000" width="80.12300" height="80"/>
     </svg>`;
-    
+
     const result = optimizeSVG(svgWithMixedPrecision);
-    
+
     // Should limit precision and remove trailing zeros
     expect(result).toContain('cx="50.123"'); // Precision limited
     expect(result).toContain('cy="50"');     // Trailing zero removed
@@ -293,9 +293,9 @@ describe('SVG Optimization', () => {
         <circle id="circle" cx="50" cy="50" r="40" fill="red"/>
       </defs>
     </svg>`;
-    
+
     const result = optimizeSVG(svgWithUsedNamespace);
-    
+
     // Should preserve xlink namespace since it's used
     expect(result).toContain('xmlns:xlink="http://www.w3.org/1999/xlink"');
     expect(result).toContain('xlink:href="#circle"');
@@ -305,9 +305,9 @@ describe('SVG Optimization', () => {
     const svgWithUnusedNamespace = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:unused="http://example.com/unused">
       <circle cx="50" cy="50" r="40" fill="red"/>
     </svg>`;
-    
+
     const result = optimizeSVG(svgWithUnusedNamespace);
-    
+
     // Should remove unused namespace
     expect(result).not.toContain('xmlns:unused');
     expect(result).toContain('xmlns="http://www.w3.org/2000/svg"');

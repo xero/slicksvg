@@ -270,7 +270,7 @@ describe('SVGEditor Core Functionality', () => {
       isPanning = false;
       const initialPanX = panX;
       const initialPanY = panY;
-      
+
       doPan(mockEvent);
       expect(panX).toBe(initialPanX); // Should not change
       expect(panY).toBe(initialPanY); // Should not change
@@ -291,7 +291,7 @@ describe('SVGEditor Core Functionality', () => {
   describe('Modal Dialog Controls', () => {
     it('should handle modal open state correctly', () => {
       const modal = document.querySelector('dialog') as HTMLDialogElement;
-      
+
       // Mock the open property since JSDOM doesn't fully support dialog
       Object.defineProperty(modal, 'open', {
         value: false,
@@ -310,7 +310,7 @@ describe('SVGEditor Core Functionality', () => {
       const modal = document.querySelector('dialog') as HTMLDialogElement;
       modal.showModal = vi.fn();
       modal.classList.remove = vi.fn();
-      
+
       Object.defineProperty(modal, 'open', {
         value: false,
         writable: true
@@ -331,7 +331,7 @@ describe('SVGEditor Core Functionality', () => {
 
     it('should handle modal close correctly', () => {
       vi.useFakeTimers();
-      
+
       const modal = document.querySelector('dialog') as HTMLDialogElement;
       modal.close = vi.fn();
       modal.classList.add = vi.fn();
@@ -347,12 +347,12 @@ describe('SVGEditor Core Functionality', () => {
 
       modalClose();
       expect(modal.classList.add).toHaveBeenCalledWith('closing');
-      
+
       // Fast forward time to test the timeout
       vi.runAllTimers();
       expect(modal.classList.remove).toHaveBeenCalledWith('closing');
       expect(modal.close).toHaveBeenCalled();
-      
+
       vi.useRealTimers();
     });
   });

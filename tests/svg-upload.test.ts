@@ -88,7 +88,7 @@ describe('SVG Upload Functionality', () => {
   it('should handle drag and drop events correctly', () => {
     // Mock drag events
     let dragOverClass = false;
-    
+
     const mockDocument = {
       body: {
         classList: {

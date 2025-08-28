@@ -57,21 +57,21 @@ describe('SVG Resolution Change', () => {
     // Mock the resize logic
     const resizeSVG = (svgCode: string, width: number, height: number) => {
       let updatedSVG = svgCode;
-      
+
       // Update width attribute
       if (updatedSVG.includes('width="')) {
         updatedSVG = updatedSVG.replace(/width="[^"]*"/, `width="${width}"`);
       } else {
         updatedSVG = updatedSVG.replace(/(<svg[^>]*)(>)/, `$1 width="${width}"$2`);
       }
-      
+
       // Update height attribute
       if (updatedSVG.includes('height="')) {
         updatedSVG = updatedSVG.replace(/height="[^"]*"/, `height="${height}"`);
       } else {
         updatedSVG = updatedSVG.replace(/(<svg[^>]*)(>)/, `$1 height="${height}"$2`);
       }
-      
+
       // Update viewBox attribute
       const viewBoxValue = `0 0 ${width} ${height}`;
       if (updatedSVG.includes('viewBox="')) {
@@ -79,7 +79,7 @@ describe('SVG Resolution Change', () => {
       } else {
         updatedSVG = updatedSVG.replace(/(<svg[^>]*)(>)/, `$1 viewBox="${viewBoxValue}"$2`);
       }
-      
+
       return updatedSVG;
     };
 
@@ -88,7 +88,7 @@ describe('SVG Resolution Change', () => {
     expect(resizedSVG).toContain('width="400"');
     expect(resizedSVG).toContain('height="300"');
     expect(resizedSVG).toContain('viewBox="0 0 400 300"');
-    
+
     // Content should remain unchanged
     expect(resizedSVG).toContain('<circle cx="100" cy="100" r="80" fill="blue"/>');
   });
@@ -104,21 +104,21 @@ describe('SVG Resolution Change', () => {
     // Mock the resize logic
     const resizeSVG = (svgCode: string, width: number, height: number) => {
       let updatedSVG = svgCode;
-      
+
       // Update width attribute
       if (updatedSVG.includes('width="')) {
         updatedSVG = updatedSVG.replace(/width="[^"]*"/, `width="${width}"`);
       } else {
         updatedSVG = updatedSVG.replace(/(<svg[^>]*)(>)/, `$1 width="${width}"$2`);
       }
-      
+
       // Update height attribute
       if (updatedSVG.includes('height="')) {
         updatedSVG = updatedSVG.replace(/height="[^"]*"/, `height="${height}"`);
       } else {
         updatedSVG = updatedSVG.replace(/(<svg[^>]*)(>)/, `$1 height="${height}"$2`);
       }
-      
+
       // Update viewBox attribute
       const viewBoxValue = `0 0 ${width} ${height}`;
       if (updatedSVG.includes('viewBox="')) {
@@ -126,7 +126,7 @@ describe('SVG Resolution Change', () => {
       } else {
         updatedSVG = updatedSVG.replace(/(<svg[^>]*)(>)/, `$1 viewBox="${viewBoxValue}"$2`);
       }
-      
+
       return updatedSVG;
     };
 
@@ -147,7 +147,7 @@ describe('SVG Resolution Change', () => {
     const extractDimensions = (svg: string) => {
       const widthMatch = svg.match(/width="([^"]+)"/);
       const heightMatch = svg.match(/height="([^"]+)"/);
-      
+
       let currentWidth = widthMatch ? parseInt(widthMatch[1]) : null;
       let currentHeight = heightMatch ? parseInt(heightMatch[1]) : null;
 
@@ -191,7 +191,7 @@ describe('SVG Resolution Change', () => {
     const extractDimensions = (svg: string) => {
       const widthMatch = svg.match(/width="([^"]+)"/);
       const heightMatch = svg.match(/height="([^"]+)"/);
-      
+
       let currentWidth = widthMatch ? parseInt(widthMatch[1]) : null;
       let currentHeight = heightMatch ? parseInt(heightMatch[1]) : null;
 

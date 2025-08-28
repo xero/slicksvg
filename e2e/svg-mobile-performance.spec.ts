@@ -11,7 +11,7 @@ test.describe('SVG Editor Mobile and Touch E2E Tests', () => {
     // Check that main elements are visible on mobile
     await expect(page.getByRole('main')).toBeVisible();
     await expect(page.getByRole('complementary')).toBeVisible();
-    
+
     // Check that buttons are still accessible
     await expect(page.locator('#upload')).toBeVisible();
     await expect(page.locator('#dark')).toBeVisible();
@@ -21,7 +21,7 @@ test.describe('SVG Editor Mobile and Touch E2E Tests', () => {
     // Simulate pinch-to-zoom gesture
     const preview = page.locator('#preview');
     await expect(preview).toBeVisible();
-    
+
     // Simulate touch start with two fingers
     await preview.dispatchEvent('touchstart', {
       touches: [
@@ -29,7 +29,7 @@ test.describe('SVG Editor Mobile and Touch E2E Tests', () => {
         { clientX: 200, clientY: 100, identifier: 2 }
       ]
     });
-    
+
     // Simulate pinch movement (fingers moving apart)
     await preview.dispatchEvent('touchmove', {
       touches: [
@@ -37,30 +37,30 @@ test.describe('SVG Editor Mobile and Touch E2E Tests', () => {
         { clientX: 250, clientY: 100, identifier: 2 }
       ]
     });
-    
+
     // End touch
     await preview.dispatchEvent('touchend', {
       touches: []
     });
-    
+
     // Should still be functional
     await expect(preview).toBeVisible();
   });
 
   test('should support single-touch drag panning on mobile devices', async ({ page }) => {
-    // Get the SVG preview area  
+    // Get the SVG preview area
     const svgPreview = page.locator('.svg-preview-wrapper');
     await expect(svgPreview).toBeVisible();
 
     // Get the SVG container to check its initial transform
     const svgContainer = page.locator('.svg-container');
     await expect(svgContainer).toBeVisible();
-    
+
     // Get initial transform state
-    const initialTransform = await svgContainer.evaluate(el => 
+    const initialTransform = await svgContainer.evaluate(el =>
       window.getComputedStyle(el).transform
     );
-    
+
     // Simulate single-touch drag gesture to pan the SVG
     // Start touch at one position
     await svgPreview.dispatchEvent('touchstart', {
@@ -74,7 +74,7 @@ test.describe('SVG Editor Mobile and Touch E2E Tests', () => {
         { clientX: 200, clientY: 300, identifier: 0 }
       ]
     });
-    
+
     // Move touch to simulate drag (pan)
     await svgPreview.dispatchEvent('touchmove', {
       touches: [
@@ -87,7 +87,7 @@ test.describe('SVG Editor Mobile and Touch E2E Tests', () => {
         { clientX: 250, clientY: 350, identifier: 0 }
       ]
     });
-    
+
     // End the touch gesture
     await svgPreview.dispatchEvent('touchend', {
       touches: [],
@@ -96,18 +96,18 @@ test.describe('SVG Editor Mobile and Touch E2E Tests', () => {
         { clientX: 250, clientY: 350, identifier: 0 }
       ]
     });
-    
+
     // Give a moment for the transform to be applied
     await page.waitForTimeout(100);
-    
+
     // Check that the transform has changed (indicating panning occurred)
-    const finalTransform = await svgContainer.evaluate(el => 
+    const finalTransform = await svgContainer.evaluate(el =>
       window.getComputedStyle(el).transform
     );
-    
+
     // The transform should have changed from the initial state
     expect(finalTransform).not.toBe(initialTransform);
-    
+
     // SVG should still be visible and functional
     await expect(svgContainer).toBeVisible();
   });
@@ -115,14 +115,14 @@ test.describe('SVG Editor Mobile and Touch E2E Tests', () => {
   test('should work well on tablet size', async ({ page }) => {
     // Set tablet viewport
     await page.setViewportSize({ width: 768, height: 1024 });
-    
+
     // Check layout adaptation
     await expect(page.getByRole('main')).toBeVisible();
     await expect(page.getByRole('complementary')).toBeVisible();
-    
+
     // Test flip screen functionality on tablet
     await page.locator('#flip').click();
-    
+
     // Should toggle layout
     const body = page.locator('body');
     await expect(body).toBeVisible();
@@ -132,12 +132,12 @@ test.describe('SVG Editor Mobile and Touch E2E Tests', () => {
     // Portrait mode
     await page.setViewportSize({ width: 375, height: 667 });
     await expect(page.getByRole('main')).toBeVisible();
-    
+
     // Landscape mode
     await page.setViewportSize({ width: 667, height: 375 });
     await expect(page.getByRole('main')).toBeVisible();
     await expect(page.getByRole('complementary')).toBeVisible();
-    
+
     // Should still be usable in landscape
     await page.locator('#rotate').click({ force: true });
     await expect(page.getByRole('main')).toBeVisible();
@@ -146,15 +146,15 @@ test.describe('SVG Editor Mobile and Touch E2E Tests', () => {
   test('should support touch scrolling', async ({ page }) => {
     // Set a smaller viewport to force scrolling
     await page.setViewportSize({ width: 320, height: 480 });
-    
+
     // Check that content is scrollable
     const editor = page.locator('#editor');
     await expect(editor).toBeVisible();
-    
+
     // Simulate touch scroll
     await editor.hover();
     await page.mouse.wheel(0, 100);
-    
+
     // Should still be interactive
     await expect(editor).toBeVisible();
   });
@@ -167,20 +167,20 @@ test.describe('SVG Editor Performance E2E Tests', () => {
 
   test('should load quickly', async ({ page }) => {
     const startTime = Date.now();
-    
+
     // Wait for essential elements to load
     await expect(page.getByRole('main')).toBeVisible();
     await expect(page.getByRole('complementary')).toBeVisible();
-    
+
     const loadTime = Date.now() - startTime;
-    
+
     // Should load within reasonable time (3 seconds)
     expect(loadTime).toBeLessThan(3000);
   });
 
   test('should handle rapid interactions smoothly', async ({ page }) => {
     const startTime = Date.now();
-    
+
     // Perform rapid sequence of operations
     for (let i = 0; i < 5; i++) {
       await page.locator('#rotate').click();
@@ -188,12 +188,12 @@ test.describe('SVG Editor Performance E2E Tests', () => {
       await page.locator('#zoomin').click();
       await page.locator('#zoomout').click();
     }
-    
+
     const interactionTime = Date.now() - startTime;
-    
+
     // Should complete interactions smoothly
     expect(interactionTime).toBeLessThan(2000);
-    
+
     // Application should still be responsive
     await expect(page.getByRole('main')).toBeVisible();
   });
@@ -201,7 +201,7 @@ test.describe('SVG Editor Performance E2E Tests', () => {
   test('should handle large SVG content efficiently', async ({ page }) => {
     // Create complex SVG
     const complexSVG = `<svg width="500" height="500" viewBox="0 0 500 500">
-      ${Array.from({ length: 50 }, (_, i) => 
+      ${Array.from({ length: 50 }, (_, i) =>
         `<g transform="translate(${i * 10}, ${i * 10})">
           <rect width="30" height="30" fill="hsl(${i * 7}, 70%, 50%)" />
           <circle cx="15" cy="15" r="10" fill="white" opacity="0.7" />
@@ -209,13 +209,13 @@ test.describe('SVG Editor Performance E2E Tests', () => {
         </g>`
       ).join('')}
     </svg>`;
-    
+
     const startTime = Date.now();
-    
+
     // Input complex content efficiently
     const editor = page.locator('#editor .cm-content');
     await editor.click();
-    
+
     // Use direct editor manipulation instead of slow character-by-character typing
     await page.evaluate((content) => {
       const svgEditor = (window as any).svgEditor;
@@ -230,15 +230,15 @@ test.describe('SVG Editor Performance E2E Tests', () => {
         svgEditor.editor.dispatch(transaction);
       }
     }, complexSVG);
-    
+
     // Wait for preview to update
     await page.waitForTimeout(1000);
-    
+
     const updateTime = Date.now() - startTime;
-    
+
     // Should handle complex content reasonably quickly
     expect(updateTime).toBeLessThan(5000);
-    
+
     // Should still be responsive
     await expect(page.getByRole('complementary')).toBeVisible();
   });
@@ -248,20 +248,20 @@ test.describe('SVG Editor Performance E2E Tests', () => {
     for (let i = 0; i < 20; i++) {
       // Toggle dark mode
       await page.locator('#dark').click();
-      
+
       // Rotate
       await page.locator('#rotate').click();
-      
+
       // Zoom operations
       await page.locator('#zoomin').click();
       await page.locator('#zoomout').click();
-      
+
       // Every 5 iterations, check responsiveness
       if (i % 5 === 0) {
         await expect(page.getByRole('main')).toBeVisible();
       }
     }
-    
+
     // Final responsiveness check
     await expect(page.getByRole('main')).toBeVisible();
     await expect(page.getByRole('complementary')).toBeVisible();
@@ -280,15 +280,15 @@ test.describe('SVG Editor Cross-Browser Compatibility E2E Tests', () => {
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15',
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0'
     ];
-    
+
     for (const userAgent of userAgents) {
       await page.setExtraHTTPHeaders({ 'User-Agent': userAgent });
       await page.reload();
-      
+
       // Should work regardless of user agent
       await expect(page.getByRole('main')).toBeVisible();
       await expect(page.getByRole('complementary')).toBeVisible();
-      
+
       // Test basic functionality
       await page.locator('#dark').click();
       await page.locator('#rotate').click();
@@ -298,14 +298,14 @@ test.describe('SVG Editor Cross-Browser Compatibility E2E Tests', () => {
   test('should handle different screen densities', async ({ page }) => {
     // Test with different device pixel ratios
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    
+
     // Should respect reduced motion preferences
     await expect(page.getByRole('main')).toBeVisible();
-    
+
     // Test with high DPI
     await page.setViewportSize({ width: 1920, height: 1080 });
     await expect(page.getByRole('main')).toBeVisible();
-    
+
     // Test with low DPI
     await page.setViewportSize({ width: 800, height: 600 });
     await expect(page.getByRole('main')).toBeVisible();
@@ -318,9 +318,9 @@ test.describe('SVG Editor Cross-Browser Compatibility E2E Tests', () => {
       delete (window as any).localStorage;
       delete (window as any).sessionStorage;
     });
-    
+
     await page.reload();
-    
+
     // Should still load basic functionality
     await expect(page.getByRole('main')).toBeVisible();
     await expect(page.getByRole('complementary')).toBeVisible();
@@ -329,19 +329,19 @@ test.describe('SVG Editor Cross-Browser Compatibility E2E Tests', () => {
   test('should handle different color schemes', async ({ page }) => {
     // Test with dark color scheme preference
     await page.emulateMedia({ colorScheme: 'dark' });
-    
+
     // Should respect system color scheme
     await expect(page.getByRole('main')).toBeVisible();
-    
+
     // Test with light color scheme
     await page.emulateMedia({ colorScheme: 'light' });
-    
+
     // Should work with light scheme
     await expect(page.getByRole('main')).toBeVisible();
-    
+
     // Test with no preference
     await page.emulateMedia({ colorScheme: null });
-    
+
     // Should work without preference
     await expect(page.getByRole('main')).toBeVisible();
   });
@@ -356,18 +356,18 @@ test.describe('SVG Editor Integration E2E Tests', () => {
     // Change editor content and verify preview updates
     const editor = page.locator('#editor .cm-content');
     await editor.click();
-    
+
     // Clear existing content
     await page.keyboard.press('Control+a');
-    
+
     // Add new SVG content
     const newSVG = '<svg width="200" height="200"><circle cx="100" cy="100" r="50" fill="red"/></svg>';
     await page.keyboard.type(newSVG);
-    
+
     // Preview should update
     const preview = page.locator('#preview');
     await expect(preview).toBeVisible();
-    
+
     // Check that SVG is rendered in preview
     const svgInPreview = preview.locator('.svg-preview-wrapper svg');
     if (await svgInPreview.count() > 0) {
@@ -377,59 +377,59 @@ test.describe('SVG Editor Integration E2E Tests', () => {
 
   test('should maintain state across operations', async ({ page }) => {
     // Perform a series of operations and verify state is maintained
-    
+
     // Start with dark mode
     await page.locator('#dark').click();
     const body = page.locator('body');
-    
+
     // Check dark mode is applied
     // Note: In real implementation, would check actual CSS classes
-    
+
     // Rotate SVG
     await page.locator('#rotate').click();
-    
+
     // Zoom in
     await page.locator('#zoomin').click();
-    
+
     // Flip layout
     await page.locator('#flip').click();
-    
+
     // All operations should be preserved
     await expect(page.getByRole('main')).toBeVisible();
     await expect(page.getByRole('complementary')).toBeVisible();
-    
+
     // State should be consistent
     // In real implementation, would verify transform states, etc.
   });
 
   test('should handle complex user workflows', async ({ page }) => {
     // Simulate a complete user workflow
-    
+
     // 1. User opens resolution modal
     await page.locator('#resolution').click();
     const modal = page.locator('dialog');
     await expect(modal).toBeVisible();
-    
+
     // 2. User changes dimensions
     await modal.locator('#width').fill('300');
     await modal.locator('#height').fill('400');
     await modal.locator('#resize').click();
-    
+
     // 3. User rotates the SVG
     await page.locator('#rotate').click();
-    
+
     // 4. User flips horizontally
     await page.locator('#flipx').click();
-    
+
     // 5. User zooms in
     await page.locator('#zoomin').click();
-    
+
     // 6. User toggles dark mode
     await page.locator('#dark').click();
-    
+
     // 7. User toggles layout
     await page.locator('#flip').click();
-    
+
     // Application should handle the complete workflow smoothly
     await expect(page.getByRole('main')).toBeVisible();
     await expect(page.getByRole('complementary')).toBeVisible();

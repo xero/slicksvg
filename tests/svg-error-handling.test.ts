@@ -71,13 +71,13 @@ describe('SVGEditor Error Handling and Edge Cases', () => {
 
       // Test missing ID
       expect(() => get('nonexistent')).toThrow('Element #nonexistent not found');
-      
+
       // Test missing selector
       expect(() => getTyped('#missing-element')).toThrow('Element #missing-element was not found');
-      
+
       // Test empty selector - should catch browser error
       expect(() => getTyped('')).toThrow();
-      
+
       // Test malformed selector
       expect(() => getTyped('invalid selector')).toThrow();
     });
@@ -103,10 +103,10 @@ describe('SVGEditor Error Handling and Edge Cases', () => {
       const validateFileType = (file: { type: string, name: string }) => {
         const allowedTypes = ['image/svg+xml', 'text/xml', 'application/xml'];
         const allowedExtensions = ['.svg'];
-        
+
         const isValidType = allowedTypes.includes(file.type);
         const isValidExtension = allowedExtensions.some(ext => file.name.toLowerCase().endsWith(ext));
-        
+
         return isValidType || isValidExtension;
       };
 
@@ -125,38 +125,38 @@ describe('SVGEditor Error Handling and Edge Cases', () => {
       const handleFileUpload = (file: File) => {
         return new Promise((resolve, reject) => {
           const reader = new FileReader();
-          
+
           reader.onload = (e) => {
             try {
               const content = e.target?.result as string;
               if (!content) {
                 throw new Error('File content is empty');
               }
-              
+
               if (!content.includes('<svg')) {
                 throw new Error('File does not contain valid SVG content');
               }
-              
+
               resolve({ success: true, content });
             } catch (error) {
               reject({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
             }
           };
-          
+
           reader.onerror = () => {
             reject({ success: false, error: 'Failed to read file' });
           };
-          
+
           reader.readAsText(file);
         });
       };
 
       // Test with valid SVG content
       const validSVGFile = new File(['<svg><rect/></svg>'], 'test.svg', { type: 'image/svg+xml' });
-      
+
       // Test with invalid content
       const invalidFile = new File(['Not SVG content'], 'test.txt', { type: 'text/plain' });
-      
+
       // Test with empty file
       const emptyFile = new File([''], 'empty.svg', { type: 'image/svg+xml' });
 
@@ -170,20 +170,20 @@ describe('SVGEditor Error Handling and Edge Cases', () => {
       const handleDragAndDrop = (dataTransfer: { files?: FileList | null }) => {
         try {
           const files = dataTransfer.files;
-          
+
           if (!files || files.length === 0) {
             throw new Error('No files provided');
           }
-          
+
           if (files.length > 1) {
             throw new Error('Multiple files not supported');
           }
-          
+
           const file = files[0];
           if (!file) {
             throw new Error('Invalid file');
           }
-          
+
           return { success: true, file };
         } catch (error) {
           return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
@@ -216,27 +216,27 @@ describe('SVGEditor Error Handling and Edge Cases', () => {
           if (!content || typeof content !== 'string') {
             throw new Error('Invalid content type');
           }
-          
+
           if (!content.trim()) {
             throw new Error('Empty content');
           }
-          
+
           if (!content.includes('<svg')) {
             throw new Error('Not an SVG file');
           }
-          
+
           // Check for matching tags
           const svgOpenMatch = content.match(/<svg[^>]*>/g);
           const svgCloseMatch = content.match(/<\/svg>/g);
-          
+
           if (!svgOpenMatch || !svgCloseMatch) {
             throw new Error('Malformed SVG: missing opening or closing svg tag');
           }
-          
+
           if (svgOpenMatch.length !== svgCloseMatch.length) {
             throw new Error('Malformed SVG: mismatched svg tags');
           }
-          
+
           return { success: true, content };
         } catch (error) {
           console.error('SVG parsing failed:', error);
@@ -277,30 +277,30 @@ describe('SVGEditor Error Handling and Edge Cases', () => {
           if (!svgCode || typeof svgCode !== 'string') {
             throw new Error('Invalid SVG code');
           }
-          
+
           if (!transformData) {
             throw new Error('No transform data provided');
           }
-          
+
           // Simulate transform application
           let transformedSVG = svgCode;
-          
+
           // Check if SVG tag exists
           if (!transformedSVG.includes('<svg')) {
             throw new Error('SVG tag not found');
           }
-          
+
           // Apply transforms (simplified)
           const { width, height, rotation, flipX, flipY } = transformData;
-          
+
           if (width < 0 || height < 0) {
             throw new Error('Invalid dimensions: width and height must be positive');
           }
-          
+
           if (rotation && (rotation < 0 || rotation >= 360)) {
             throw new Error('Invalid rotation: must be between 0 and 359 degrees');
           }
-          
+
           return { success: true, transformedSVG };
         } catch (error) {
           console.error('SVG transformation failed:', error);
@@ -346,21 +346,21 @@ describe('SVGEditor Error Handling and Edge Cases', () => {
   describe('Modal Dialog Error Handling', () => {
     it('should handle modal state errors gracefully', () => {
       const dialog = document.querySelector('dialog') as HTMLDialogElement;
-      
+
       // Mock missing showModal method
       const originalShowModal = dialog.showModal;
       delete (dialog as any).showModal;
-      
+
       const safeModalShow = () => {
         try {
           if (!dialog) {
             throw new Error('Modal element not found');
           }
-          
+
           if (typeof dialog.showModal !== 'function') {
             throw new Error('showModal method not supported');
           }
-          
+
           dialog.showModal();
           return { success: true };
         } catch (error) {
@@ -372,7 +372,7 @@ describe('SVGEditor Error Handling and Edge Cases', () => {
       const result = safeModalShow();
       expect(result.success).toBe(false);
       expect(result.error).toBe('showModal method not supported');
-      
+
       // Restore original method
       dialog.showModal = originalShowModal;
     });
@@ -381,26 +381,26 @@ describe('SVGEditor Error Handling and Edge Cases', () => {
       const validateModalInputs = () => {
         const widthInput = document.getElementById('width') as HTMLInputElement;
         const heightInput = document.getElementById('height') as HTMLInputElement;
-        
+
         if (!widthInput || !heightInput) {
           return { valid: false, error: 'Required input elements not found' };
         }
-        
+
         const width = parseInt(widthInput.value);
         const height = parseInt(heightInput.value);
-        
+
         if (isNaN(width) || width <= 0) {
           return { valid: false, error: 'Width must be a positive number' };
         }
-        
+
         if (isNaN(height) || height <= 0) {
           return { valid: false, error: 'Height must be a positive number' };
         }
-        
+
         if (width > 10000 || height > 10000) {
           return { valid: false, error: 'Dimensions too large (max 10000)' };
         }
-        
+
         return { valid: true, width, height };
       };
 
@@ -446,7 +446,7 @@ describe('SVGEditor Error Handling and Edge Cases', () => {
           if (!element) {
             throw new Error(`Element with id "${id}" not found`);
           }
-          
+
           element.addEventListener(eventType, handler);
           return { success: true };
         } catch (error) {
@@ -499,13 +499,13 @@ describe('SVGEditor Error Handling and Edge Cases', () => {
           if (content.length > maxSize) {
             return { valid: false, error: `SVG too large (${content.length} bytes, max ${maxSize})` };
           }
-          
+
           // Count elements (rough complexity check)
           const elementCount = (content.match(/<[^/][^>]*>/g) || []).length;
           if (elementCount > 10000) {
             return { valid: false, error: `SVG too complex (${elementCount} elements, max 10000)` };
           }
-          
+
           return { valid: true };
         } catch (error) {
           return { valid: false, error: 'Failed to validate SVG size' };
@@ -532,12 +532,12 @@ describe('SVGEditor Error Handling and Edge Cases', () => {
     it('should handle cleanup operations', () => {
       const createCleanupManager = () => {
         const listeners: Array<{ element: HTMLElement, type: string, handler: () => void }> = [];
-        
+
         const addListener = (element: HTMLElement, type: string, handler: () => void) => {
           element.addEventListener(type, handler);
           listeners.push({ element, type, handler });
         };
-        
+
         const cleanup = () => {
           try {
             listeners.forEach(({ element, type, handler }) => {
@@ -552,7 +552,7 @@ describe('SVGEditor Error Handling and Edge Cases', () => {
             return { success: false, error: error instanceof Error ? error.message : 'Cleanup failed' };
           }
         };
-        
+
         return { addListener, cleanup, getListenerCount: () => listeners.length };
       };
 

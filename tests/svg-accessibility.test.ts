@@ -131,11 +131,11 @@ describe('SVGEditor Accessibility and Integration Tests', () => {
 
     it('should support keyboard navigation', () => {
       const buttons = document.querySelectorAll('button');
-      
+
       buttons.forEach(button => {
         // Buttons should be focusable by default
         expect(button.tabIndex).toBeGreaterThanOrEqual(0);
-        
+
         // Should have accessible text content or aria-label
         const hasText = button.textContent?.trim();
         const hasAriaLabel = button.getAttribute('aria-label');
@@ -189,7 +189,7 @@ describe('SVGEditor Accessibility and Integration Tests', () => {
 
       const focusManager = createFocusManager();
       const button = document.getElementById('upload') as HTMLElement;
-      
+
       button.focus = vi.fn();
       button.blur = vi.fn();
 
@@ -204,16 +204,16 @@ describe('SVGEditor Accessibility and Integration Tests', () => {
 
         const announce = (message: string, priority: 'polite' | 'assertive' = 'polite') => {
           announcements.push(message);
-          
+
           // In a real implementation, this would create a live region
           const liveRegion = document.createElement('div');
           liveRegion.setAttribute('aria-live', priority);
           liveRegion.setAttribute('aria-atomic', 'true');
           liveRegion.className = 'sr-only'; // Screen reader only
           liveRegion.textContent = message;
-          
+
           document.body.appendChild(liveRegion);
-          
+
           // Clean up after announcement
           setTimeout(() => {
             if (liveRegion.parentNode) {
@@ -229,14 +229,14 @@ describe('SVGEditor Accessibility and Integration Tests', () => {
       };
 
       const announcer = createA11yAnnouncer();
-      
+
       announcer.announce('SVG loaded successfully');
       announcer.announce('Error: Invalid SVG format', 'assertive');
-      
+
       const announcements = announcer.getAnnouncements();
       expect(announcements).toContain('SVG loaded successfully');
       expect(announcements).toContain('Error: Invalid SVG format');
-      
+
       // Check that live regions are created
       const liveRegions = document.querySelectorAll('[aria-live]');
       expect(liveRegions.length).toBeGreaterThan(0);
@@ -284,21 +284,21 @@ describe('SVGEditor Accessibility and Integration Tests', () => {
 
       const applyAllTransforms = () => {
         const transforms = [];
-        
+
         if (zoomLevel !== 1) {
           transforms.push(`scale(${zoomLevel})`);
         }
-        
+
         if (rotationDegrees !== 0) {
           transforms.push(`rotate(${rotationDegrees}deg)`);
         }
-        
+
         if (flipX || flipY) {
           const scaleX = flipX ? -1 : 1;
           const scaleY = flipY ? -1 : 1;
           transforms.push(`scale(${scaleX}, ${scaleY})`);
         }
-        
+
         return transforms.join(' ');
       };
 
@@ -578,7 +578,7 @@ describe('SVGEditor Accessibility and Integration Tests', () => {
           flipY: boolean
         ) => {
           const key = `${zoomLevel}-${panX}-${panY}-${rotation}-${flipX}-${flipY}`;
-          
+
           // Check cache first
           if (transformCache.has(key)) {
             return { transform: transformCache.get(key)!, fromCache: true };
@@ -586,19 +586,19 @@ describe('SVGEditor Accessibility and Integration Tests', () => {
 
           // Calculate transform
           const transforms = [];
-          
+
           if (zoomLevel !== 1) {
             transforms.push(`scale(${zoomLevel})`);
           }
-          
+
           if (panX !== 0 || panY !== 0) {
             transforms.push(`translate(${panX}px, ${panY}px)`);
           }
-          
+
           if (rotation !== 0) {
             transforms.push(`rotate(${rotation}deg)`);
           }
-          
+
           if (flipX || flipY) {
             const scaleX = flipX ? -1 : 1;
             const scaleY = flipY ? -1 : 1;
@@ -606,10 +606,10 @@ describe('SVGEditor Accessibility and Integration Tests', () => {
           }
 
           const transform = transforms.join(' ');
-          
+
           // Cache result
           transformCache.set(key, transform);
-          
+
           // Limit cache size
           if (transformCache.size > 100) {
             const firstKey = transformCache.keys().next().value;

@@ -65,27 +65,27 @@ describe('SVG Editor Linting Functionality', () => {
 		it('should validate well-formed SVG without errors', () => {
 			const parser = new DOMParser();
 			const validSVG = '<svg xmlns="http://www.w3.org/2000/svg"><rect width="100" height="100"/></svg>';
-			
+
 			const doc = parser.parseFromString(validSVG, 'image/svg+xml');
 			const parserError = doc.querySelector('parsererror');
-			
+
 			expect(parserError).toBeNull();
 		});
 
 		it('should detect malformed XML in SVG', () => {
 			const parser = new DOMParser();
 			const malformedSVG = '<svg><rect width="100" height="100"></svg>'; // Missing closing rect tag
-			
+
 			const doc = parser.parseFromString(malformedSVG, 'image/svg+xml');
 			const parserError = doc.querySelector('parsererror');
-			
+
 			expect(parserError).not.toBeNull();
 			if (parserError) {
 				const errorText = parserError.textContent?.toLowerCase() || '';
 				// Check for common error indicators
 				expect(
-					errorText.includes('error') || 
-					errorText.includes('unexpected') || 
+					errorText.includes('error') ||
+					errorText.includes('unexpected') ||
 					errorText.includes('parse') ||
 					errorText.includes('close tag')
 				).toBe(true);
@@ -95,17 +95,17 @@ describe('SVG Editor Linting Functionality', () => {
 		it('should detect invalid XML syntax', () => {
 			const parser = new DOMParser();
 			const invalidXML = '<svg><rect width="100" height="100" <invalid></svg>';
-			
+
 			const doc = parser.parseFromString(invalidXML, 'image/svg+xml');
 			const parserError = doc.querySelector('parsererror');
-			
+
 			expect(parserError).not.toBeNull();
 		});
 
 		it('should handle empty content gracefully', () => {
 			const parser = new DOMParser();
 			const emptyContent = '';
-			
+
 			// Empty content should not cause errors, just return empty diagnostics
 			expect(() => {
 				const doc = parser.parseFromString(emptyContent, 'image/svg+xml');
@@ -117,30 +117,30 @@ describe('SVG Editor Linting Functionality', () => {
 		it('should detect unclosed tags', () => {
 			const parser = new DOMParser();
 			const unClosedTags = '<svg><circle cx="50" cy="50" r="25"></svg>'; // Missing circle closing tag
-			
+
 			const doc = parser.parseFromString(unClosedTags, 'image/svg+xml');
 			const parserError = doc.querySelector('parsererror');
-			
+
 			expect(parserError).not.toBeNull();
 		});
 
 		it('should validate SVG with special characters', () => {
 			const parser = new DOMParser();
 			const svgWithSpecialChars = '<svg><text>&lt;&gt;&amp;</text></svg>';
-			
+
 			const doc = parser.parseFromString(svgWithSpecialChars, 'image/svg+xml');
 			const parserError = doc.querySelector('parsererror');
-			
+
 			expect(parserError).toBeNull();
 		});
 
 		it('should detect invalid attribute syntax', () => {
 			const parser = new DOMParser();
 			const invalidAttributes = '<svg><rect width=100 height="100"/></svg>'; // Missing quotes
-			
+
 			const doc = parser.parseFromString(invalidAttributes, 'image/svg+xml');
 			const parserError = doc.querySelector('parsererror');
-			
+
 			// Note: Some browsers are more lenient with attribute quotes
 			// This test mainly ensures the parser doesn't crash
 			expect(typeof parserError === 'object').toBe(true);
@@ -151,10 +151,10 @@ describe('SVG Editor Linting Functionality', () => {
 		it('should extract meaningful error messages', () => {
 			const parser = new DOMParser();
 			const malformedSVG = '<svg><rect></svg>';
-			
+
 			const doc = parser.parseFromString(malformedSVG, 'image/svg+xml');
 			const parserError = doc.querySelector('parsererror');
-			
+
 			if (parserError && parserError.textContent) {
 				const message = parserError.textContent;
 				expect(message.length).toBeGreaterThan(0);
@@ -172,10 +172,10 @@ describe('SVG Editor Linting Functionality', () => {
 					</g>
 				</svg>
 			`; // Missing closing rect tag
-			
+
 			const doc = parser.parseFromString(complexMalformed, 'image/svg+xml');
 			const parserError = doc.querySelector('parsererror');
-			
+
 			expect(parserError).not.toBeNull();
 		});
 	});
@@ -184,11 +184,11 @@ describe('SVG Editor Linting Functionality', () => {
 		it('should handle large SVG content efficiently', () => {
 			const parser = new DOMParser();
 			const largeSVG = '<svg>' + '<rect/>'.repeat(1000) + '</svg>';
-			
+
 			const startTime = performance.now();
 			const doc = parser.parseFromString(largeSVG, 'image/svg+xml');
 			const endTime = performance.now();
-			
+
 			// Should complete parsing in reasonable time (less than 100ms)
 			expect(endTime - startTime).toBeLessThan(100);
 			expect(doc.querySelector('parsererror')).toBeNull();
@@ -197,7 +197,7 @@ describe('SVG Editor Linting Functionality', () => {
 		it('should handle malformed large content', () => {
 			const parser = new DOMParser();
 			const largeMalformed = '<svg>' + '<rect>'.repeat(100) + '</svg>'; // Missing closing tags
-			
+
 			expect(() => {
 				const doc = parser.parseFromString(largeMalformed, 'image/svg+xml');
 				doc.querySelector('parsererror');
@@ -207,10 +207,10 @@ describe('SVG Editor Linting Functionality', () => {
 		it('should handle special XML entities', () => {
 			const parser = new DOMParser();
 			const svgWithEntities = '<svg><text>Test &amp; &lt; &gt; &quot; &#39;</text></svg>';
-			
+
 			const doc = parser.parseFromString(svgWithEntities, 'image/svg+xml');
 			const parserError = doc.querySelector('parsererror');
-			
+
 			expect(parserError).toBeNull();
 		});
 	});

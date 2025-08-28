@@ -59,16 +59,16 @@ test.describe('SVG Editor Linting', () => {
 		// Instead of checking for zero error markers (which has timing issues),
 		// verify that the SVG is actually valid and renders correctly
 		await expect(page.locator('.svg-preview-wrapper svg rect')).toHaveAttribute('fill', 'blue');
-		
+
 		// Also verify that new typing doesn't create additional errors
 		await editor.click();
 		await page.keyboard.press('End'); // Go to end of content
 		await page.keyboard.type(' '); // Add a space
 		await page.keyboard.press('Backspace'); // Remove the space
-		
+
 		// Wait a moment for any potential linting
 		await page.waitForTimeout(1000);
-		
+
 		// The preview should still work correctly with valid content
 		await expect(page.locator('.svg-preview-wrapper svg rect')).toHaveAttribute('fill', 'blue');
 	});
@@ -219,16 +219,16 @@ test.describe('SVG Editor Linting', () => {
 
 		// Verify preview updates
 		await expect(page.locator('svg circle')).toHaveAttribute('fill', 'blue');
-		
+
 		// Verify linting doesn't interfere with basic editing functionality
 		await editor.click();
 		await page.keyboard.press('End');
 		await page.keyboard.type(' '); // Add a space
 		await page.keyboard.press('Backspace'); // Remove the space
-		
+
 		// Preview should still work correctly
 		await expect(page.locator('svg circle')).toHaveAttribute('fill', 'blue');
-		
+
 		// Verify the content is still editable
 		await editor.click();
 		await page.keyboard.press('Control+a');

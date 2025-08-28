@@ -12,7 +12,7 @@ describe('SVG Transform and Parsing', () => {
         if (!transformMatch) return { rotationDegrees, flipX, flipY };
 
         const transform = transformMatch[1];
-        
+
         // Parse rotation
         const rotateMatch = transform.match(/rotate\(([^)]+)\)/);
         if (rotateMatch) {
@@ -63,13 +63,13 @@ describe('SVG Transform and Parsing', () => {
     it('should build transform attributes correctly', () => {
       const buildTransformAttribute = (width: number, height: number, rotationDegrees: number, flipX: boolean, flipY: boolean) => {
         const transforms = [];
-        
+
         if (rotationDegrees !== 0) {
           const centerX = width / 2;
           const centerY = height / 2;
           transforms.push(`rotate(${rotationDegrees} ${centerX} ${centerY})`);
         }
-        
+
         if (flipX || flipY) {
           const scaleX = flipX ? -1 : 1;
           const scaleY = flipY ? -1 : 1;
@@ -79,7 +79,7 @@ describe('SVG Transform and Parsing', () => {
           transforms.push(`scale(${scaleX} ${scaleY})`);
           transforms.push(`translate(${-centerX} ${-centerY})`);
         }
-        
+
         return transforms.length > 0 ? transforms.join(' ') : '';
       };
 
@@ -114,16 +114,16 @@ describe('SVG Transform and Parsing', () => {
 
       // Test multiple rotations
       expect(rotationDegrees).toBe(0);
-      
+
       rotateSVG();
       expect(rotationDegrees).toBe(90);
-      
+
       rotateSVG();
       expect(rotationDegrees).toBe(180);
-      
+
       rotateSVG();
       expect(rotationDegrees).toBe(270);
-      
+
       rotateSVG();
       expect(rotationDegrees).toBe(0); // Full circle
     });
@@ -251,7 +251,7 @@ describe('SVG Transform and Parsing', () => {
       // Test updating existing dimensions
       const originalSVG = '<svg width="100" height="200" viewBox="0 0 100 200"><rect/></svg>';
       const updatedSVG = updateSVGDimensions(originalSVG, 300, 400);
-      
+
       expect(updatedSVG).toContain('width="300"');
       expect(updatedSVG).toContain('height="400"');
       expect(updatedSVG).toContain('viewBox="0 0 300 400"');
@@ -259,7 +259,7 @@ describe('SVG Transform and Parsing', () => {
       // Test adding dimensions to SVG without them
       const svgNoDimensions = '<svg><rect/></svg>';
       const addedDimensions = updateSVGDimensions(svgNoDimensions, 150, 250);
-      
+
       expect(addedDimensions).toContain('width="150"');
       expect(addedDimensions).toContain('height="250"');
       expect(addedDimensions).toContain('viewBox="0 0 150 250"');
@@ -300,7 +300,7 @@ describe('SVG Transform and Parsing', () => {
           if (!content.includes('<svg')) {
             throw new Error('Not an SVG file');
           }
-          
+
           return { success: true, error: null };
         } catch (error) {
           return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
@@ -327,21 +327,21 @@ describe('SVG Transform and Parsing', () => {
         try {
           // Clean the SVG code
           const cleanedSVG = svgCode.trim();
-          
+
           // Basic validation
           if (!cleanedSVG.includes('<svg')) {
             throw new Error('Not a valid SVG');
           }
-          
+
           // Create a wrapper div
           const previewWrapper = {
             innerHTML: cleanedSVG,
-            querySelector: vi.fn().mockReturnValue({ 
+            querySelector: vi.fn().mockReturnValue({
               style: {},
               setAttribute: vi.fn()
             })
           };
-          
+
           return { success: true, preview: previewWrapper };
         } catch (error) {
           return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
@@ -364,22 +364,22 @@ describe('SVG Transform and Parsing', () => {
     it('should apply SVG styles correctly', () => {
       const applySVGStyles = (svg: any, zoomLevel: number, panX: number, panY: number, rotationDegrees: number, flipX: boolean, flipY: boolean) => {
         const styles = [];
-        
+
         // Apply zoom
         if (zoomLevel !== 1) {
           styles.push(`scale(${zoomLevel})`);
         }
-        
+
         // Apply pan
         if (panX !== 0 || panY !== 0) {
           styles.push(`translate(${panX}px, ${panY}px)`);
         }
-        
+
         // Apply rotation
         if (rotationDegrees !== 0) {
           styles.push(`rotate(${rotationDegrees}deg)`);
         }
-        
+
         // Apply flips
         let scaleTransform = '';
         if (flipX || flipY) {
@@ -388,10 +388,10 @@ describe('SVG Transform and Parsing', () => {
           scaleTransform = `scale(${scaleX}, ${scaleY})`;
           styles.push(scaleTransform);
         }
-        
+
         const transformValue = styles.join(' ');
         svg.style.transform = transformValue;
-        
+
         return transformValue;
       };
 

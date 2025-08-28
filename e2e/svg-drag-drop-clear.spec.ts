@@ -124,7 +124,7 @@ test.describe('SVG Drag and Drop Content Clearing', () => {
     // Check that we can zoom in again from the reset state
     // If state was properly reset, we should be able to zoom in from level 1
     await page.locator('#zoomin').click();
-    
+
     // The editor should still be functional
     await expect(editor).toBeVisible();
   });

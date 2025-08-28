@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 
 describe('Pinch Zoom Functionality', () => {
   // Test the mathematical calculations that power the pinch zoom
-  
+
   it('should calculate correct distance between two touch points', () => {
     const calculatePinchDistance = (touch1: {clientX: number, clientY: number}, touch2: {clientX: number, clientY: number}): number => {
       const dx = touch1.clientX - touch2.clientX;
@@ -36,7 +36,7 @@ describe('Pinch Zoom Functionality', () => {
     const initialDistance = 100;
     const newDistance = 200;
     const scale = newDistance / initialDistance;
-    
+
     expect(scale).toBe(2.0); // Should double the zoom
   });
 
@@ -47,10 +47,10 @@ describe('Pinch Zoom Functionality', () => {
 
     // Test minimum limit
     expect(applyZoomLimits(0.05)).toBe(0.1);
-    
-    // Test maximum limit  
+
+    // Test maximum limit
     expect(applyZoomLimits(100)).toBe(50);
-    
+
     // Test normal value
     expect(applyZoomLimits(2.5)).toBe(2.5);
   });
@@ -59,10 +59,10 @@ describe('Pinch Zoom Functionality', () => {
     const initialZoomLevel = 1.0;
     const initialPinchDistance = 100;
     const currentPinchDistance = 150;
-    
+
     const scale = currentPinchDistance / initialPinchDistance;
     const newZoomLevel = initialZoomLevel * scale;
-    
+
     expect(scale).toBe(1.5);
     expect(newZoomLevel).toBe(1.5);
   });

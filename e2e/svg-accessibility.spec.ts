@@ -9,7 +9,7 @@ test.describe('SVG Editor Accessibility E2E Tests', () => {
     // Check for main landmarks
     await expect(page.getByRole('main')).toBeVisible();
     await expect(page.getByRole('complementary')).toBeVisible();
-    
+
     // Check aria-labels
     await expect(page.getByRole('main')).toHaveAttribute('aria-label', 'SVG Code Editor');
     await expect(page.getByRole('complementary')).toHaveAttribute('aria-label', 'SVG Preview');
@@ -19,11 +19,11 @@ test.describe('SVG Editor Accessibility E2E Tests', () => {
     // Tab through all interactive elements using their IDs for more reliable selection
     const interactiveElements = [
       '#upload',
-      '#resolution', 
+      '#resolution',
       '#optimize',
       '#rotate',
       '#flipx',
-      '#flipy', 
+      '#flipy',
       '#dark',
       '#flip',
       '#zoomin',
@@ -54,9 +54,9 @@ test.describe('SVG Editor Accessibility E2E Tests', () => {
     for (const { selector, expectedLabel } of buttonLabels) {
       const button = page.locator(selector);
       await expect(button).toBeVisible();
-      
+
       // Check accessible name (aria-label, aria-labelledby, or text content)
-      const accessibleName = await button.getAttribute('aria-label') || 
+      const accessibleName = await button.getAttribute('aria-label') ||
                              await button.textContent() || '';
       expect(accessibleName).toMatch(expectedLabel);
     }
@@ -65,15 +65,15 @@ test.describe('SVG Editor Accessibility E2E Tests', () => {
   test('should support high contrast mode', async ({ page }) => {
     // Toggle dark mode
     await page.locator('#dark').click();
-    
+
     // Check that body has dark class
     await expect(page.locator('body')).toHaveClass(/dark/);
-    
+
     // Verify contrast by checking computed styles would be different
-    const bodyBg = await page.locator('body').evaluate((el) => 
+    const bodyBg = await page.locator('body').evaluate((el) =>
       getComputedStyle(el).backgroundColor
     );
-    
+
     // In dark mode, background should be dark
     expect(bodyBg).toBeTruthy();
   });
@@ -98,7 +98,7 @@ test.describe('SVG Editor Accessibility E2E Tests', () => {
           liveRegion.textContent = message;
         }
       };
-      
+
       // Add announcement for transform actions
       document.addEventListener('click', (e) => {
         const target = e.target as HTMLElement;
@@ -124,27 +124,27 @@ test.describe('SVG Editor Accessibility E2E Tests', () => {
   test('should have accessible modal dialog', async ({ page }) => {
     // Open resolution modal
     await page.locator('#resolution').click();
-    
+
     // Check modal is visible and properly labeled
     const dialog = page.locator('dialog');
     await expect(dialog).toBeVisible();
-    
+
     // Check modal has proper heading
     await expect(dialog.locator('header')).toHaveText('Change Resolution');
-    
+
     // Check form inputs have proper labels
     const widthInput = dialog.locator('#width');
     const heightInput = dialog.locator('#height');
-    
+
     await expect(widthInput).toBeVisible();
     await expect(heightInput).toBeVisible();
     await expect(widthInput).toHaveAttribute('type', 'number');
     await expect(heightInput).toHaveAttribute('type', 'number');
-    
+
     // Check buttons are accessible
     await expect(dialog.locator('#resize')).toBeVisible();
     await expect(dialog.locator('#cancel')).toBeVisible();
-    
+
     // Close modal
     await dialog.locator('#cancel').click();
     await expect(dialog).not.toBeVisible();
@@ -153,24 +153,24 @@ test.describe('SVG Editor Accessibility E2E Tests', () => {
   test('should handle focus trapping in modal', async ({ page }) => {
     // Open modal
     await page.locator('#resolution').click();
-    
+
     const dialog = page.locator('dialog');
     await expect(dialog).toBeVisible();
-    
+
     // Tab through modal elements
     const widthInput = dialog.locator('#width');
     const heightInput = dialog.locator('#height');
     const updateButton = dialog.locator('#resize');
     const cancelButton = dialog.locator('#cancel');
-    
+
     // First element should be focused (or explicitly focus it)
     await widthInput.focus();
     await expect(widthInput).toBeFocused();
-    
+
     // Tab to next element
     await page.keyboard.press('Tab');
     await expect(heightInput).toBeFocused();
-    
+
     // Tab to buttons
     await page.keyboard.press('Tab');
     await expect(updateButton).toBeFocused();
@@ -208,14 +208,14 @@ test.describe('SVG Editor Accessibility E2E Tests', () => {
         }),
       });
     });
-    
+
     // Refresh to apply the mock
     await page.reload();
-    
+
     // Verify that animations would be disabled
     // In a real implementation, this would check CSS classes or animation states
     const bodyClasses = await page.locator('body').getAttribute('class');
-    
+
     // The application should respect reduced motion preferences
     expect(bodyClasses).toBeTruthy();
   });
@@ -236,16 +236,16 @@ test.describe('SVG Editor Accessibility E2E Tests', () => {
         }
         liveRegion.textContent = message;
       };
-      
+
       // Mock file upload error
       (window as any).announceError = announceError;
     });
-    
+
     // Trigger an error (simulate invalid file upload)
     await page.evaluate(() => {
       (window as any).announceError('Error: Invalid file format. Please upload an SVG file.');
     });
-    
+
     await expect(page.locator('#error-announcements'))
       .toHaveText('Error: Invalid file format. Please upload an SVG file.');
   });
@@ -254,26 +254,26 @@ test.describe('SVG Editor Accessibility E2E Tests', () => {
     // Focus zoom in button
     const zoomInButton = page.locator('#zoomin');
     const zoomOutButton = page.locator('#zoomout');
-    
+
     await zoomInButton.focus();
     await expect(zoomInButton).toBeFocused();
-    
+
     // Press Enter to activate
     await page.keyboard.press('Enter');
-    
+
     // Verify zoom action (in real implementation, would check transform styles)
     const svgElement = page.locator('.svg-preview-wrapper svg').first();
     if (await svgElement.count() > 0) {
       // Check that SVG is still visible after zoom
       await expect(svgElement).toBeVisible();
     }
-    
+
     // Test zoom out
     await zoomOutButton.focus();
     await expect(zoomOutButton).toBeFocused();
-    
+
     await page.keyboard.press('Enter');
-    
+
     // Verify zoom out action
     if (await svgElement.count() > 0) {
       await expect(svgElement).toBeVisible();

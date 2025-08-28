@@ -15,10 +15,10 @@ test.describe('SVG Upload Functionality', () => {
   test('should trigger file chooser when upload button is clicked', async ({ page }) => {
     // Set up file chooser handler
     const fileChooserPromise = page.waitForEvent('filechooser');
-    
+
     // Click upload button
     await page.locator('#upload').click();
-    
+
     // Verify file chooser opens
     const fileChooser = await fileChooserPromise;
     expect(fileChooser).toBeTruthy();

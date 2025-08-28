@@ -9,11 +9,11 @@ test.describe('SVG Editor', () => {
     // Check that the editor loads
     await expect(page.getByRole('main')).toBeVisible();
     await expect(page.getByRole('complementary')).toBeVisible();
-    
+
     // Check that the default SVG is rendered
     await expect(page.locator('#editor .cm-content')).toBeVisible();
     await expect(page.locator('.svg-preview-wrapper svg')).toBeVisible();
-    
+
     // Check for the "Hello SVG" text specifically in the SVG preview area
     await expect(page.locator('#preview svg text').filter({ hasText: 'Hello SVG' })).toBeVisible();
   });
@@ -22,7 +22,7 @@ test.describe('SVG Editor', () => {
     // Get the initial color
     const initialSvg = page.locator('.svg-preview-wrapper svg circle');
     await expect(initialSvg).toHaveAttribute('fill', '#6291e0');
-    
+
     // Change the SVG code - use more specific selector for CodeMirror editor
     const editor = page.locator('#editor .cm-content');
     await editor.click();
@@ -33,7 +33,7 @@ test.describe('SVG Editor', () => {
     Modified SVG
   </text>
 </svg>`);
-    
+
     // Check that the preview updates
     await expect(page.locator('.svg-preview-wrapper svg circle')).toHaveAttribute('fill', '#ff0000');
     await expect(page.locator('#preview svg text').filter({ hasText: 'Modified SVG' })).toBeVisible();
@@ -43,13 +43,13 @@ test.describe('SVG Editor', () => {
     // Click zoom in button multiple times
     await page.getByRole('button', { name: /zoom in/i }).click();
     await page.getByRole('button', { name: /zoom in/i }).click();
-    
+
     // Check that the SVG is still visible (zoom functionality working)
     await expect(page.locator('.svg-preview-wrapper svg')).toBeVisible();
-    
+
     // Click zoom out button
     await page.getByRole('button', { name: /zoom out/i }).click();
-    
+
     // SVG should still be visible
     await expect(page.locator('.svg-preview-wrapper svg')).toBeVisible();
   });
@@ -58,10 +58,10 @@ test.describe('SVG Editor', () => {
     // Check that flip button exists
     const flipButton = page.getByRole('button', { name: 'flip screen' });
     await expect(flipButton).toBeVisible();
-    
+
     // Click the flip button
     await flipButton.click();
-    
+
     // Elements should still be visible after flip
     await expect(page.getByRole('main')).toBeVisible();
     await expect(page.getByRole('complementary')).toBeVisible();
@@ -71,7 +71,7 @@ test.describe('SVG Editor', () => {
     // Check that SVG container has border styling
     const svgContainer = page.locator('.svg-container');
     await expect(svgContainer).toBeVisible();
-    
+
     // Check that the SVG container has the expected border style
     await expect(svgContainer).toHaveCSS('border', /dashed/);
   });
@@ -81,11 +81,11 @@ test.describe('SVG Editor', () => {
     await expect(page.getByRole('button', { name: /rotate/i })).toBeVisible();
     await expect(page.getByRole('button', { name: /flip.*horizontal/i })).toBeVisible();
     await expect(page.getByRole('button', { name: /flip.*vertical/i })).toBeVisible();
-    
+
     // Test rotation functionality
     const rotateButton = page.getByRole('button', { name: /rotate/i });
     await rotateButton.click();
-    
+
     // SVG should still be visible after rotation
     await expect(page.locator('.svg-preview-wrapper svg')).toBeVisible();
   });
@@ -94,10 +94,10 @@ test.describe('SVG Editor', () => {
     // Check that optimize button exists
     const optimizeButton = page.getByRole('button', { name: /optimize/i });
     await expect(optimizeButton).toBeVisible();
-    
+
     // Click the optimize button
     await optimizeButton.click();
-    
+
     // SVG should still be visible after optimization
     await expect(page.locator('.svg-preview-wrapper svg')).toBeVisible();
   });
@@ -107,12 +107,12 @@ test.describe('SVG Editor', () => {
     const flipXButton = page.getByRole('button', { name: /flip.*horizontal/i });
     await expect(flipXButton).toBeVisible();
     await flipXButton.click();
-    
-    // Test flip Y button  
+
+    // Test flip Y button
     const flipYButton = page.getByRole('button', { name: /flip.*vertical/i });
     await expect(flipYButton).toBeVisible();
     await flipYButton.click();
-    
+
     // SVG should still be visible after flipping
     await expect(page.locator('.svg-preview-wrapper svg')).toBeVisible();
   });
@@ -125,8 +125,8 @@ test.describe('SVG Editor', () => {
     // Get initial zoom level to compare later
     const svgContainer = page.locator('.svg-container');
     await expect(svgContainer).toBeVisible();
-    
-    const initialTransform = await svgContainer.evaluate(el => 
+
+    const initialTransform = await svgContainer.evaluate(el =>
       window.getComputedStyle(el).transform
     );
 
@@ -177,13 +177,13 @@ test.describe('SVG Editor', () => {
     await page.waitForTimeout(100);
 
     // Check that the transform has changed (indicating zoom occurred)
-    const finalTransform = await svgContainer.evaluate(el => 
+    const finalTransform = await svgContainer.evaluate(el =>
       window.getComputedStyle(el).transform
     );
-    
+
     // The transform should be different from initial (indicating zoom worked)
     expect(finalTransform).not.toBe(initialTransform);
-    
+
     // SVG should still be visible after pinch zoom
     await expect(page.locator('.svg-preview-wrapper svg')).toBeVisible();
   });
@@ -192,7 +192,7 @@ test.describe('SVG Editor', () => {
     // Get the editor
     const editor = page.locator('#editor .cm-content');
     await expect(editor).toBeVisible();
-    
+
     // Add very long text to test line wrapping
     await editor.click();
     await page.keyboard.press('Control+a');
@@ -200,16 +200,16 @@ test.describe('SVG Editor', () => {
   <circle cx="100" cy="100" r="80" fill="#6291e0" stroke="#295da9" stroke-width="2"/>
   <text x="100" y="110" text-anchor="middle" fill="white" font-family="Arial" font-size="16">This is a very long line of text that should demonstrate the line wrapping feature when it is enabled, because it will wrap within the editor instead of creating horizontal scrollbars</text>
 </svg>`);
-    
+
     // Check that the CodeMirror editor has line wrapping enabled
     // We can verify this by checking that no horizontal scrollbar appears
     const editorElement = page.locator('.cm-editor');
     await expect(editorElement).toBeVisible();
-    
+
     // The text should be visible and wrapped - check for multiple lines in the third line
     const textLine = page.locator('.cm-line').nth(2); // Third line (0-indexed)
     await expect(textLine).toBeVisible();
-    
+
     // Verify that the SVG preview still updates correctly with the long text
     await expect(page.locator('.svg-preview-wrapper svg')).toBeVisible();
   });

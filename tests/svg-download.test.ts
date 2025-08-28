@@ -69,7 +69,7 @@ describe('SVG Download Integration Tests', () => {
 				static updateListener = { of: () => ({}) };
 				dispatch = vi.fn();
 				state = {
-					doc: { 
+					doc: {
 						toString: () => '<svg width="100" height="100"><circle cx="50" cy="50" r="25"/></svg>',
 						length: 70
 					},
@@ -132,7 +132,7 @@ describe('SVG Download Integration Tests', () => {
 		it('should be positioned after optimize button in the nav', () => {
 			const nav = document.querySelector('main nav');
 			const buttons = nav?.querySelectorAll('button');
-			
+
 			expect(buttons?.[0]?.id).toBe('upload');
 			expect(buttons?.[1]?.id).toBe('resolution');
 			expect(buttons?.[2]?.id).toBe('optimize');
@@ -152,7 +152,7 @@ describe('SVG Download Integration Tests', () => {
 
 			patterns.forEach(filename => {
 				expect(filename).toMatch(/^slicksvg-[A-Za-z0-9]{6}\.svg$/);
-				
+
 				// Extract random part
 				const randomPart = filename.replace('slicksvg-', '').replace('.svg', '');
 				expect(randomPart.length).toBe(6);
@@ -163,16 +163,16 @@ describe('SVG Download Integration Tests', () => {
 		it('should validate random generation concept', () => {
 			// Test that pure random generation creates different strings
 			const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-			
+
 			// Generate two random strings using same logic as implementation
 			let str1 = '';
 			let str2 = '';
-			
+
 			for (let i = 0; i < 6; i++) {
 				str1 += chars.charAt(Math.floor(Math.random() * chars.length));
 				str2 += chars.charAt(Math.floor(Math.random() * chars.length));
 			}
-			
+
 			// Random strings should be different (extremely high probability)
 			expect(str1).not.toBe(str2);
 			expect(str1.length).toBe(6);
@@ -228,7 +228,7 @@ describe('SVG Download Integration Tests', () => {
 
 		it('should validate download link properties can be set', () => {
 			const link = document.createElement('a') as HTMLAnchorElement;
-			
+
 			link.href = 'blob:test-url';
 			link.download = 'test-file.svg';
 			link.style.display = 'none';
@@ -262,7 +262,7 @@ describe('SVG Download Integration Tests', () => {
 
 		it('should validate empty content detection', () => {
 			const emptyStrings = ['', '   ', '\n\t\r '];
-			
+
 			emptyStrings.forEach(str => {
 				expect(str.trim()).toBe('');
 			});
@@ -280,7 +280,7 @@ describe('SVG Download Integration Tests', () => {
 		it('should validate announcement message format', () => {
 			const testFilename = 'slicksvg-test12.svg';
 			const expectedMessage = `SVG downloaded as ${testFilename}`;
-			
+
 			expect(expectedMessage).toMatch(/SVG downloaded as slicksvg-[A-Za-z0-9]{6}\.svg/);
 		});
 	});
