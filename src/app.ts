@@ -6,6 +6,9 @@ import {tokyoNightDay} from '@fsegurai/codemirror-theme-tokyo-night-day';
 import {tokyoNightStorm} from '@fsegurai/codemirror-theme-tokyo-night-storm';
 import {linter, lintGutter} from '@codemirror/lint';
 
+// Global variable to hold status bar update callback
+let statusBarUpdateCallback: ((message: string, isError: boolean) => void) | null = null;
+
 // SVG/XML linter function using DOMParser
 const svgLinter = linter(view=>{
 	const text = view.state.doc.toString();
@@ -14,6 +17,10 @@ const svgLinter = linter(view=>{
 	try {
 		// Skip empty documents
 		if (!text.trim()) {
+			// Update status bar for empty content
+			if (statusBarUpdateCallback) {
+				statusBarUpdateCallback('svg valid', false);
+			}
 			return [];
 		}
 
@@ -49,6 +56,11 @@ const svgLinter = linter(view=>{
 			// Clean up the error message for better readability
 			message = message.match(/: ([^\n]+)\n/)?.[1] || '';
 
+			// Update status bar with error message
+			if (statusBarUpdateCallback) {
+				statusBarUpdateCallback(message || 'SVG parsing error', true);
+			}
+
 			diagnostics.push({
 				from,
 				to,
@@ -59,20 +71,39 @@ const svgLinter = linter(view=>{
 
 		// Additional basic SVG validation
 		if (text.trim() && !text.includes('<svg')) {
+			const warningMessage = 'Document should contain an SVG element';
+			
+			// Update status bar with warning
+			if (statusBarUpdateCallback) {
+				statusBarUpdateCallback(warningMessage, true);
+			}
+
 			diagnostics.push({
 				from: 0,
 				to: Math.min(50, text.length),
 				severity: 'warning' as const,
-				message: 'Document should contain an SVG element'
+				message: warningMessage
 			});
 		}
 
+		// If no errors or warnings, show valid status
+		if (diagnostics.length === 0 && statusBarUpdateCallback) {
+			statusBarUpdateCallback('svg valid', false);
+		}
+
 	} catch (error) {
+		const errorMessage = `Parse Error: ${error instanceof Error ? error.message : 'Unknown error'}`;
+		
+		// Update status bar with parse error
+		if (statusBarUpdateCallback) {
+			statusBarUpdateCallback(errorMessage, true);
+		}
+
 		diagnostics.push({
 			from: 0,
 			to: Math.min(100, text.length),
 			severity: 'error' as const,
-			message: `Parse Error: ${error instanceof Error ? error.message : 'Unknown error'}`
+			message: errorMessage
 		});
 	}
 
@@ -86,6 +117,7 @@ declare global {
 	interface Window {
 		announceError?: (message: string) => void;
 		svgEditor?: SVGEditor;
+		updateStatusBar?: (message: string, isError?: boolean) => void;
 	}
 }
 
@@ -94,6 +126,7 @@ class SVGEditor {
 	private previewContainer: HTMLElement;
 	private svgPreview: HTMLElement;
 	private modal: HTMLDialogElement;
+	private statusBar: HTMLElement;
 	private isVerticalLayout = false;
 	private isDarkMode = false;
 	private zoomLevel = 1;
@@ -112,6 +145,11 @@ class SVGEditor {
 
 	constructor() {
 		this.modal = this.getTyped('dialog');
+		this.statusBar = this.get('svg-status-bar');
+		
+		// Set up status bar callback for linter
+		statusBarUpdateCallback = this.updateStatusBar.bind(this);
+		
 		this.initializeEditor();
 		this.initializePreview();
 		this.setupEventListeners();
@@ -244,6 +282,17 @@ class SVGEditor {
 			document.body.appendChild(liveRegion);
 		}
 		liveRegion.textContent = message;
+	}
+
+	public updateStatusBar(message: string, isError: boolean = false): void {
+		if (this.statusBar) {
+			this.statusBar.textContent = message;
+			if (isError) {
+				this.statusBar.classList.add('error');
+			} else {
+				this.statusBar.classList.remove('error');
+			}
+		}
 	}
 
 	private setupReducedMotion(): void {
@@ -835,6 +884,8 @@ function initializeEditor(): void {
 	const editor = new SVGEditor();
 	// Expose error announcement function globally for testing
 	window.announceError = editor.announceError.bind(editor);
+	// Expose status bar update function globally for testing
+	window.updateStatusBar = editor.updateStatusBar.bind(editor);
 	// Expose editor instance for testing
 	window.svgEditor = editor;
 }

@@ -162,15 +162,32 @@
       }
     }
   }
+	/* Hide floating error tooltips completely */
 	.cm-tooltip,
 	.cm-tooltip-lint,
 	.cm-tooltip-below {
-		@apply w-1/2! bg-menu! border-menu-outside!;
-		.cm-diagnostic-error {
-			.cm-diagnosticText {
-				@apply text-lbl!;
-			}
-		}
+		display: none !important;
+	}
+	/* Make gutter error icons non-interactive */
+	.cm-lint-marker,
+	.cm-lint-marker-error,
+	.cm-lint-marker-warning {
+		pointer-events: none !important;
+		cursor: default !important;
+	}
+	/* SVG Status Bar Styling */
+	.svg-status-bar {
+		@apply px-3 py-1 text-sm bg-menu text-lbl border-b border-menu-outside;
+		font-family: var(--font-ui);
+		min-height: 1.5rem;
+		display: flex;
+		align-items: center;
+	}
+	.svg-status-bar.error {
+		@apply bg-red-50 text-red-800 border-red-200;
+	}
+	.dark .svg-status-bar.error {
+		@apply bg-red-900 text-red-200 border-red-700;
 	}
   #editor {
     @apply flex flex-col flex-1;
