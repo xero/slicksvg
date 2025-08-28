@@ -17,6 +17,9 @@ describe('SVG Optimization', () => {
       .replace(/\s*=\s*"/g, '="')
       // Remove unnecessary precision in numbers (limit to 3 decimal places)
       .replace(/(\d+\.\d{3})\d+/g, '$1')
+      // Remove trailing zeros after decimal point
+      .replace(/(\d+)\.0+\b/g, '$1')
+      .replace(/(\d+\.\d*?)0+\b/g, '$1')
       // Remove redundant default attribute values
       .replace(/\s+fill="none"/g, '')
       .replace(/\s+stroke="none"/g, '')
@@ -247,6 +250,40 @@ describe('SVG Optimization', () => {
     expect(result).toContain('fill="red"');
     expect(result).toContain('stroke="blue"');
     expect(result).toContain('stroke-width="2"'); // Non-default value should be preserved
+  });
+
+  it('should remove trailing zeros from decimal numbers', () => {
+    const svgWithTrailingZeros = `<svg xmlns="http://www.w3.org/2000/svg" width="200.0" height="200" viewBox="0 0 200.00 200"><circle cx="100.000000" cy="100.0000" r="80" fill="#6291e0" stroke="#295da9" stroke-width="2"/></svg>`;
+    
+    const result = optimizeSVG(svgWithTrailingZeros);
+    
+    // Should remove trailing zeros after decimal points
+    expect(result).toContain('width="200"');
+    expect(result).toContain('viewBox="0 0 200 200"');
+    expect(result).toContain('cx="100"');
+    expect(result).toContain('cy="100"');
+    // Should not contain any trailing zeros
+    expect(result).not.toContain('.0');
+    expect(result).not.toContain('.00');
+    expect(result).not.toContain('.000');
+  });
+
+  it('should handle both precision limiting and trailing zero removal', () => {
+    const svgWithMixedPrecision = `<svg xmlns="http://www.w3.org/2000/svg">
+      <circle cx="50.123456" cy="50.0" r="40.55000"/>
+      <rect x="10.0000" y="10.000000" width="80.12300" height="80"/>
+    </svg>`;
+    
+    const result = optimizeSVG(svgWithMixedPrecision);
+    
+    // Should limit precision and remove trailing zeros
+    expect(result).toContain('cx="50.123"'); // Precision limited
+    expect(result).toContain('cy="50"');     // Trailing zero removed
+    expect(result).toContain('r="40.55"');   // Trailing zeros removed
+    expect(result).toContain('x="10"');      // Trailing zeros removed
+    expect(result).toContain('y="10"');      // Precision limited then trailing zeros removed
+    expect(result).toContain('width="80.123"'); // Trailing zero removed
+    expect(result).toContain('height="80"'); // Already clean
   });
 
   it('should preserve used namespace declarations', () => {
