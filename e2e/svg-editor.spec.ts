@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('SVG Editor', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('http://localhost:8080/');
+    await page.goto('/');
   });
 
   test('should load the SVG editor with default content', async ({ page }) => {
