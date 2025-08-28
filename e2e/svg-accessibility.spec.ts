@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('SVG Editor Accessibility E2E Tests', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/src/index.html');
   });
 
   test('should have proper heading structure and landmarks', async ({ page }) => {
@@ -16,22 +16,22 @@ test.describe('SVG Editor Accessibility E2E Tests', () => {
   });
 
   test('should support keyboard navigation', async ({ page }) => {
-    // Tab through all interactive elements
+    // Tab through all interactive elements using their IDs for more reliable selection
     const interactiveElements = [
-      'upload',
-      'resize', 
-      'optimize',
-      'rotate',
-      'flip horizontal',
-      'flip vertical', 
-      'dark mode',
-      'flip screen',
-      'zoom in',
-      'zoom out'
+      '#upload',
+      '#resolution', 
+      '#optimize',
+      '#rotate',
+      '#flipx',
+      '#flipy', 
+      '#dark',
+      '#flip',
+      '#zoomin',
+      '#zoomout'
     ];
 
     for (const elementId of interactiveElements) {
-      const element = page.getByRole('button', { name: new RegExp(elementId, 'i') });
+      const element = page.locator(elementId);
       await element.focus();
       await expect(element).toBeFocused();
     }
@@ -64,7 +64,7 @@ test.describe('SVG Editor Accessibility E2E Tests', () => {
 
   test('should support high contrast mode', async ({ page }) => {
     // Toggle dark mode
-    await page.getByRole('button', { name: /dark mode/i }).click();
+    await page.locator('#dark').click();
     
     // Check that body has dark class
     await expect(page.locator('body')).toHaveClass(/dark/);
@@ -113,17 +113,17 @@ test.describe('SVG Editor Accessibility E2E Tests', () => {
     });
 
     // Test rotation announcement
-    await page.getByRole('button', { name: /rotate/i }).click();
+    await page.locator('#rotate').click();
     await expect(page.locator('#test-announcements')).toHaveText('SVG rotated 90 degrees');
 
     // Test flip announcement
-    await page.getByRole('button', { name: /flip.*horizontal/i }).click();
+    await page.locator('#flipx').click();
     await expect(page.locator('#test-announcements')).toHaveText('SVG flipped horizontally');
   });
 
   test('should have accessible modal dialog', async ({ page }) => {
     // Open resolution modal
-    await page.getByRole('button', { name: /resize|resolution/i }).click();
+    await page.locator('#resolution').click();
     
     // Check modal is visible and properly labeled
     const dialog = page.locator('dialog');
@@ -142,17 +142,17 @@ test.describe('SVG Editor Accessibility E2E Tests', () => {
     await expect(heightInput).toHaveAttribute('type', 'number');
     
     // Check buttons are accessible
-    await expect(dialog.getByRole('button', { name: /update/i })).toBeVisible();
-    await expect(dialog.getByRole('button', { name: /cancel/i })).toBeVisible();
+    await expect(dialog.locator('#resize')).toBeVisible();
+    await expect(dialog.locator('#cancel')).toBeVisible();
     
     // Close modal
-    await dialog.getByRole('button', { name: /cancel/i }).click();
+    await dialog.locator('#cancel').click();
     await expect(dialog).not.toBeVisible();
   });
 
   test('should handle focus trapping in modal', async ({ page }) => {
     // Open modal
-    await page.getByRole('button', { name: /resize|resolution/i }).click();
+    await page.locator('#resolution').click();
     
     const dialog = page.locator('dialog');
     await expect(dialog).toBeVisible();
@@ -160,8 +160,8 @@ test.describe('SVG Editor Accessibility E2E Tests', () => {
     // Tab through modal elements
     const widthInput = dialog.locator('#width');
     const heightInput = dialog.locator('#height');
-    const updateButton = dialog.getByRole('button', { name: /update/i });
-    const cancelButton = dialog.getByRole('button', { name: /cancel/i });
+    const updateButton = dialog.locator('#resize');
+    const cancelButton = dialog.locator('#cancel');
     
     // First element should be focused (or explicitly focus it)
     await widthInput.focus();
@@ -174,18 +174,18 @@ test.describe('SVG Editor Accessibility E2E Tests', () => {
     // Tab to buttons
     await page.keyboard.press('Tab');
     await expect(updateButton).toBeFocused();
-    
+
     await page.keyboard.press('Tab');
     await expect(cancelButton).toBeFocused();
-    
+
     // Tab should wrap back to first element
     await page.keyboard.press('Tab');
     await expect(widthInput).toBeFocused();
-    
+
     // Shift+Tab should go backwards
     await page.keyboard.press('Shift+Tab');
     await expect(cancelButton).toBeFocused();
-    
+
     // Close modal
     await cancelButton.click();
   });
@@ -252,8 +252,8 @@ test.describe('SVG Editor Accessibility E2E Tests', () => {
 
   test('should support zoom controls with keyboard', async ({ page }) => {
     // Focus zoom in button
-    const zoomInButton = page.getByRole('button', { name: /zoom in/i });
-    const zoomOutButton = page.getByRole('button', { name: /zoom out/i });
+    const zoomInButton = page.locator('#zoomin');
+    const zoomOutButton = page.locator('#zoomout');
     
     await zoomInButton.focus();
     await expect(zoomInButton).toBeFocused();

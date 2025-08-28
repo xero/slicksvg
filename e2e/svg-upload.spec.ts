@@ -3,12 +3,12 @@ import { test, expect } from '@playwright/test';
 test.describe('SVG Upload Functionality', () => {
   test.beforeEach(async ({ page }) => {
     // Navigate to the SVG editor
-    await page.goto('/');
+    await page.goto('/src/index.html');
   });
 
   test('should have upload button visible', async ({ page }) => {
     // Check that upload button exists and is visible
-    const uploadButton = page.getByRole('button', { name: 'upload' });
+    const uploadButton = page.locator('#upload');
     await expect(uploadButton).toBeVisible();
   });
 
@@ -17,7 +17,7 @@ test.describe('SVG Upload Functionality', () => {
     const fileChooserPromise = page.waitForEvent('filechooser');
     
     // Click upload button
-    await page.getByRole('button', { name: 'upload' }).click();
+    await page.locator('#upload').click();
     
     // Verify file chooser opens
     const fileChooser = await fileChooserPromise;
