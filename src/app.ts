@@ -21,10 +21,7 @@ const svgLinter = linter(view=>{
 		const parserError = doc.querySelector('parsererror');
 
 		if (parserError) {
-			// Extract error message from parsererror element
 			let message = parserError.textContent || 'Invalid SVG/XML';
-
-			// Try to extract line/column info from error message if available
 			const lineMatch = message.match(/line\s+(\d+)/i);
 			const columnMatch = message.match(/column\s+(\d+)/i);
 
@@ -32,20 +29,17 @@ const svgLinter = linter(view=>{
 			let to = text.length;
 
 			if (lineMatch) {
-				const lineNumber = parseInt(lineMatch[1], 10) - 1; // Convert to 0-based
+				const lineNumber = parseInt(lineMatch[1], 10) - 1;
 				const lines = text.split('\n');
 				if (lineNumber >= 0 && lineNumber < lines.length) {
-					// Calculate position of the error line
 					let lineStart = 0;
 					for (let i = 0; i < lineNumber; i++) {
-						lineStart += lines[i].length + 1; // +1 for newline
+						lineStart += lines[i].length + 1;
 					}
 					from = lineStart;
 					to = lineStart + (lines[lineNumber]?.length || 0);
-
-					// If we have column info, make it more precise
 					if (columnMatch) {
-						const columnNumber = parseInt(columnMatch[1], 10) - 1; // Convert to 0-based
+						const columnNumber = parseInt(columnMatch[1], 10) - 1;
 						from = lineStart + Math.min(columnNumber, lines[lineNumber]?.length || 0);
 						to = Math.min(from + 1, lineStart + (lines[lineNumber]?.length || 0));
 					}
@@ -73,7 +67,6 @@ const svgLinter = linter(view=>{
 		}
 
 	} catch (error) {
-		// Fallback for other parsing errors
 		diagnostics.push({
 			from: 0,
 			to: Math.min(100, text.length),
@@ -164,7 +157,7 @@ class SVGEditor {
 					EditorView.lineWrapping,
 					lintGutter(),
 					svgLinter,
-					this.themeCompartment.of([]), // Start with light theme (no theme extension)
+					this.themeCompartment.of([]),
 					EditorView.updateListener.of((update)=>{
 						if (update.docChanged) {
 							this.updateSVGPreview();
@@ -188,21 +181,17 @@ class SVGEditor {
 	private modalShow(): void {
 		this.modal.classList.remove('closing');
 		void (!this.modalIsOpen() && this.modal.showModal());
-
 		// Focus the first input when modal opens
 		const firstInput = this.modal.querySelector('#width') as HTMLInputElement;
 		firstInput.focus();
-
 		// Add focus trapping
 		this.modal.addEventListener('keydown', this.handleModalKeydown);
 	};
 
 	private modalClose():void {
 		this.modal.classList.add('closing');
-
 		// Remove focus trapping
 		this.modal.removeEventListener('keydown', this.handleModalKeydown);
-
 		setTimeout(()=>{
 			this.modal.classList.remove('closing');
 			this.modal.close();
@@ -263,42 +252,25 @@ class SVGEditor {
 	}
 
 	private setupEventListeners(): void {
-		this.get('cancel').addEventListener('click', ()=>this.modalClose());
-		this.get('resolution').addEventListener('click', ()=>this.showResolutionModal());
-		this.get('resize').addEventListener('click', ()=>this.resizeSVG());
-
 		if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
 			this.toggleMode();
 		}
 		this.get('dark').addEventListener('click', ()=>this.toggleMode());
-
-		// flip button
+		this.get('cancel').addEventListener('click', ()=>this.modalClose());
+		this.get('resolution').addEventListener('click', ()=>this.showResolutionModal());
+		this.get('resize').addEventListener('click', ()=>this.resizeSVG());
 		this.get('flip').addEventListener('click', ()=>this.toggleLayout());
-
-		// zoom controls
 		this.get('zoomin').addEventListener('click', ()=>this.zoomIn());
 		this.get('zoomout').addEventListener('click', ()=>this.zoomOut());
-
-		// transform controls
 		this.get('rotate').addEventListener('click', ()=>this.rotateSVG());
 		this.get('flipx').addEventListener('click', ()=>this.flipSVGX());
 		this.get('flipy').addEventListener('click', ()=>this.flipSVGY());
-
-		// optimize
 		this.get('optimize').addEventListener('click', ()=>this.optimizeSVG());
-
-		// download
 		this.get('download').addEventListener('click', ()=>this.downloadSVG());
-
-		// upload button
 		this.get('upload').addEventListener('click', ()=>this.triggerFileUpload());
-
-		// pan controls
 		this.svgPreview.addEventListener('mousedown', (e)=>this.startPan(e));
 		document.addEventListener('mousemove', (e)=>this.doPan(e));
 		document.addEventListener('mouseup', ()=>this.endPan());
-
-		// touch/pinch zoom controls (support checks in handlers)
 		this.svgPreview.addEventListener('touchstart', (e)=>this.handleTouchStart(e), {passive: false});
 		this.svgPreview.addEventListener('touchmove', (e)=>this.handleTouchMove(e), {passive: false});
 		this.svgPreview.addEventListener('touchend', (e)=>this.handleTouchEnd(e), {passive: false});
@@ -323,14 +295,10 @@ class SVGEditor {
 	private applySVGStyles(): void {
 		const svgElement = this.svgPreview.querySelector('svg');
 		if (svgElement) {
-			svgElement.style.border = '2px dashed rgba(0,0,0,0.3)';
-
-			// Apply fallback sizing if width or height attributes are missing
 			const hasWidth = svgElement.hasAttribute('width');
 			const hasHeight = svgElement.hasAttribute('height');
 
 			if (!hasWidth || !hasHeight) {
-				// Apply default dimensions for SVGs without width/height attributes
 				if (!hasWidth) {
 					svgElement.style.width = '200px';
 				}
@@ -393,7 +361,6 @@ class SVGEditor {
 
 		this.panX += deltaX;
 		this.panY += deltaY;
-
 		this.lastPanX = e.clientX;
 		this.lastPanY = e.clientY;
 
@@ -412,7 +379,6 @@ class SVGEditor {
 			this.initialZoomLevel = this.zoomLevel;
 			e.preventDefault();
 		} else if (e.touches.length === 1) {
-			// Handle single-touch panning
 			this.isMultiTouch = false;
 			this.isPanning = true;
 			this.lastPanX = e.touches[0].clientX;
@@ -425,7 +391,6 @@ class SVGEditor {
 
 	private handleTouchMove(e: TouchEvent): void {
 		if (this.isMultiTouch && e.touches.length === 2) {
-			// Handle pinch zoom
 			const currentDistance = this.calculatePinchDistance(e.touches[0], e.touches[1]);
 			const scale = currentDistance / this.initialPinchDistance;
 			const newZoomLevel = this.initialZoomLevel * scale;
@@ -433,14 +398,12 @@ class SVGEditor {
 			this.applySVGStyles();
 			e.preventDefault();
 		} else if (!this.isMultiTouch && e.touches.length === 1 && this.isPanning) {
-			// Handle single-touch panning
 			const touch = e.touches[0];
 			const deltaX = touch.clientX - this.lastPanX;
 			const deltaY = touch.clientY - this.lastPanY;
 
 			this.panX += deltaX;
 			this.panY += deltaY;
-
 			this.lastPanX = touch.clientX;
 			this.lastPanY = touch.clientY;
 
@@ -507,38 +470,30 @@ class SVGEditor {
 	private applyTransformToSVG(): void {
 		const svgCode = this.editor.state.doc.toString();
 		try {
-			// extract width and height from SVG
 			const widthMatch = svgCode.match(/width="([^"]+)"/);
 			const heightMatch = svgCode.match(/height="([^"]+)"/);
 			const width = widthMatch ? parseInt(widthMatch[1]) : 100;
 			const height = heightMatch ? parseInt(heightMatch[1]) : 100;
-
-			// build the new transform attribute
 			const transformValue = this.buildTransformAttribute(width, height);
 
 			let transformedSVG;
 			if (transformValue.trim()) {
-				// check if SVG already has a transform attribute
 				const transformMatch = svgCode.match(/(<svg[^>]*)\s+transform="[^"]*"([^>]*>)/);
 				if (transformMatch) {
-					// replace existing transform
 					transformedSVG = svgCode.replace(
 						/(<svg[^>]*)\s+transform="[^"]*"([^>]*>)/,
 						`$1 transform="${transformValue}"$2`
 					);
 				} else {
-					// add new transform attribute
 					transformedSVG = svgCode.replace(
 						/(<svg[^>]*)(>)/,
 						`$1 transform="${transformValue}"$2`
 					);
 				}
 			} else {
-				// remove transform attribute if no transforms are needed
 				transformedSVG = svgCode.replace(/\s+transform="[^"]*"/, '');
 			}
 
-			// update editor with transformed SVG
 			const transaction = this.editor.state.update({
 				changes: {
 					from: 0,
@@ -749,29 +704,12 @@ class SVGEditor {
 	}
 
 	private resetViewState(): void {
-		// Reset zoom and pan state
-		this.zoomLevel = 1;
-		this.panX = 0;
-		this.panY = 0;
-
-		// Reset transform state
-		this.rotationDegrees = 0;
-		this.flipX = false;
-		this.flipY = false;
-
-		// Reset panning state
-		this.isPanning = false;
-		this.lastPanX = 0;
-		this.lastPanY = 0;
-
-		// Reset multi-touch state
-		this.isMultiTouch = false;
-		this.initialPinchDistance = 0;
-		this.initialZoomLevel = 1;
+		this.zoomLevel = this.initialZoomLevel = 1;
+		this.panX = this.panY = this.lastPanX = this.lastPanY = this.rotationDegrees = this.initialPinchDistance = 0;
+		this.flipX = this.flipY = this.isPanning = this.isMultiTouch = false;
 	}
 
 	private handleFileUpload(file: File): void {
-		// Validate file type
 		if (!file.type.includes('svg') && !file.name.toLowerCase().endsWith('.svg')) {
 			alert('Please select a valid SVG file.');
 			return;
@@ -781,7 +719,6 @@ class SVGEditor {
 		reader.onload = (e)=>{
 			const content = e.target?.result as string;
 			if (content) {
-				// Basic validation that the content contains SVG
 				if (content.includes('<svg') && content.includes('</svg>')) {
 					this.loadSVGContent(content);
 				} else {
@@ -822,7 +759,6 @@ class SVGEditor {
 	private setupDragAndDrop(): void {
 		let dragCounter = 0;
 
-		// Prevent default drag behaviors
 		document.addEventListener('dragenter', (e)=>{
 			e.preventDefault();
 			dragCounter++;
@@ -855,51 +791,36 @@ class SVGEditor {
 	}
 
 	private generateRandomFilename(): string {
-		// Generate purely random string using URL-safe characters
 		const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 		let randomStr = '';
-
-		// Generate 6 random characters for better balance of uniqueness and brevity
 		for (let i = 0; i < 6; i++) {
 			randomStr += chars.charAt(Math.floor(Math.random() * chars.length));
 		}
-
 		return `slicksvg-${randomStr}.svg`;
 	}
 
 	private downloadSVG(): void {
 		try {
-			// Get current SVG content from editor
 			const svgContent = this.editor.state.doc.toString();
-
-			// Validate that we have content
 			if (!svgContent.trim()) {
 				alert('No SVG content to download. Please create some SVG content first.');
 				return;
 			}
 
-			// Generate unique filename
 			const filename = this.generateRandomFilename();
-
-			// Create blob and download
 			const blob = new Blob([svgContent], {type: 'image/svg+xml'});
 			const url = URL.createObjectURL(blob);
-
-			// Create download link
 			const downloadLink = document.createElement('a');
+
 			downloadLink.href = url;
 			downloadLink.download = filename;
 			downloadLink.style.display = 'none';
 
-			// Trigger download
 			document.body.appendChild(downloadLink);
 			downloadLink.click();
 			document.body.removeChild(downloadLink);
 
-			// Clean up URL object
 			URL.revokeObjectURL(url);
-
-			// Announce successful download for accessibility
 			this.announceAction(`SVG downloaded as ${filename}`);
 
 		} catch (error) {
@@ -909,7 +830,6 @@ class SVGEditor {
 	}
 }
 
-// Initialize editor and expose testing functions
 function initializeEditor(): void {
 	const editor = new SVGEditor();
 	// Expose error announcement function globally for testing
@@ -918,7 +838,6 @@ function initializeEditor(): void {
 	window.svgEditor = editor;
 }
 
-// Initialize when DOM is ready
 if (document.readyState === 'loading') {
 	document.addEventListener('DOMContentLoaded', initializeEditor);
 } else {
