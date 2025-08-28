@@ -117,6 +117,7 @@
 				outline: none !important;
 			}
 		}
+		/* view direction swap magic */
     main,
     aside {
       @apply w-1/2;
@@ -155,44 +156,49 @@
 /* <--//---------------------------------------------------------[interface] */
   main,
   aside {
+		.svg-status-bar,
     nav {
-      @apply flex flex-row items-center bg-menu p-0 m-0 w-full;
-      label {
-        @apply text-lbl pr-5;
-      }
-    }
+      @apply flex flex-row items-center bg-menu m-0 w-full absolute top-0 left-0 z-10 p-2;
+		}
+		.svg-status-bar {
+			@apply top-[unset]! bottom-0!;
+		}
+		.svg-status-bar,
+		nav {
+			box-shadow: 0 0 0 2px var(--color-menu-outside), 0 0 0 3px var(--color-bounds);
+		}
   }
-	.cm-tooltip-below {
-		@apply hidden! pointer-events-none!;
-	}
-	.cm-lint-marker,
-	.cm-lint-marker-error,
-	.cm-lint-marker-warning {
-		@apply pointer-events-none cursor-auto;
-	}
-	.svg-status-bar {
-		@apply px-3 text-sm bg-menu text-lbl border-t border-menu-outside flex align-middle items-center order-[99] w-full min-h-6 ml-auto;
-	}
-	.svg-status-bar.error {
-		@apply bg-red-50 text-red-800 border-red-200;
-	}
-	.dark .svg-status-bar.error {
-		@apply bg-red-900 text-red-200 border-red-700;
-	}
   #editor {
     @apply flex flex-col flex-1 contain-content;
-    .cm-editor {
-      @apply h-full;
-    }
-    nav {
-      @apply p-2;
-    }
+		.svg-status-bar {
+			@apply text-sm bg-menu text-lbl align-middle items-center min-h-6;
+		}
+		.svg-status-bar.error {
+			@apply bg-red-50 text-red-800 border-red-200;
+		}
+		.dark .svg-status-bar.error {
+			@apply bg-red-900 text-red-200 border-red-700;
+		}
+		.cm-editor {
+			@apply h-full mb-10 mt-12;
+		}
+		.cm-tooltip-below {
+			@apply hidden! pointer-events-none!;
+		}
+		.cm-lint-marker,
+		.cm-lint-marker-error,
+		.cm-lint-marker-warning {
+			@apply pointer-events-none cursor-auto;
+		}
+		&:not(.dark) .cm-activeLine {
+			@apply bg-preview!;
+		}
+		.cm-matchingBracket {
+			outline: none !important;
+		}
   }
   #preview {
     @apply flex flex-col bg-preview flex-1 relative overflow-hidden;
-    nav {
-      @apply absolute top-0 left-0 z-10 p-2;
-    }
     .svg-preview-wrapper {
       @apply flex-1 flex items-center justify-center overflow-hidden;
       cursor: grab;
