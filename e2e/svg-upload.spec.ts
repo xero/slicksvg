@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 test.describe('SVG Upload Functionality', () => {
   test.beforeEach(async ({ page }) => {
     // Navigate to the SVG editor
-    await page.goto('http://localhost:8080');
+    await page.goto('/');
   });
 
   test('should have upload button visible', async ({ page }) => {

@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('SVG Editor Linting', () => {
 	test.beforeEach(async ({ page }) => {
-		await page.goto('http://localhost:8080/');
+		await page.goto('/');
 	});
 
 	test('should display lint errors for malformed SVG', async ({ page }) => {

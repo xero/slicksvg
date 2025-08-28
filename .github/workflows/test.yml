@@ -61,8 +61,14 @@ jobs:
       - name: Install Playwright Browsers
         run: bunx playwright install --with-deps
 
+      - name: Build application
+        run: bun make
+
       - name: Start Web Server
         run: bunx vite preview --port 4173 &
+
+      - name: Wait for server to start
+        run: sleep 5
 
       - name: Run E2E tests
         run: bun check:e2e
