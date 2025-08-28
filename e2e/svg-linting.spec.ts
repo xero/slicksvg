@@ -58,7 +58,7 @@ test.describe('SVG Editor Linting', () => {
 
 		// Instead of checking for zero error markers (which has timing issues),
 		// verify that the SVG is actually valid and renders correctly
-		await expect(page.locator('svg rect')).toHaveAttribute('fill', 'blue');
+		await expect(page.locator('.svg-preview-wrapper svg rect')).toHaveAttribute('fill', 'blue');
 		
 		// Also verify that new typing doesn't create additional errors
 		await editor.click();
@@ -70,7 +70,7 @@ test.describe('SVG Editor Linting', () => {
 		await page.waitForTimeout(1000);
 		
 		// The preview should still work correctly with valid content
-		await expect(page.locator('svg rect')).toHaveAttribute('fill', 'blue');
+		await expect(page.locator('.svg-preview-wrapper svg rect')).toHaveAttribute('fill', 'blue');
 	});
 
 	test('should show lint errors for invalid XML syntax', async ({ page }) => {

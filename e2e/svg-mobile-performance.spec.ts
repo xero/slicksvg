@@ -369,7 +369,7 @@ test.describe('SVG Editor Integration E2E Tests', () => {
     await expect(preview).toBeVisible();
     
     // Check that SVG is rendered in preview
-    const svgInPreview = preview.locator('svg');
+    const svgInPreview = preview.locator('.svg-preview-wrapper svg');
     if (await svgInPreview.count() > 0) {
       await expect(svgInPreview).toBeVisible();
     }
