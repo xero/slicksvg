@@ -125,7 +125,7 @@
     }
   }
   button {
-    @apply flex cursor-pointer items-center text-face bg-btn mr-5 px-3 py-1;
+    @apply flex cursor-pointer items-center text-face bg-btn mr-2 px-3 py-1;
     &:hover,
     &:active,
     &:focus,
