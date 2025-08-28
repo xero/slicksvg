@@ -653,6 +653,9 @@ class SVGEditor {
 				.replace(/\s*=\s*"/g, '="')
 				// Remove unnecessary precision in numbers (limit to 3 decimal places)
 				.replace(/(\d+\.\d{3})\d+/g, '$1')
+				// Remove trailing zeros after decimal point
+				.replace(/(\d+)\.0+\b/g, '$1')
+				.replace(/(\d+\.\d*?)0+\b/g, '$1')
 				// Remove redundant default attribute values
 				.replace(/\s+fill="none"/g, '')
 				.replace(/\s+stroke="none"/g, '')
