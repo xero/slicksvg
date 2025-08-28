@@ -142,36 +142,41 @@ describe('SVG Download Integration Tests', () => {
 
 	describe('Download Filename Generation', () => {
 		it('should generate valid filename patterns', () => {
-			// Test the pattern by creating multiple mock filenames
+			// Test the pattern by creating multiple mock filenames with new 6-char format
 			const patterns = [
-				'slicksvg-abc12.svg',
-				'slicksvg-xyz789.svg',
-				'slicksvg-meutbhin.svg', // 8 chars
-				'slicksvg-a1b2c.svg'     // 5 chars
+				'slicksvg-abc123.svg',
+				'slicksvg-XYZ789.svg',
+				'slicksvg-p4R7q9.svg',
+				'slicksvg-K8m2N5.svg'
 			];
 
 			patterns.forEach(filename => {
-				expect(filename).toMatch(/^slicksvg-[A-Za-z0-9]{5,8}\.svg$/);
+				expect(filename).toMatch(/^slicksvg-[A-Za-z0-9]{6}\.svg$/);
 				
 				// Extract random part
 				const randomPart = filename.replace('slicksvg-', '').replace('.svg', '');
-				expect(randomPart.length).toBeGreaterThanOrEqual(5);
-				expect(randomPart.length).toBeLessThanOrEqual(8);
+				expect(randomPart.length).toBe(6);
 				expect(randomPart).toMatch(/^[A-Za-z0-9]+$/);
 			});
 		});
 
-		it('should validate time-based uniqueness concept', () => {
-			// Test that timestamp-based generation would create different strings
-			const now1 = Date.now();
-			const timeStr1 = now1.toString(36);
+		it('should validate random generation concept', () => {
+			// Test that pure random generation creates different strings
+			const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 			
-			// Simulate a small time difference
-			const now2 = now1 + 1;
-			const timeStr2 = now2.toString(36);
+			// Generate two random strings using same logic as implementation
+			let str1 = '';
+			let str2 = '';
 			
-			// Time-based strings should be different
-			expect(timeStr1).not.toBe(timeStr2);
+			for (let i = 0; i < 6; i++) {
+				str1 += chars.charAt(Math.floor(Math.random() * chars.length));
+				str2 += chars.charAt(Math.floor(Math.random() * chars.length));
+			}
+			
+			// Random strings should be different (extremely high probability)
+			expect(str1).not.toBe(str2);
+			expect(str1.length).toBe(6);
+			expect(str2.length).toBe(6);
 		});
 	});
 
@@ -273,10 +278,10 @@ describe('SVG Download Integration Tests', () => {
 		});
 
 		it('should validate announcement message format', () => {
-			const testFilename = 'slicksvg-test123.svg';
+			const testFilename = 'slicksvg-test12.svg';
 			const expectedMessage = `SVG downloaded as ${testFilename}`;
 			
-			expect(expectedMessage).toMatch(/SVG downloaded as slicksvg-[A-Za-z0-9]{5,8}\.svg/);
+			expect(expectedMessage).toMatch(/SVG downloaded as slicksvg-[A-Za-z0-9]{6}\.svg/);
 		});
 	});
 });

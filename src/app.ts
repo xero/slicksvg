@@ -800,22 +800,13 @@ class SVGEditor {
 	}
 
 	private generateRandomFilename(): string {
-		// Create a time-based random string for uniqueness
-		const now = Date.now();
-		const timeStr = now.toString(36); // Convert to base36 for shorter string
-
-		// Add additional random characters to ensure uniqueness and meet length requirement
+		// Generate purely random string using URL-safe characters
 		const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-		let randomStr = timeStr;
+		let randomStr = '';
 
-		// Ensure we have 5-8 characters total
-		while (randomStr.length < 5) {
+		// Generate 6 random characters for better balance of uniqueness and brevity
+		for (let i = 0; i < 6; i++) {
 			randomStr += chars.charAt(Math.floor(Math.random() * chars.length));
-		}
-
-		// Limit to 8 characters max
-		if (randomStr.length > 8) {
-			randomStr = randomStr.substring(0, 8);
 		}
 
 		return `slicksvg-${randomStr}.svg`;
