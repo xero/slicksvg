@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 test.describe('SVG Drag and Drop Content Clearing', () => {
   test.beforeEach(async ({ page }) => {
     // Navigate to the SVG editor
-    await page.goto('/src/index.html');
+    await page.goto('/index.html');
   });
 
   test('should completely replace content when dropping new SVG file', async ({ page }) => {

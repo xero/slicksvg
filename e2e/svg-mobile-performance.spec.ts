@@ -4,7 +4,7 @@ test.describe('SVG Editor Mobile and Touch E2E Tests', () => {
   test.beforeEach(async ({ page }) => {
     // Set mobile viewport
     await page.setViewportSize({ width: 375, height: 667 });
-    await page.goto('/src/index.html');
+    await page.goto('/index.html');
   });
 
   test('should be responsive on mobile devices', async ({ page }) => {
@@ -162,7 +162,7 @@ test.describe('SVG Editor Mobile and Touch E2E Tests', () => {
 
 test.describe('SVG Editor Performance E2E Tests', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/src/index.html');
+    await page.goto('/index.html');
   });
 
   test('should load quickly', async ({ page }) => {
@@ -270,7 +270,7 @@ test.describe('SVG Editor Performance E2E Tests', () => {
 
 test.describe('SVG Editor Cross-Browser Compatibility E2E Tests', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/src/index.html');
+    await page.goto('/index.html');
   });
 
   test('should work with different user agent strings', async ({ page }) => {
@@ -349,7 +349,7 @@ test.describe('SVG Editor Cross-Browser Compatibility E2E Tests', () => {
 
 test.describe('SVG Editor Integration E2E Tests', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/src/index.html');
+    await page.goto('/index.html');
   });
 
   test('should integrate editor and preview seamlessly', async ({ page }) => {

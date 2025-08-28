@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('SVG Status Bar E2E Tests', () => {
 	test.beforeEach(async ({ page }) => {
-		await page.goto('/src/index.html');
+		await page.goto('/index.html');
 	});
 
 	test('should display default "svg valid" status', async ({ page }) => {
