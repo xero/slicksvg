@@ -32,13 +32,13 @@
   --color-face: var(--color-mono-50);
 	--color-lbl: var(--color-mono-950);
 	--color-frm: var(--color-mono-100);
-	--color-menu: var(--color-mono-200);
+	--color-menu: #d5d6db;
   --color-menu-alt:  var(--color-mono-50);
-  --color-menu-outside: var(--color-mono-300);
-  --color-preview: var(--color-mono-50);
-	--color-header: var(--color-slick-700);
-	--color-btn: var(--color-slick-500);
-	--color-btn-h: var(--color-slick-700);
+  --color-menu-outside: #b3b4d1;
+  --color-preview: #edeef3;
+	--color-header: #3e68d7;
+	--color-btn: #3e68d7;
+	--color-btn-h: #65bcff;
 	--color-bounds: var(--color-mono-300);
   --current-color: var(--color-mono-950);
   --breakpoint-xs: 30rem;
@@ -49,18 +49,15 @@
     "Courier New", monospace;
 }
 .dark {
-	--color-header: var(--color-slick-300);
-	--color-face: var(--color-mono-50);
-	--color-lbl: var(--color-mono-50);
-	--color-frm: var(--color-mono-800);
+	--color-face: #efefef;
+	--color-lbl: #efefef;
+	--color-frm: #414868;
   --color-menu-alt: #282c34;
   --color-menu-outside: #1d2129;
-  --current-color: var(--color-mono-50);
-  --color-menu: #252931;
-  --color-preview: #2b2f37;
-	--color-btn: var(--color-slick-700);
-	--color-btn-h: var(--color-slick-500);
-	--color-bounds: var(--color-mono-500);
+  --current-color: #c0caf5;
+  --color-menu: #202334;
+  --color-preview: #2f3244;
+	--color-bounds: #3b4261;
 }
 /* <--//----------------------------------------------------------[document] */
 :root {
