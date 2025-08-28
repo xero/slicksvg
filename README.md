@@ -34,7 +34,7 @@ A **Node.js**-based, web SVG editor written in **TypeScript**, with no frontend 
   - ESLint for code quality
   - Vitest for unit testing (94 tests)
   - Playwright for E2E testing
-  - Nord theme for dark mode syntax highlighting
+  - Tokyo Night themes for light/dark mode syntax highlighting
 
 ## Setup
 
@@ -100,7 +100,7 @@ Place unit and integration tests in the `tests/` directory:
 - **Performance optimization** - Event cleanup, memory management, transform caching
 - **SVG optimization** - Code minification, whitespace removal, attribute optimization
 - **SVG linting** - Real-time XML/SVG validation, error reporting
-- **Nord theme integration** - Dark mode theming, syntax highlighting
+- **Tokyo Night theme integration** - Light/dark mode theming, syntax highlighting
 
 #### End-to-End Tests (Playwright)
 
@@ -174,7 +174,7 @@ tests/                       # Unit and integration tests (Vitest)
 ├── svg-fallback-sizing.test.ts # SVG sizing logic
 ├── svg-linting.test.ts         # SVG/XML linting functionality
 ├── pinch-zoom.test.ts          # Pinch zoom calculations
-└── nord-theme-integration.test.ts # Dark theme integration
+└── tokyo-night-theme-integration.test.ts # Tokyo Night theme integration
 
 e2e/                         # End-to-end tests (Playwright)
 ├── svg-editor.spec.ts          # Core editor functionality
@@ -209,7 +209,7 @@ tests/               # Unit and integration tests (Vitest)
 ├── svg-fallback-sizing.test.ts # SVG sizing logic
 ├── svg-linting.test.ts         # SVG/XML linting functionality
 ├── pinch-zoom.test.ts          # Pinch zoom calculations
-└── nord-theme-integration.test.ts # Dark theme integration
+└── tokyo-night-theme-integration.test.ts # Tokyo Night theme integration
 
 e2e/                 # End-to-end tests (Playwright)
 ├── svg-editor.spec.ts          # Core editor functionality
@@ -230,7 +230,7 @@ dist/                # Built assets (generated)
 The application is built with:
 
 - **CodeMirror 6** for the code editor with XML/SVG syntax highlighting and real-time linting
-- **Nord theme** for dark mode syntax highlighting
+- **Tokyo Night themes** for light/dark mode syntax highlighting
 - **Tailwind CSS** for styling with PostCSS processing
 - **ESBuild** for fast TypeScript bundling (production builds)
 - **Vite** for development server with hot reload

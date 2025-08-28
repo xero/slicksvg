@@ -54,7 +54,8 @@
     "@codemirror/lint": "^6.8.5",
     "@codemirror/state": "^6.5.2",
     "@codemirror/view": "^6.38.1",
-    "@uiw/codemirror-theme-nord": "^4.25.1",
+    "@fsegurai/codemirror-theme-tokyo-night-day": "^6.2.2",
+    "@fsegurai/codemirror-theme-tokyo-night-storm": "^6.2.2",
     "codemirror": "^6.0.2"
   }
 }
