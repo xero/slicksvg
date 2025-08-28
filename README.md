@@ -13,7 +13,7 @@ A **Node.js**-based, web SVG editor written in **TypeScript**, with no frontend 
 ## Features
 
 - **Full-Screen UI**: Editor and live preview split 50/50, with toggle for vertical/horizontal orientation
-- **Editor**: 
+- **Editor**:
   - Top toolbar with file upload, resize, optimize, and transform controls
   - SVG code input uses [CodeMirror 6](https://codemirror.net/) with XML syntax highlighting and real-time linting
   - Live SVG preview updates as code changes
@@ -38,41 +38,42 @@ A **Node.js**-based, web SVG editor written in **TypeScript**, with no frontend 
 
 ## Setup
 
+> [!NOTE]
+> You can use `bun` or `npm` (`bunx` / `npx`) interchangeably in all examples
+
 1. Install dependencies:
 
     ```sh
-    npm install
+    bun install
     ```
 
 2. Build the project:
 
     ```sh
-    npm run make
+    bun run build
     ```
 
 3. Start the development server:
 
     ```sh
-    npm run dev
+    bun run dev
     ```
 
 4. Open your browser to `http://localhost:5173`
 
 **Alternative build for single-file deployment:**
 ```sh
-npm run build  # Creates a single HTML file in dist/src/index.html
+bun run build  # Creates a single HTML file in dist/src/index.html
 ```
 
 ## Available Scripts
 
-- `npm run dev` - Start Vite development server with hot reload (port 5173)
-- `npm run build` - Build single HTML file with all assets inlined
-- `npm run make` - Build CSS and JavaScript bundles as separate files
-- `npm run make:mini` - Build single HTML file (alternative to `build`)
-- `npm run style` - Build CSS only
-- `npm run scripts` - Build JavaScript only  
-- `npm run lint` - Run ESLint
-- `npm run lint:fix` - Run ESLint with auto-fix
+- `bun run dev` - Start Vite development server with hot reload (port 5173)
+- `bun run build` - Build single HTML file with all assets inlined
+- `bun run style` - Build CSS only
+- `bun run scripts` - Build JavaScript only
+- `bun run lint` - Run ESLint
+- `bun run lint:fix` - Run ESLint with auto-fix
 
 ### Testing
 
@@ -82,10 +83,10 @@ The project includes comprehensive automated testing with both unit/integration 
 
 Place unit and integration tests in the `tests/` directory:
 
-- `npm run check` - Run unit tests with Vitest
-- `npm run check:watch` - Run unit tests in watch mode
-- `npm run check:ui` - Run unit tests with interactive UI
-- `npm run check:coverage` - Run tests with coverage reporting
+- `bun run check` - Run unit tests with Vitest
+- `bun run check:watch` - Run unit tests in watch mode
+- `bun run check:ui` - Run unit tests with interactive UI
+- `bun run check:coverage` - Run tests with coverage reporting
 
 **Current Unit Test Coverage:**
 
@@ -105,15 +106,15 @@ Place unit and integration tests in the `tests/` directory:
 
 Place E2E tests in the `e2e/` directory:
 
-- `npm run check:e2e` - Run end-to-end tests with Playwright
-- `npm run check:e2e:headed` - Run E2E tests with browser UI visible
-- `npm run check:e2e:debug` - Debug E2E tests step by step
-- `npm run check:e2e:ui` - Run E2E tests with interactive UI
+- `bun run check:e2e` - Run end-to-end tests with Playwright
+- `bun run check:e2e:headed` - Run E2E tests with browser UI visible
+- `bun run check:e2e:debug` - Debug E2E tests step by step
+- `bun run check:e2e:ui` - Run E2E tests with interactive UI
 
 **Current E2E Test Coverage:**
 - **Core editor functionality** - SVG editing, preview updates, UI interactions
 - **File upload workflows** - Drag & drop, file validation, error handling
-- **Transform operations** - Rotation, flipping, zoom, layout switching  
+- **Transform operations** - Rotation, flipping, zoom, layout switching
 - **Accessibility testing** - Keyboard navigation, screen reader compatibility, focus management
 - **Error handling** - Invalid content, network failures, rapid interactions
 - **Mobile and touch support** - Responsive design, pinch-to-zoom, orientation changes
@@ -123,34 +124,34 @@ Place E2E tests in the `e2e/` directory:
 
 #### Running All Tests
 
-- `npm run test` - Run both unit and E2E tests
-- `npm run test:all` - Run all tests with coverage reporting
-- `npm run test:unit` - Run unit tests only
-- `npm run test:e2e` - Run E2E tests only
-- `npm run test:integration` - Run tests with coverage
+- `bun run test` - Run both unit and E2E tests
+- `bun run test:all` - Run all tests with coverage reporting
+- `bun run test:unit` - Run unit tests only
+- `bun run test:e2e` - Run E2E tests only
+- `bun run test:integration` - Run tests with coverage
 
 #### Test Setup
 
 **First-time setup:**
 ```bash
 # Install dependencies
-npm install
+bun install
 
 # Install Playwright browsers (required for E2E tests)
-npm run playwright:install
+bun run playwright:install
 
 # If you encounter issues, also install system dependencies
-npm run playwright:install-deps
+bun run playwright:install-deps
 ```
 
 **Development workflow:**
 ```bash
 # Run tests during development
-npm run check:watch          # Unit tests in watch mode
-npm run check:e2e:headed     # E2E tests with browser visible
+bun run check:watch          # Unit tests in watch mode
+bun run check:e2e:headed     # E2E tests with browser visible
 
 # Before committing
-npm run test:all             # Full test suite with coverage
+bun run test:all             # Full test suite with coverage
 ```
 
 #### Test Configuration
@@ -229,7 +230,7 @@ dist/                # Built assets (generated)
 The application is built with:
 
 - **CodeMirror 6** for the code editor with XML/SVG syntax highlighting and real-time linting
-- **Nord theme** for dark mode syntax highlighting  
+- **Nord theme** for dark mode syntax highlighting
 - **Tailwind CSS** for styling with PostCSS processing
 - **ESBuild** for fast TypeScript bundling (production builds)
 - **Vite** for development server with hot reload

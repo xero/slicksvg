@@ -62,7 +62,7 @@ jobs:
         run: bunx playwright install --with-deps
 
       - name: Build application
-        run: bun make
+        run: bun run build
 
       - name: Start Web Server
         run: bunx vite preview --port 4173 &
@@ -133,12 +133,10 @@ jobs:
         run: bun i
 
       - name: Build application
-        run: bun make
+        run: bun run build
 
       - name: Check build artifacts
         run: |
-          test -f dist/app.js
-          test -f dist/theme.css
           test -f dist/index.html
-          echo "Build successful - all artifacts present"
+          echo "Build successful - artifact present"
 

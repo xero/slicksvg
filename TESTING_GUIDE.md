@@ -51,7 +51,7 @@ e2e/                  # End-to-end tests (Playwright)
     },
   });
   ```
-- **Running Tests:**  
+- **Running Tests:**
   - `npm run check` - Run all unit tests
   - `npm run check:watch` - Watch mode
   - `npm run check:ui` - Vitest UI
@@ -83,7 +83,7 @@ e2e/                  # End-to-end tests (Playwright)
     },
   });
   ```
-- **Running Tests:**  
+- **Running Tests:**
   - `npm run check:e2e` - Run E2E tests
   - `npm run check:e2e:headed` - Headed mode
   - `npm run check:e2e:debug` - Debug mode
@@ -94,7 +94,6 @@ e2e/                  # End-to-end tests (Playwright)
 - **Scripts:** Test-related scripts are defined in `package.json`:
   ```json
   "scripts": {
-    "dev": "npm run make && node serve.js",
     "check": "vitest run",
     "check:watch": "vitest",
     "check:ui": "vitest --ui",
@@ -150,7 +149,7 @@ npm run check:e2e:debug
 npm run dev
 
 # Build production files
-npm run make
+npm run build
 ```
 
 ---
