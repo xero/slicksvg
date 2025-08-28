@@ -47,6 +47,71 @@ test.describe('SVG Editor Mobile and Touch E2E Tests', () => {
     await expect(preview).toBeVisible();
   });
 
+  test('should support single-touch drag panning on mobile devices', async ({ page }) => {
+    // Get the SVG preview area  
+    const svgPreview = page.locator('.svg-preview-wrapper');
+    await expect(svgPreview).toBeVisible();
+
+    // Get the SVG container to check its initial transform
+    const svgContainer = page.locator('.svg-container');
+    await expect(svgContainer).toBeVisible();
+    
+    // Get initial transform state
+    const initialTransform = await svgContainer.evaluate(el => 
+      window.getComputedStyle(el).transform
+    );
+    
+    // Simulate single-touch drag gesture to pan the SVG
+    // Start touch at one position
+    await svgPreview.dispatchEvent('touchstart', {
+      touches: [
+        { clientX: 200, clientY: 300, identifier: 0 }
+      ],
+      targetTouches: [
+        { clientX: 200, clientY: 300, identifier: 0 }
+      ],
+      changedTouches: [
+        { clientX: 200, clientY: 300, identifier: 0 }
+      ]
+    });
+    
+    // Move touch to simulate drag (pan)
+    await svgPreview.dispatchEvent('touchmove', {
+      touches: [
+        { clientX: 250, clientY: 350, identifier: 0 }
+      ],
+      targetTouches: [
+        { clientX: 250, clientY: 350, identifier: 0 }
+      ],
+      changedTouches: [
+        { clientX: 250, clientY: 350, identifier: 0 }
+      ]
+    });
+    
+    // End the touch gesture
+    await svgPreview.dispatchEvent('touchend', {
+      touches: [],
+      targetTouches: [],
+      changedTouches: [
+        { clientX: 250, clientY: 350, identifier: 0 }
+      ]
+    });
+    
+    // Give a moment for the transform to be applied
+    await page.waitForTimeout(100);
+    
+    // Check that the transform has changed (indicating panning occurred)
+    const finalTransform = await svgContainer.evaluate(el => 
+      window.getComputedStyle(el).transform
+    );
+    
+    // The transform should have changed from the initial state
+    expect(finalTransform).not.toBe(initialTransform);
+    
+    // SVG should still be visible and functional
+    await expect(svgContainer).toBeVisible();
+  });
+
   test('should work well on tablet size', async ({ page }) => {
     // Set tablet viewport
     await page.setViewportSize({ width: 768, height: 1024 });

@@ -482,5 +482,98 @@ describe('SVGEditor Core Functionality', () => {
       handleTouchMove(limitTouchEvent);
       expect(zoomLevel).toBe(50); // Should be capped
     });
+
+    it('should handle single-touch panning', () => {
+      let isPanning = false;
+      let panX = 0;
+      let panY = 0;
+      let lastPanX = 0;
+      let lastPanY = 0;
+      let isMultiTouch = false;
+
+      const handleTouchStart = (e: { touches: any[], preventDefault: () => void }) => {
+        if (e.touches.length === 2) {
+          isMultiTouch = true;
+          e.preventDefault();
+        } else if (e.touches.length === 1) {
+          isMultiTouch = false;
+          isPanning = true;
+          lastPanX = e.touches[0].clientX;
+          lastPanY = e.touches[0].clientY;
+          e.preventDefault();
+        } else {
+          isMultiTouch = false;
+        }
+      };
+
+      const handleTouchMove = (e: { touches: any[], preventDefault: () => void }) => {
+        if (!isMultiTouch && e.touches.length === 1 && isPanning) {
+          const touch = e.touches[0];
+          const deltaX = touch.clientX - lastPanX;
+          const deltaY = touch.clientY - lastPanY;
+
+          panX += deltaX;
+          panY += deltaY;
+
+          lastPanX = touch.clientX;
+          lastPanY = touch.clientY;
+          e.preventDefault();
+        }
+      };
+
+      const handleTouchEnd = (e: { touches: any[] }) => {
+        if (e.touches.length < 2) {
+          isMultiTouch = false;
+        }
+        if (e.touches.length === 0) {
+          isPanning = false;
+        }
+      };
+
+      // Test single touch start
+      const singleTouchStart = {
+        touches: [{ clientX: 100, clientY: 150 }],
+        preventDefault: vi.fn()
+      };
+
+      handleTouchStart(singleTouchStart);
+      expect(isPanning).toBe(true);
+      expect(isMultiTouch).toBe(false);
+      expect(lastPanX).toBe(100);
+      expect(lastPanY).toBe(150);
+      expect(singleTouchStart.preventDefault).toHaveBeenCalled();
+
+      // Test single touch move (pan)
+      const singleTouchMove = {
+        touches: [{ clientX: 120, clientY: 170 }],
+        preventDefault: vi.fn()
+      };
+
+      handleTouchMove(singleTouchMove);
+      expect(panX).toBe(20); // deltaX: 120 - 100 = 20
+      expect(panY).toBe(20); // deltaY: 170 - 150 = 20
+      expect(lastPanX).toBe(120);
+      expect(lastPanY).toBe(170);
+      expect(singleTouchMove.preventDefault).toHaveBeenCalled();
+
+      // Test another move
+      const anotherTouchMove = {
+        touches: [{ clientX: 130, clientY: 160 }],
+        preventDefault: vi.fn()
+      };
+
+      handleTouchMove(anotherTouchMove);
+      expect(panX).toBe(30); // 20 + (130 - 120) = 30
+      expect(panY).toBe(10); // 20 + (160 - 170) = 10
+
+      // Test touch end
+      const touchEnd = {
+        touches: []
+      };
+
+      handleTouchEnd(touchEnd);
+      expect(isPanning).toBe(false);
+      expect(isMultiTouch).toBe(false);
+    });
   });
 });

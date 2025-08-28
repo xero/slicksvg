@@ -411,6 +411,13 @@ class SVGEditor {
 			this.initialPinchDistance = this.calculatePinchDistance(e.touches[0], e.touches[1]);
 			this.initialZoomLevel = this.zoomLevel;
 			e.preventDefault();
+		} else if (e.touches.length === 1) {
+			// Handle single-touch panning
+			this.isMultiTouch = false;
+			this.isPanning = true;
+			this.lastPanX = e.touches[0].clientX;
+			this.lastPanY = e.touches[0].clientY;
+			e.preventDefault();
 		} else {
 			this.isMultiTouch = false;
 		}
@@ -418,10 +425,25 @@ class SVGEditor {
 
 	private handleTouchMove(e: TouchEvent): void {
 		if (this.isMultiTouch && e.touches.length === 2) {
+			// Handle pinch zoom
 			const currentDistance = this.calculatePinchDistance(e.touches[0], e.touches[1]);
 			const scale = currentDistance / this.initialPinchDistance;
 			const newZoomLevel = this.initialZoomLevel * scale;
 			this.zoomLevel = Math.max(0.1, Math.min(newZoomLevel, 50));
+			this.applySVGStyles();
+			e.preventDefault();
+		} else if (!this.isMultiTouch && e.touches.length === 1 && this.isPanning) {
+			// Handle single-touch panning
+			const touch = e.touches[0];
+			const deltaX = touch.clientX - this.lastPanX;
+			const deltaY = touch.clientY - this.lastPanY;
+
+			this.panX += deltaX;
+			this.panY += deltaY;
+
+			this.lastPanX = touch.clientX;
+			this.lastPanY = touch.clientY;
+
 			this.applySVGStyles();
 			e.preventDefault();
 		}
@@ -430,6 +452,10 @@ class SVGEditor {
 	private handleTouchEnd(e: TouchEvent): void {
 		if (e.touches.length < 2) {
 			this.isMultiTouch = false;
+		}
+		if (e.touches.length === 0) {
+			// End panning when all touches are removed
+			this.isPanning = false;
 		}
 	}
 
