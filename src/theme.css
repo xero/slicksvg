@@ -162,26 +162,16 @@
       }
     }
   }
-	/* Hide floating error tooltips completely */
-	.cm-tooltip,
-	.cm-tooltip-lint,
 	.cm-tooltip-below {
-		display: none !important;
+		@apply hidden! pointer-events-none!;
 	}
-	/* Make gutter error icons non-interactive */
 	.cm-lint-marker,
 	.cm-lint-marker-error,
 	.cm-lint-marker-warning {
-		pointer-events: none !important;
-		cursor: default !important;
+		@apply pointer-events-none cursor-auto;
 	}
-	/* SVG Status Bar Styling */
 	.svg-status-bar {
-		@apply px-3 py-1 text-sm bg-menu text-lbl border-b border-menu-outside;
-		font-family: var(--font-ui);
-		min-height: 1.5rem;
-		display: flex;
-		align-items: center;
+		@apply px-3 text-sm bg-menu text-lbl border-t border-menu-outside flex align-middle items-center order-[99] w-full min-h-6 ml-auto;
 	}
 	.svg-status-bar.error {
 		@apply bg-red-50 text-red-800 border-red-200;
@@ -190,9 +180,9 @@
 		@apply bg-red-900 text-red-200 border-red-700;
 	}
   #editor {
-    @apply flex flex-col flex-1;
+    @apply flex flex-col flex-1 contain-content;
     .cm-editor {
-      @apply flex-1 h-full;
+      @apply h-full;
     }
     nav {
       @apply p-2;
