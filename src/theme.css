@@ -92,6 +92,7 @@
   }
   html,
   body {
+		@apply transition-all ease-in-out;
     overscroll-behavior: none;
   }
   body {
@@ -116,27 +117,35 @@
     aside {
       @apply w-1/2;
     }
+		aside nav {
+			@apply justify-end;
+		}
     &.vertical {
       @apply flex-col;
       main,
       aside {
         @apply w-full;
       }
+			aside nav {
+				@apply justify-start;
+			}
     }
   }
+	@media (prefers-reduced-motion: reduce) {
+		* {
+      @apply transition-none! animate-none!;
+		}
+	}
   button {
-    @apply flex cursor-pointer items-center text-face bg-btn mr-2 px-3 py-1;
+    @apply flex cursor-pointer items-center text-face bg-btn mr-2;
     &:hover,
     &:active,
     &:focus,
     &:focus-within {
       @apply bg-btn-h;
     }
-		i {
-			@apply not-italic text-2xl
-		}
-		&:not(:has(i)) {
-			@apply py-2;
+		svg {
+			@apply w-8 h-8;
 		}
   }
 /* <--//---------------------------------------------------------[interface] */
@@ -226,6 +235,9 @@
         @apply opacity-1;
       }
     }
+		button {
+			@apply px-3 py-1;
+		}
     header,
     article,
     footer,
@@ -236,7 +248,7 @@
       @apply text-xl text-header bg-menu;
     }
     article {
-      @apply flex-row p-6;
+      @apply flex-col md:flex-row p-6;
       label {
         @apply text-lbl mr-5 justify-center align-middle;
 				input {
