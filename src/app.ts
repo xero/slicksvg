@@ -128,6 +128,8 @@ class SVGEditor {
 	private xray = false;
 	private initialPinchDistance = 0;
 	private initialZoomLevel = 1;
+	// Resize state variables
+	private isResizing = false;
 
 	constructor() {
 		this.modal = this.getTyped('dialog');
@@ -316,6 +318,9 @@ class SVGEditor {
 		this.svgPreview.addEventListener('touchstart', (e)=>this.handleTouchStart(e), {passive: false});
 		this.svgPreview.addEventListener('touchmove', (e)=>this.handleTouchMove(e), {passive: false});
 		this.svgPreview.addEventListener('touchend', (e)=>this.handleTouchEnd(e), {passive: false});
+
+		// Setup dragbar for resizing split layout
+		this.setupResizeDragbar();
 	}
 
 	private updateSVGPreview(): void {
@@ -520,6 +525,22 @@ class SVGEditor {
 	private toggleLayout(): void {
 		this.isVerticalLayout = !this.isVerticalLayout;
 		document.body.classList.toggle('vertical');
+
+		// Clear any inline styles and resizing state when switching layout
+		const editor = this.get('editor');
+		const preview = this.get('preview');
+
+		editor.style.width = '';
+		editor.style.height = '';
+		preview.style.width = '';
+		preview.style.height = '';
+
+		editor.classList.remove('resizing');
+		preview.classList.remove('resizing');
+
+		// Update dragbar orientation based on layout
+		const dragbar = this.get('dragbar');
+		dragbar.setAttribute('aria-orientation', this.isVerticalLayout ? 'horizontal' : 'vertical');
 	}
 
 	private toggleMode(): void {
@@ -977,6 +998,71 @@ class SVGEditor {
 			}
 		});
 	}
+
+	private setupResizeDragbar(): void {
+		try {
+			const dragbar = this.get('dragbar');
+
+			// Ensure event listeners are properly bound using explicit binding
+			const boundStartResize = this.startResize.bind(this);
+			dragbar.addEventListener('mousedown', boundStartResize);
+			dragbar.addEventListener('touchstart', boundStartResize, {passive: false});
+		} catch (error) {
+			console.error('Failed to setup dragbar:', error);
+		}
+	}
+
+	private startResize = (e: MouseEvent | TouchEvent): void=>{
+		e.preventDefault();
+		this.isResizing = true;
+
+		window.addEventListener('mousemove', this.doResize);
+		window.addEventListener('mouseup', this.endResize);
+		window.addEventListener('touchmove', this.doResize, {passive: false});
+		window.addEventListener('touchend', this.endResize);
+	};
+
+	private doResize = (e: MouseEvent | TouchEvent): void=>{
+		if (!this.isResizing) return;
+
+		const vertical = document.body.classList.contains('vertical');
+		const editor = this.get('editor');
+		const preview = this.get('preview');
+		const parent = editor.parentNode as HTMLElement;
+		const parentRect = parent.getBoundingClientRect();
+		const total = vertical ? parentRect.height : parentRect.width;
+
+		let pagePos: number;
+		if (e instanceof MouseEvent) {
+			pagePos = vertical ? e.clientY : e.clientX;
+		} else {
+			pagePos = vertical ? e.touches[0].clientY : e.touches[0].clientX;
+			e.preventDefault();
+		}
+
+		const offset = pagePos - (vertical ? parentRect.top : parentRect.left);
+		const percent = Math.max(10, Math.min(90, (offset / total) * 100));
+
+		if (vertical) {
+			editor.style.height = `${percent - 1}%`;
+			preview.style.height = `${100 - percent - 1}%`;
+		} else {
+			editor.style.width = `${percent}%`;
+			preview.style.width = `${100 - percent}%`;
+		}
+
+		// Add resizing class to override flex behavior
+		editor.classList.add('resizing');
+		preview.classList.add('resizing');
+	};
+
+	private endResize = (): void=>{
+		this.isResizing = false;
+		window.removeEventListener('mousemove', this.doResize);
+		window.removeEventListener('mouseup', this.endResize);
+		window.removeEventListener('touchmove', this.doResize);
+		window.removeEventListener('touchend', this.endResize);
+	};
 
 	private generateRandomFilename(): string {
 		const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';

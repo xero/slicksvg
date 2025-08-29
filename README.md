@@ -2,7 +2,7 @@
 
 A **Node.js**-based, web SVG editor written in **TypeScript**, with no frontend frameworks. The UI and all interactions are managed using vanilla TypeScript, DOM APIs, and modern browser features. The app provides a full-screen split view for editing and previewing SVG code in real time.
 
-**✨ Key Features**: Real-time editing • Xray mode highlighting • Dark/light themes • SVG optimization • Transform tools • Touch support • Comprehensive testing
+**Features**: Real-time editing • Resizable split view • Xray mode highlighting • Dark/light themes • SVG optimization • Transform tools • Touch support • Comprehensive testing
 
 ## Screenshots
 
@@ -14,21 +14,21 @@ A **Node.js**-based, web SVG editor written in **TypeScript**, with no frontend 
 
 ## Features
 
-### 🎨 Core Editor
-- **Full-Screen Split View**: Editor and live preview split 50/50, with toggle for vertical/horizontal orientation
+### Core Editor
+- **Resizable Split View**: Editor and live preview with draggable separator for custom sizing (10%-90% range)
 - **Advanced Code Editor**: [CodeMirror 6](https://codemirror.net/) with XML/SVG syntax highlighting and real-time linting
 - **Live Preview**: Instant SVG rendering with semi-transparent dashed border for bounding visualization
 - **Real-time Validation**: XML/SVG syntax checking with detailed error reporting
 - **Tokyo Night Themes**: Beautiful light/dark mode syntax highlighting with seamless theme switching
 
-### 🔍 Xray Mode
+### Xray Mode
 - **Visual Element Highlighting**: Toggle xray mode to visually highlight SVG elements in the preview when cursor is positioned within corresponding code
 - **Native SVG Filters**: Uses sophisticated SVG filter effects for smooth, high-quality highlighting
 - **Smart Element Detection**: Automatically detects cursor position and maps to corresponding SVG elements
 - **Element Indexing**: Supports multiple elements of the same type (e.g., multiple circles, paths)
 - **Non-intrusive**: Highlighting preserves original SVG appearance and doesn't modify code
 
-### 🛠️ SVG Tools
+### SVG Tools
 - **📁 Upload**: Drag & drop or click to upload SVG files with validation
 - **💾 Download**: Save current SVG code as a file
 - **📐 Resize**: Change SVG dimensions with modal dialog interface
@@ -38,20 +38,21 @@ A **Node.js**-based, web SVG editor written in **TypeScript**, with no frontend 
   - Flip horizontal/vertical
   - Reset transformations
 
-### 🎮 Interactive Preview
+### Interactive Preview
+- **Resizable Layout**: Drag the separator between editor and preview to customize panel sizes in both horizontal and vertical modes
 - **Pan & Zoom**: Click and drag to pan, use +/- buttons or pinch gestures to zoom
 - **Touch Support**: Full multi-touch support with pinch-to-zoom on mobile devices
 - **Responsive Design**: Adapts to different screen sizes and orientations
 - **Visual Feedback**: Real-time zoom level announcements for accessibility
 
-### 🌟 User Experience
+### User Experience
 - **Dark/Light Mode**: Seamless theme switching with persistent preferences
 - **Layout Toggle**: Switch between horizontal and vertical split layouts
 - **Accessibility**: Full keyboard navigation, screen reader support, and ARIA labels
 - **Error Handling**: Graceful error handling with user-friendly messages
 - **Performance**: Optimized for smooth interactions and fast rendering
 
-### 🧪 Modern Development
+### Modern Development
 - **TypeScript**: Strict type checking for better code quality and developer experience
 - **Tailwind CSS**: Utility-first CSS framework for consistent styling
 - **ESLint**: Code quality enforcement with TypeScript rules
@@ -121,6 +122,7 @@ Place unit and integration tests in the `tests/` directory:
 - **SVG parsing and validation** - Content validation, dimension extraction, transform parsing
 - **Modal dialog functionality** - Show/hide, input validation, focus management
 - **Touch and pinch zoom** - Multi-touch calculations, gesture handling
+- **Drag-resize functionality** - Split panel resizing, percentage calculations, layout awareness
 - **Error handling** - File upload errors, malformed SVG, input validation
 - **Accessibility features** - Keyboard navigation, screen reader support, focus management
 - **Performance optimization** - Event cleanup, memory management, transform caching
@@ -140,6 +142,7 @@ Place E2E tests in the `e2e/` directory:
 
 **Current E2E Test Coverage:**
 - **Core editor functionality** - SVG editing, preview updates, UI interactions
+- **Drag-resize functionality** - Split panel resizing, accessibility compliance, mobile compatibility
 - **File upload workflows** - Drag & drop, file validation, error handling
 - **Transform operations** - Rotation, flipping, zoom, layout switching
 - **Accessibility testing** - Keyboard navigation, screen reader compatibility, focus management
@@ -193,6 +196,7 @@ bun run test:all             # Full test suite with coverage
 ```
 tests/                       # Unit and integration tests (Vitest)
 ├── svg-editor-core.test.ts     # Core class functionality
+├── svg-drag-resize.test.ts     # Drag-resize functionality and calculations
 ├── svg-transforms.test.ts      # Transform operations and SVG parsing
 ├── svg-error-handling.test.ts  # Error scenarios and edge cases
 ├── svg-accessibility.test.ts   # Accessibility features and integration
@@ -208,6 +212,7 @@ tests/                       # Unit and integration tests (Vitest)
 
 e2e/                         # End-to-end tests (Playwright)
 ├── svg-editor.spec.ts          # Core editor functionality
+├── svg-drag-resize.spec.ts     # Drag-resize E2E testing and accessibility
 ├── svg-upload.spec.ts          # Upload workflows
 ├── svg-accessibility.spec.ts   # Accessibility testing
 ├── svg-error-handling.spec.ts  # Error scenarios
@@ -231,6 +236,7 @@ src/
 
 tests/               # Unit and integration tests (Vitest)
 ├── svg-editor-core.test.ts     # Core class functionality
+├── svg-drag-resize.test.ts     # Drag-resize functionality and calculations
 ├── svg-transforms.test.ts      # Transform operations and SVG parsing
 ├── svg-error-handling.test.ts  # Error scenarios and edge cases
 ├── svg-accessibility.test.ts   # Accessibility features and integration
@@ -246,6 +252,7 @@ tests/               # Unit and integration tests (Vitest)
 
 e2e/                 # End-to-end tests (Playwright)
 ├── svg-editor.spec.ts          # Core editor functionality
+├── svg-drag-resize.spec.ts     # Drag-resize E2E testing and accessibility
 ├── svg-upload.spec.ts          # Upload workflows
 ├── svg-accessibility.spec.ts   # Accessibility testing
 ├── svg-error-handling.spec.ts  # Error scenarios
@@ -277,14 +284,15 @@ The application is built with modern web technologies:
 
 1. **Edit SVG Code**: Use the CodeMirror editor on the left to write/edit SVG markup with real-time syntax highlighting and error detection
 2. **Live Preview**: See your changes instantly in the preview panel on the right
-3. **Upload Files**: Drag & drop SVG files onto the editor or use the Upload button
-4. **Download Files**: Save your current SVG code as a file using the Download button
-5. **Transform SVGs**: Use the toolbar buttons to rotate, flip, or optimize your SVG
-6. **Resize**: Click the Resize button to change SVG dimensions via modal dialog
-7. **Xray Mode**: Click the eye button to enable visual highlighting - move your cursor through different SVG elements in the code to see them highlighted in the preview
-8. **Pan & Zoom**: Click and drag to pan the SVG; use +/- buttons or pinch gestures to zoom in/out
-9. **Dark Mode**: Toggle between light and dark themes with the Dark Mode button
-10. **Layout Toggle**: Click "Flip Screen" to switch between horizontal and vertical layouts
+3. **Resize Layout**: Drag the blue separator between editor and preview panels to customize their sizes (10%-90% range)
+4. **Upload Files**: Drag & drop SVG files onto the editor or use the Upload button
+5. **Download Files**: Save your current SVG code as a file using the Download button
+6. **Transform SVGs**: Use the toolbar buttons to rotate, flip, or optimize your SVG
+7. **Resize**: Click the Resize button to change SVG dimensions via modal dialog
+8. **Xray Mode**: Click the eye button to enable visual highlighting - move your cursor through different SVG elements in the code to see them highlighted in the preview
+9. **Pan & Zoom**: Click and drag to pan the SVG; use +/- buttons or pinch gestures to zoom in/out
+10. **Dark Mode**: Toggle between light and dark themes with the Dark Mode button
+11. **Layout Toggle**: Click "Flip Screen" to switch between horizontal and vertical layouts
 
 ## Development
 

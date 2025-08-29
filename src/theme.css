@@ -93,7 +93,7 @@
   }
   html,
   body {
-		@apply transition-all ease-in-out;
+		@apply transition-colors ease-in-out;
     overscroll-behavior: none;
   }
   body {
@@ -110,26 +110,26 @@
 			}
 		}
 		* {
-			@apply font-ui transition-all ease-in-out;
+			@apply font-ui transition-colors ease-in-out;
 			&:focus {
 				outline: none !important;
 			}
 		}
 		/* view direction swap magic */
-    main,
-    aside {
-      @apply w-1/2;
+    #editor,
+    #preview {
+      @apply w-1/2 z-10;
     }
-		aside nav {
+		#preview nav {
 			@apply justify-end;
 		}
     &.vertical {
       @apply flex-col;
-      main,
-      aside {
+      #editor,
+      #preview {
         @apply w-full;
       }
-			aside nav {
+			#preview nav {
 				@apply justify-start;
 			}
     }
@@ -138,6 +138,24 @@
 			&.vertical {
 				@apply h-1/2;
 			}
+		}
+		/* dragbar for resizing */
+		#dragbar {
+			@apply w-1.5 min-w-1.5 bg-header cursor-col-resize relative z-30;
+			&:hover, &:focus {
+				@apply bg-header/80;
+			}
+			&:focus,
+			&:active {
+				@apply bg-header/90;
+			}
+		}
+		&.vertical #dragbar {
+			@apply w-full h-1.5 cursor-row-resize;
+		}
+		&.vertical #editor, &.vertical #preview {
+			min-height: 10%;
+			min-width: 0;
 		}
   }
 	@media (prefers-reduced-motion: reduce) {
@@ -158,8 +176,9 @@
 		}
   }
 /* <--//---------------------------------------------------------[interface] */
-  main,
-  aside {
+  #editor,
+  #preview {
+		@apply relative flex-1 flex flex-col overflow-hidden min-w-[9%] min-h-[9%];
 		.svg-status-bar {
 			@apply top-[unset]! bottom-0!;
 		}
@@ -174,7 +193,6 @@
 		}
   }
   #editor {
-		@apply relative flex-1 flex flex-col overflow-hidden;
 		.svg-status-bar {
 			@apply text-sm bg-menu text-lbl align-middle items-center min-h-6;
 		}
@@ -212,7 +230,10 @@
 		}
   }
   #preview {
-    @apply flex flex-col bg-preview flex-1 relative overflow-hidden;
+    @apply bg-preview;
+    &.resizing {
+      flex: none;
+    }
     .svg-preview-wrapper {
       @apply flex-1 flex items-center justify-center overflow-hidden;
       cursor: grab;
@@ -305,6 +326,12 @@
   .hide {
     @apply hidden opacity-0;
   }
+	.resizing {
+		@apply flex-none!;
+	}
+	.vertical .resizing{
+		@apply w-auto;
+	}
   .sr-only {
     position: absolute;
     width: 1px;
