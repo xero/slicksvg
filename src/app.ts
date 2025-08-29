@@ -1,5 +1,6 @@
 import {EditorView} from '@codemirror/view';
 import {EditorState, Compartment} from '@codemirror/state';
+import {keymap} from '@codemirror/view';
 import {xml} from '@codemirror/lang-xml';
 import {basicSetup} from 'codemirror';
 import {tokyoNightDay} from '@fsegurai/codemirror-theme-tokyo-night-day';
@@ -173,6 +174,7 @@ class SVGEditor {
 				doc: startDoc,
 				extensions: [
 					basicSetup,
+					keymap.of([]),
 					xml(),
 					EditorView.lineWrapping,
 					lintGutter(),
