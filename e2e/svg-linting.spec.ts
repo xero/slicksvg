@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('SVG Editor Linting', () => {
 	test.beforeEach(async ({ page }) => {
-		await page.goto('/src/index.html');
+		await page.goto('/index.html');
 	});
 
 	test('should display lint errors for malformed SVG', async ({ page }) => {
@@ -134,7 +134,7 @@ test.describe('SVG Editor Linting', () => {
 		await expect(lintMarkers).toHaveCount(0);
 	});
 
-	test('should provide error tooltips on hover', async ({ page }) => {
+	test('should provide error information in status bar instead of tooltips', async ({ page }) => {
 		// Wait for editor to load
 		const editor = page.locator('#editor .cm-content');
 		await expect(editor).toBeVisible();
@@ -151,17 +151,15 @@ test.describe('SVG Editor Linting', () => {
 		const lintMarkers = page.locator('.cm-lint-marker-error');
 		await expect(lintMarkers.first()).toBeVisible();
 
-		// Hover over the lint marker to trigger tooltip
-		await lintMarkers.first().hover();
+		// Verify error information is shown in status bar instead of tooltips
+		const statusBar = page.locator('#svg-status-bar');
+		await expect(statusBar).toHaveClass(/error/);
+		await expect(statusBar).not.toHaveText('svg valid');
 
-		// Wait a moment for tooltip to appear
-		await page.waitForTimeout(500);
-
-		// Look for tooltip or error message
-		// CodeMirror should show error details on hover
-		const tooltip = page.locator('.cm-tooltip');
-		if (await tooltip.count() > 0) {
-			await expect(tooltip.first()).toBeVisible();
+		// Verify tooltips are disabled
+		const tooltips = page.locator('.cm-tooltip');
+		if (await tooltips.count() > 0) {
+			await expect(tooltips.first()).toHaveCSS('display', 'none');
 		}
 	});
 

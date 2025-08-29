@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('SVG Editor Accessibility E2E Tests', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/src/index.html');
+    await page.goto('/index.html');
   });
 
   test('should have proper heading structure and landmarks', async ({ page }) => {

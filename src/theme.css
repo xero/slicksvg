@@ -4,18 +4,6 @@
 /* <--//------------------------------------------------------------[colors] */
 @theme {
 	/* --- palette */
-	--color-slick:#305ab6;
-	--color-slick-50:#faf8ff;
-	--color-slick-100:#eef0ff;
-	--color-slick-200:#dae2ff;
-	--color-slick-300:#b2c5ff;
-	--color-slick-400:#88a9ff;
-	--color-slick-500:#678ded;
-	--color-slick-600:#4c73d1;
-	--color-slick-700:#305ab6;
-	--color-slick-800:#0a419d;
-	--color-slick-900:#002b73;
-	--color-slick-950:#001847;
 	--color-mono:#585e71;
 	--color-mono-50:#faf8ff;
 	--color-mono-100:#eef0ff;
@@ -29,19 +17,23 @@
 	--color-mono-900:#2a3042;
 	--color-mono-950:#151b2c;
 	/* --- interface */
-  --color-face: var(--color-mono-50);
-	--color-lbl: var(--color-mono-950);
-	--color-frm: var(--color-mono-100);
+  --color-face: #faf8ff;
+	--color-lbl: #151b2c;
+	--color-frm: #faf8ff;
 	--color-menu: #d5d6db;
-  --color-menu-alt:  var(--color-mono-50);
+  --color-menu-alt: #faf8ff;
   --color-menu-outside: #b3b4d1;
   --color-preview: #edeef3;
 	--color-header: #2959aa;
 	--color-btn: #d2d7ec;
 	--color-btn-h: #e5f1fe;
 	--color-btn-txt: #565f89;
-	--color-bounds: var(--color-mono-300);
-  --current-color: var(--color-mono-950);
+	--color-bounds:#c0c6dd;
+	--color-err: #fb2c36;
+	--color-err-bg: #fef2f2;
+	--color-err-fg:#9f0712;
+	--color-err-br: #ffe7e7;
+  --color-svg: #151b2c;
   --breakpoint-xs: 30rem;
   --breakpoint-2xl: 100rem;
   --breakpoint-3xl: 120rem;
@@ -55,7 +47,7 @@
 	--color-frm: #414868;
   --color-menu-alt: #25283a;
   --color-menu-outside: #1d2129;
-  --current-color: #c0caf5;
+  --color-svg: #c0caf5;
   --color-menu: #202334;
   --color-preview: #2f3244;
 	--color-bounds: #3b4261;
@@ -63,6 +55,9 @@
 	--color-btn: #24283b;
 	--color-btn-h: #1a1b26;
 	--color-btn-txt: #565f89;
+	--color-err-bg:#82181a;
+	--color-err-fg: #ffc9c9;
+	--color-err-br: #8b060f;
 }
 /* <--//----------------------------------------------------------[document] */
 :root {
@@ -104,10 +99,11 @@
 		&.drag-over {
 			@apply relative;
 			&::after {
-				@apply fixed flex z-50 top-[5%] left-[5%] bottom-[5%] right-[5%]
-							 align-middle justify-center justify-items-center items-center
-							 pointer-events-none text-3xl font-bold text-header bg-menu
-							 border-4 border-dashed border-btn;
+				@apply
+					fixed flex z-50 top-[5%] left-[5%] bottom-[5%] right-[5%]
+					align-middle justify-center justify-items-center items-center
+					pointer-events-none text-3xl font-bold text-header bg-menu
+					border-4 border-dashed border-btn;
 				content: 'Drop SVG file here';
 			}
 		}
@@ -117,6 +113,7 @@
 				outline: none !important;
 			}
 		}
+		/* view direction swap magic */
     main,
     aside {
       @apply w-1/2;
@@ -134,6 +131,12 @@
 				@apply justify-start;
 			}
     }
+		.cm-editor {
+			@apply h-full;
+			&.vertical {
+				@apply h-1/2;
+			}
+		}
   }
 	@media (prefers-reduced-motion: reduce) {
 		* {
@@ -155,37 +158,50 @@
 /* <--//---------------------------------------------------------[interface] */
   main,
   aside {
-    nav {
-      @apply flex flex-row items-center bg-menu p-0 m-0 w-full;
-      label {
-        @apply text-lbl pr-5;
-      }
-    }
-  }
-	.cm-tooltip,
-	.cm-tooltip-lint,
-	.cm-tooltip-below {
-		@apply w-1/2! bg-menu! border-menu-outside!;
-		.cm-diagnostic-error {
-			.cm-diagnosticText {
-				@apply text-lbl!;
-			}
+		.svg-status-bar {
+			@apply top-[unset]! bottom-0!;
 		}
-	}
+		nav,
+		.svg-status-bar{
+			@apply
+				flex flex-row w-full absolute top-0 left-0 z-10
+				items-center bg-menu m-0 p-2;
+			box-shadow:
+				0 0 0 2px var(--color-menu-outside),
+				0 0 0 3px var(--color-bounds);
+		}
+  }
   #editor {
-    @apply flex flex-col flex-1;
-    .cm-editor {
-      @apply flex-1 h-full;
-    }
-    nav {
-      @apply p-2;
-    }
+		@apply relative flex-1 flex flex-col overflow-hidden;
+		.svg-status-bar {
+			@apply text-sm bg-menu text-lbl align-middle items-center min-h-6;
+		}
+		.svg-status-bar.error {
+			@apply bg-err-bg text-err-fg;
+			box-shadow:
+				0 0 0 2px var(--color-err-br),
+				0 0 0 3px var(--color-err-bg);
+		}
+		.cm-editor {
+			 @apply flex-1 min-h-0 overflow-auto;
+		}
+		.cm-tooltip-below {
+			@apply hidden! pointer-events-none!;
+		}
+		.cm-lint-marker,
+		.cm-lint-marker-error,
+		.cm-lint-marker-warning {
+			@apply pointer-events-none cursor-auto;
+		}
+		&:not(.dark) .cm-activeLine {
+			@apply bg-preview!;
+		}
+		.cm-matchingBracket {
+			outline: none !important;
+		}
   }
   #preview {
     @apply flex flex-col bg-preview flex-1 relative overflow-hidden;
-    nav {
-      @apply absolute top-0 left-0 z-10 p-2;
-    }
     .svg-preview-wrapper {
       @apply flex-1 flex items-center justify-center overflow-hidden;
       cursor: grab;
@@ -194,12 +210,14 @@
       }
     }
     .svg-container {
-			color: var(--current-color);
-			fill: var(--current-color);
-      @apply flex items-center justify-center border-4 border-dashed border-bounds;
+			color: var(--color-svg);
+			fill: var(--color-svg);
+			--current-color: var(--color-svg);
+      @apply flex items-center justify-center
+						 border-4 border-dashed border-bounds;
     }
     .error {
-      @apply text-red-500 p-4 text-center;
+      @apply text-err p-4 text-center;
     }
   }
   dialog {
