@@ -10,11 +10,11 @@ import {linter, lintGutter} from '@codemirror/lint';
 let statusBarUpdateCallback: ((message: string, isError: boolean) => void) | null = null;
 
 const svgLinter = linter(view=>{
-	const text = view.state.doc.toString();
+	const text = view.state.doc.toString().trim();
 	const diagnostics = [];
 
 	try {
-		if (!text.trim()) {
+		if (!text) {
 			if (statusBarUpdateCallback) {
 				statusBarUpdateCallback('svg valid', false);
 			}

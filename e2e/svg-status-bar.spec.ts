@@ -38,13 +38,7 @@ test.describe('SVG Status Bar E2E Tests', () => {
 		expect(statusText?.length).toBeGreaterThan(0);
 	});
 
-	test.skip('should return to valid status when error is fixed', async ({ page }) => {
-		// FIXME: This test has an edge case where the linter doesn't properly clear
-		// the error state when replacing malformed SVG with valid SVG. The error
-		// "Extra content at the end of the document" persists even with valid SVG.
-		// This needs investigation into the DOMParser behavior or linter logic.
-		// The core functionality works correctly - only this specific test scenario fails.
-		
+	test('should return to valid status when error is fixed', async ({ page }) => {
 		// Wait for editor to load
 		const editor = page.locator('#editor .cm-content');
 		await expect(editor).toBeVisible();
@@ -55,9 +49,7 @@ test.describe('SVG Status Bar E2E Tests', () => {
 		await expect(statusBar).not.toHaveClass(/error/);
 
 		// Create an error
-		await editor.click();
-		await page.keyboard.press('Control+a');
-		await page.keyboard.type('<svg><rect></svg>'); // Missing closing rect tag
+		await editor.fill('<svg><rect></svg>'); // Missing closing rect tag
 
 		// Wait for linting
 		await page.waitForTimeout(1500);
@@ -67,16 +59,14 @@ test.describe('SVG Status Bar E2E Tests', () => {
 		await expect(statusBar).not.toHaveText('svg valid');
 
 		// Fix the error by typing valid SVG
-		await editor.click();
-		await page.keyboard.press('Control+a');
-		await page.keyboard.type('<svg width="100" height="100"><rect width="50" height="50"/></svg>');
+		await editor.fill('<svg width="100" height="100"><rect width="50" height="50"/></svg>');
 
 		// Wait longer for linting to process the change
 		await page.waitForTimeout(3000);
 
-		// Verify improvement - at minimum, the error class should be gone
-		// Note: This is a regression test for the core functionality
+		// Verify that the error is now cleared and status returns to valid
 		await expect(statusBar).not.toHaveClass(/error/);
+		await expect(statusBar).toHaveText('svg valid');
 	});
 
 	test('should show warning for non-SVG content', async ({ page }) => {

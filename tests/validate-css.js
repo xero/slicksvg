@@ -15,7 +15,7 @@ function checkBin(bin) {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const cssPath = path.join(__dirname, '..', 'src', 'theme.css');
-const postcssConfigPath = path.join(__dirname, 'postcss.config.js');
+const postcssConfigPath = path.join(__dirname, '..', 'postcss.config.js');
 
 async function runPostCSS() {
   const bunxBin = process.platform === 'win32' ? 'bunx.cmd' : 'bunx';
