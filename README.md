@@ -7,10 +7,10 @@ A **Node.js**-based, web SVG editor written in **TypeScript**, with no frontend 
 ## Screenshots
 
 **Light Mode with Xray Highlighting:**
-![Light Mode with Xray](https://github.com/user-attachments/assets/ab9af704-63e4-495e-a930-bc1a21a0d651)
+![Light Mode Vertical](https://github.com/user-attachments/assets/918073fb-28b3-4814-be49-0e171aeedf43)
 
 **Dark Mode with Error State:**
-![Dark Mode Error](https://github.com/user-attachments/assets/0a696d5a-31a2-43d2-8a81-09b38274a2a6)
+![Dark Mode with Error](https://github.com/user-attachments/assets/61278330-a2af-4e2b-8005-134819008bfd)
 
 ## Features
 
@@ -33,7 +33,7 @@ A **Node.js**-based, web SVG editor written in **TypeScript**, with no frontend 
 - **💾 Download**: Save current SVG code as a file
 - **📐 Resize**: Change SVG dimensions with modal dialog interface
 - **⚡ Optimize**: Remove unnecessary whitespace, comments, and optimize SVG code for smaller file sizes
-- **🔄 Transform**: 
+- **🔄 Transform**:
   - Rotate in 90° increments
   - Flip horizontal/vertical
   - Reset transformations
@@ -56,10 +56,10 @@ A **Node.js**-based, web SVG editor written in **TypeScript**, with no frontend 
 - **TypeScript**: Strict type checking for better code quality and developer experience
 - **Tailwind CSS**: Utility-first CSS framework for consistent styling
 - **ESLint**: Code quality enforcement with TypeScript rules
-- **Comprehensive Testing**: 
+- **Comprehensive Testing**:
   - **Vitest**: 111+ unit and integration tests
   - **Playwright**: End-to-end testing across browsers
-- **Build System**: 
+- **Build System**:
   - **Vite**: Fast development server with hot reload
   - **ESBuild**: Optimized production builds
 
