@@ -2,7 +2,7 @@
 
 A **Node.js**-based, web SVG editor written in **TypeScript**, with no frontend frameworks. The UI and all interactions are managed using vanilla TypeScript, DOM APIs, and modern browser features. The app provides a full-screen split view for editing and previewing SVG code in real time.
 
-**✨ Key Features**: Real-time editing • Resizable split view • Xray mode highlighting • Dark/light themes • SVG optimization • Transform tools • Touch support • Comprehensive testing
+**Features**: Real-time editing • Resizable split view • Xray mode highlighting • Dark/light themes • SVG optimization • Transform tools • Touch support • Comprehensive testing
 
 ## Screenshots
 
@@ -14,21 +14,21 @@ A **Node.js**-based, web SVG editor written in **TypeScript**, with no frontend 
 
 ## Features
 
-### 🎨 Core Editor
+### Core Editor
 - **Resizable Split View**: Editor and live preview with draggable separator for custom sizing (10%-90% range)
 - **Advanced Code Editor**: [CodeMirror 6](https://codemirror.net/) with XML/SVG syntax highlighting and real-time linting
 - **Live Preview**: Instant SVG rendering with semi-transparent dashed border for bounding visualization
 - **Real-time Validation**: XML/SVG syntax checking with detailed error reporting
 - **Tokyo Night Themes**: Beautiful light/dark mode syntax highlighting with seamless theme switching
 
-### 🔍 Xray Mode
+### Xray Mode
 - **Visual Element Highlighting**: Toggle xray mode to visually highlight SVG elements in the preview when cursor is positioned within corresponding code
 - **Native SVG Filters**: Uses sophisticated SVG filter effects for smooth, high-quality highlighting
 - **Smart Element Detection**: Automatically detects cursor position and maps to corresponding SVG elements
 - **Element Indexing**: Supports multiple elements of the same type (e.g., multiple circles, paths)
 - **Non-intrusive**: Highlighting preserves original SVG appearance and doesn't modify code
 
-### 🛠️ SVG Tools
+### SVG Tools
 - **📁 Upload**: Drag & drop or click to upload SVG files with validation
 - **💾 Download**: Save current SVG code as a file
 - **📐 Resize**: Change SVG dimensions with modal dialog interface
@@ -38,21 +38,21 @@ A **Node.js**-based, web SVG editor written in **TypeScript**, with no frontend 
   - Flip horizontal/vertical
   - Reset transformations
 
-### 🎮 Interactive Preview
+### Interactive Preview
 - **Resizable Layout**: Drag the separator between editor and preview to customize panel sizes in both horizontal and vertical modes
 - **Pan & Zoom**: Click and drag to pan, use +/- buttons or pinch gestures to zoom
 - **Touch Support**: Full multi-touch support with pinch-to-zoom on mobile devices
 - **Responsive Design**: Adapts to different screen sizes and orientations
 - **Visual Feedback**: Real-time zoom level announcements for accessibility
 
-### 🌟 User Experience
+### User Experience
 - **Dark/Light Mode**: Seamless theme switching with persistent preferences
 - **Layout Toggle**: Switch between horizontal and vertical split layouts
 - **Accessibility**: Full keyboard navigation, screen reader support, and ARIA labels
 - **Error Handling**: Graceful error handling with user-friendly messages
 - **Performance**: Optimized for smooth interactions and fast rendering
 
-### 🧪 Modern Development
+### Modern Development
 - **TypeScript**: Strict type checking for better code quality and developer experience
 - **Tailwind CSS**: Utility-first CSS framework for consistent styling
 - **ESLint**: Code quality enforcement with TypeScript rules
@@ -118,11 +118,11 @@ Place unit and integration tests in the `tests/` directory:
 **Current Unit Test Coverage:**
 
 - **Core SVGEditor functionality** - Element selection, error handling, theme switching
-- **Drag-resize functionality** - Split panel resizing, percentage calculations, layout awareness
 - **Transform operations** - Rotation, flipping, zoom controls, pan interactions
 - **SVG parsing and validation** - Content validation, dimension extraction, transform parsing
 - **Modal dialog functionality** - Show/hide, input validation, focus management
 - **Touch and pinch zoom** - Multi-touch calculations, gesture handling
+- **Drag-resize functionality** - Split panel resizing, percentage calculations, layout awareness
 - **Error handling** - File upload errors, malformed SVG, input validation
 - **Accessibility features** - Keyboard navigation, screen reader support, focus management
 - **Performance optimization** - Event cleanup, memory management, transform caching
