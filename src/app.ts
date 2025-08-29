@@ -127,6 +127,11 @@ class SVGEditor {
 	private xray = false;
 	private initialPinchDistance = 0;
 	private initialZoomLevel = 1;
+	// Resize state variables
+	private isResizing = false;
+	private startPagePos = 0;
+	private startEditorSize = 0;
+	private startPreviewSize = 0;
 
 	constructor() {
 		this.modal = this.getTyped('dialog');
@@ -136,6 +141,7 @@ class SVGEditor {
 		this.initializePreview();
 		this.setupEventListeners();
 		this.setupDragAndDrop();
+		this.setupResizeDragbar();
 		this.setupReducedMotion();
 		this.updateSVGPreview();
 	}
@@ -518,6 +524,14 @@ class SVGEditor {
 	private toggleLayout(): void {
 		this.isVerticalLayout = !this.isVerticalLayout;
 		document.body.classList.toggle('vertical');
+
+		// Clear any inline styles when switching layout
+		const editor = this.get('editor');
+		const preview = this.get('preview');
+		editor.style.width = '';
+		editor.style.height = '';
+		preview.style.width = '';
+		preview.style.height = '';
 	}
 
 	private toggleMode(): void {
@@ -975,6 +989,68 @@ class SVGEditor {
 			}
 		});
 	}
+
+	private setupResizeDragbar(): void {
+		const dragbar = this.get('dragbar');
+		dragbar.addEventListener('mousedown', this.startResize);
+		dragbar.addEventListener('touchstart', this.startResize, {passive: false});
+	}
+
+	private startResize = (e: MouseEvent | TouchEvent): void=>{
+		e.preventDefault();
+		this.isResizing = true;
+
+		const vertical = document.body.classList.contains('vertical');
+		const editorRect = this.get('editor').getBoundingClientRect();
+		const previewRect = this.get('preview').getBoundingClientRect();
+
+		if (e instanceof MouseEvent) {
+			this.startPagePos = vertical ? e.clientY : e.clientX;
+		} else {
+			this.startPagePos = vertical ? e.touches[0].clientY : e.touches[0].clientX;
+		}
+
+		this.startEditorSize = vertical ? editorRect.height : editorRect.width;
+		this.startPreviewSize = vertical ? previewRect.height : previewRect.width;
+
+		window.addEventListener('mousemove', this.doResize);
+		window.addEventListener('mouseup', this.endResize);
+		window.addEventListener('touchmove', this.doResize, {passive: false});
+		window.addEventListener('touchend', this.endResize);
+	};
+
+	private doResize = (e: MouseEvent | TouchEvent): void=>{
+		if (!this.isResizing) return;
+
+		let pagePos: number;
+		const vertical = document.body.classList.contains('vertical');
+		if (e instanceof MouseEvent) {
+			pagePos = vertical ? e.clientY : e.clientX;
+		} else {
+			pagePos = vertical ? e.touches[0].clientY : e.touches[0].clientX;
+			e.preventDefault();
+		}
+
+		const delta = pagePos - this.startPagePos;
+		const newEditorSize = Math.max(50, this.startEditorSize + delta);
+		const newPreviewSize = Math.max(50, this.startPreviewSize - delta);
+
+		if (vertical) {
+			this.get('editor').style.height = `${newEditorSize}px`;
+			this.get('preview').style.height = `${newPreviewSize}px`;
+		} else {
+			this.get('editor').style.width = `${newEditorSize}px`;
+			this.get('preview').style.width = `${newPreviewSize}px`;
+		}
+	};
+
+	private endResize = (): void=>{
+		this.isResizing = false;
+		window.removeEventListener('mousemove', this.doResize);
+		window.removeEventListener('mouseup', this.endResize);
+		window.removeEventListener('touchmove', this.doResize);
+		window.removeEventListener('touchend', this.endResize);
+	};
 
 	private generateRandomFilename(): string {
 		const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';

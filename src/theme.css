@@ -137,6 +137,19 @@
 				@apply h-1/2;
 			}
 		}
+		/* dragbar for resizing */
+		#dragbar {
+			@apply w-1.5 bg-header cursor-col-resize relative z-20 transition-colors duration-200;
+			&:hover, &:focus {
+				@apply bg-header/80;
+			}
+			&:focus {
+				@apply outline-2 outline-header;
+			}
+		}
+		&.vertical #dragbar {
+			@apply w-full h-1.5 cursor-row-resize;
+		}
   }
 	@media (prefers-reduced-motion: reduce) {
 		* {
