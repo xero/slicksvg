@@ -34,6 +34,7 @@
 	--color-err-fg:#9f0712;
 	--color-err-br: #ffe7e7;
   --color-svg: #151b2c;
+	--color-selection: rgba(93, 95, 239, 0.35);
   --breakpoint-xs: 30rem;
   --breakpoint-2xl: 100rem;
   --breakpoint-3xl: 120rem;
@@ -58,6 +59,7 @@
 	--color-err-bg:#82181a;
 	--color-err-fg: #ffc9c9;
 	--color-err-br: #8b060f;
+	--color-selection: rgba(125, 207, 255, 0.35);
 }
 /* <--//----------------------------------------------------------[document] */
 :root {
@@ -183,7 +185,16 @@
 				0 0 0 3px var(--color-err-bg);
 		}
 		.cm-editor {
-			 @apply flex-1 min-h-0 overflow-auto mb-10 mt-12;
+			@apply flex-1 min-h-0 overflow-auto mb-10 mt-12;
+		}
+		.cm-editor .cm-selectionBackground
+		.cm-editor.cm-focused .cm-selectionBackground {
+			background: var(--color-selection) !important;
+		}
+		.cm-editor .cm-content ::selection,
+		.cm-editor .cm-line ::selection,
+		.cm-editor .cm-line::selection {
+			background-color: var(--color-selection) !important;
 		}
 		.cm-tooltip-below {
 			@apply hidden! pointer-events-none!;
