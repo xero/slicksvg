@@ -2,40 +2,65 @@
 
 A **Node.js**-based, web SVG editor written in **TypeScript**, with no frontend frameworks. The UI and all interactions are managed using vanilla TypeScript, DOM APIs, and modern browser features. The app provides a full-screen split view for editing and previewing SVG code in real time.
 
+**✨ Key Features**: Real-time editing • Xray mode highlighting • Dark/light themes • SVG optimization • Transform tools • Touch support • Comprehensive testing
+
 ## Screenshots
 
-**Light Mode:**
-![Light Mode](https://github.com/user-attachments/assets/9ad9dd93-a0e4-4ab8-b4ef-7cd051ec37ea)
+**Light Mode with Xray Highlighting:**
+![Light Mode with Xray](https://github.com/user-attachments/assets/ab9af704-63e4-495e-a930-bc1a21a0d651)
 
-**Dark Mode:**
-![Dark Mode](https://github.com/user-attachments/assets/b81b7e0d-4da8-4f3d-8c4c-e97b86898ce7)
+**Dark Mode with Error State:**
+![Dark Mode Error](https://github.com/user-attachments/assets/0a696d5a-31a2-43d2-8a81-09b38274a2a6)
 
 ## Features
 
-- **Full-Screen UI**: Editor and live preview split 50/50, with toggle for vertical/horizontal orientation
-- **Editor**:
-  - Top toolbar with file upload, download, resize, optimize, and transform controls
-  - SVG code input uses [CodeMirror 6](https://codemirror.net/) with XML syntax highlighting and real-time linting
-  - Live SVG preview updates as code changes
-  - Supports drag & drop file upload
-- **Preview**:
-  - Real-time SVG rendering with semi-transparent dashed border
-  - Click and drag to pan the SVG within the preview
-  - Zoom in/out controls with button or pinch gestures
-  - Dark/light mode toggle
-- **SVG Tools**:
-  - **Upload**: Drag & drop or click to upload SVG files
-  - **Download**: Save current SVG code as a file
-  - **Resize**: Change SVG dimensions with modal dialog
-  - **Optimize**: Remove unnecessary whitespace, comments, and optimize SVG code
-  - **Transform**: Rotate (90° increments), flip horizontal/vertical
-- **Modern Development**:
-  - TypeScript with strict type checking
-  - Tailwind CSS for styling
-  - ESLint for code quality
-  - Vitest for unit testing (111 tests)
-  - Playwright for E2E testing
-  - Tokyo Night themes for light/dark mode syntax highlighting
+### 🎨 Core Editor
+- **Full-Screen Split View**: Editor and live preview split 50/50, with toggle for vertical/horizontal orientation
+- **Advanced Code Editor**: [CodeMirror 6](https://codemirror.net/) with XML/SVG syntax highlighting and real-time linting
+- **Live Preview**: Instant SVG rendering with semi-transparent dashed border for bounding visualization
+- **Real-time Validation**: XML/SVG syntax checking with detailed error reporting
+- **Tokyo Night Themes**: Beautiful light/dark mode syntax highlighting with seamless theme switching
+
+### 🔍 Xray Mode
+- **Visual Element Highlighting**: Toggle xray mode to visually highlight SVG elements in the preview when cursor is positioned within corresponding code
+- **Native SVG Filters**: Uses sophisticated SVG filter effects for smooth, high-quality highlighting
+- **Smart Element Detection**: Automatically detects cursor position and maps to corresponding SVG elements
+- **Element Indexing**: Supports multiple elements of the same type (e.g., multiple circles, paths)
+- **Non-intrusive**: Highlighting preserves original SVG appearance and doesn't modify code
+
+### 🛠️ SVG Tools
+- **📁 Upload**: Drag & drop or click to upload SVG files with validation
+- **💾 Download**: Save current SVG code as a file
+- **📐 Resize**: Change SVG dimensions with modal dialog interface
+- **⚡ Optimize**: Remove unnecessary whitespace, comments, and optimize SVG code for smaller file sizes
+- **🔄 Transform**: 
+  - Rotate in 90° increments
+  - Flip horizontal/vertical
+  - Reset transformations
+
+### 🎮 Interactive Preview
+- **Pan & Zoom**: Click and drag to pan, use +/- buttons or pinch gestures to zoom
+- **Touch Support**: Full multi-touch support with pinch-to-zoom on mobile devices
+- **Responsive Design**: Adapts to different screen sizes and orientations
+- **Visual Feedback**: Real-time zoom level announcements for accessibility
+
+### 🌟 User Experience
+- **Dark/Light Mode**: Seamless theme switching with persistent preferences
+- **Layout Toggle**: Switch between horizontal and vertical split layouts
+- **Accessibility**: Full keyboard navigation, screen reader support, and ARIA labels
+- **Error Handling**: Graceful error handling with user-friendly messages
+- **Performance**: Optimized for smooth interactions and fast rendering
+
+### 🧪 Modern Development
+- **TypeScript**: Strict type checking for better code quality and developer experience
+- **Tailwind CSS**: Utility-first CSS framework for consistent styling
+- **ESLint**: Code quality enforcement with TypeScript rules
+- **Comprehensive Testing**: 
+  - **Vitest**: 111+ unit and integration tests
+  - **Playwright**: End-to-end testing across browsers
+- **Build System**: 
+  - **Vite**: Fast development server with hot reload
+  - **ESBuild**: Optimized production builds
 
 ## Setup
 
@@ -236,15 +261,17 @@ dist/                # Built assets (generated)
 
 ## Architecture
 
-The application is built with:
+The application is built with modern web technologies:
 
 - **CodeMirror 6** for the code editor with XML/SVG syntax highlighting and real-time linting
-- **Tokyo Night themes** for light/dark mode syntax highlighting
-- **Tailwind CSS** for styling with PostCSS processing
+- **Tokyo Night themes** for beautiful light/dark mode syntax highlighting
+- **Tailwind CSS** for utility-first styling with PostCSS processing
 - **ESBuild** for fast TypeScript bundling (production builds)
-- **Vite** for development server with hot reload
+- **Vite** for development server with hot reload and fast builds
 - **Vanilla TypeScript** for all UI interactions and DOM manipulation
-- **CSS Grid/Flexbox** for responsive layout
+- **CSS Grid/Flexbox** for responsive layout system
+- **Native SVG Filters** for xray mode highlighting effects
+- **Modern Browser APIs** for drag & drop, touch events, and accessibility
 
 ## Usage
 
@@ -253,10 +280,11 @@ The application is built with:
 3. **Upload Files**: Drag & drop SVG files onto the editor or use the Upload button
 4. **Download Files**: Save your current SVG code as a file using the Download button
 5. **Transform SVGs**: Use the toolbar buttons to rotate, flip, or optimize your SVG
-6. **Resize**: Click the Resize button to change SVG dimensions
-7. **Pan & Zoom**: Click and drag to pan the SVG; use +/- buttons to zoom in/out
-8. **Dark Mode**: Toggle between light and dark themes with the Dark Mode button
-9. **Layout Toggle**: Click "Flip Screen" to switch between horizontal and vertical layouts
+6. **Resize**: Click the Resize button to change SVG dimensions via modal dialog
+7. **Xray Mode**: Click the eye button to enable visual highlighting - move your cursor through different SVG elements in the code to see them highlighted in the preview
+8. **Pan & Zoom**: Click and drag to pan the SVG; use +/- buttons or pinch gestures to zoom in/out
+9. **Dark Mode**: Toggle between light and dark themes with the Dark Mode button
+10. **Layout Toggle**: Click "Flip Screen" to switch between horizontal and vertical layouts
 
 ## Development
 
