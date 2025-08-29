@@ -215,6 +215,9 @@
 			--current-color: var(--color-svg);
       @apply flex items-center justify-center
 						 border-4 border-dashed border-bounds;
+      .highlight {
+        filter: drop-shadow(0px 0px 4px #0f0);
+      }
     }
     .error {
       @apply text-err p-4 text-center;

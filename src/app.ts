@@ -178,6 +178,9 @@ class SVGEditor {
 						if (update.docChanged) {
 							this.updateSVGPreview();
 						}
+						if (update.selectionSet || update.docChanged) {
+							this.updateElementHighlight();
+						}
 					})
 				]
 			}),
@@ -335,6 +338,134 @@ class SVGEditor {
 				svgContainer.style.transformOrigin = 'center center';
 				svgContainer.style.transition = 'transform 0.1s ease-out';
 			}
+		}
+	}
+
+	private updateElementHighlight(): void {
+		try {
+			// Get cursor position
+			const cursorPos = this.editor.state.selection.main.head;
+			const svgCode = this.editor.state.doc.toString();
+
+			// Parse the SVG content up to cursor position to find current element
+			const elementInfo = this.findElementAtCursor(svgCode, cursorPos);
+
+			// Clear previous highlights
+			this.clearHighlights();
+
+			// Apply new highlight if we found an element
+			if (elementInfo) {
+				console.debug('Highlighting element:', elementInfo);
+				this.highlightElement(elementInfo.tagName, elementInfo.index);
+			}
+		} catch (error) {
+			// Silently fail - highlighting is non-critical functionality
+			console.debug('Element highlighting failed:', error);
+		}
+	}
+
+	private findElementAtCursor(svgCode: string, cursorPos: number): { tagName: string; index: number } | null {
+		// Get the content up to the cursor position
+		const contentUpToCursor = svgCode.substring(0, cursorPos);
+
+		// Find all opening tags up to cursor position
+		const tagRegex = /<(\w+)(?:\s[^>]*)?>/g;
+		const closingTagRegex = /<\/(\w+)>/g;
+
+		// Track open elements using a stack
+		const elementStack: { tagName: string; position: number }[] = [];
+		const tagCounts: { [key: string]: number } = {};
+
+		// Find all opening tags
+		let match;
+		while ((match = tagRegex.exec(contentUpToCursor)) !== null) {
+			const tagName = match[1].toLowerCase();
+			const tagPosition = match.index;
+
+			// Skip if this is a self-closing tag
+			const fullMatch = match[0];
+			if (fullMatch.endsWith('/>')) {
+				// Self-closing tag - count it but don't add to stack
+				tagCounts[tagName] = (tagCounts[tagName] || 0) + 1;
+				continue;
+			}
+
+			// Count this tag occurrence
+			tagCounts[tagName] = (tagCounts[tagName] || 0) + 1;
+
+			// Add to element stack
+			elementStack.push({tagName, position: tagPosition});
+		}
+
+		// Remove closed elements from stack
+		tagRegex.lastIndex = 0;
+		while ((match = closingTagRegex.exec(contentUpToCursor)) !== null) {
+			const closingTagName = match[1].toLowerCase();
+
+			// Remove the most recent matching opening tag from stack
+			for (let i = elementStack.length - 1; i >= 0; i--) {
+				if (elementStack[i].tagName === closingTagName) {
+					elementStack.splice(i, 1);
+					break;
+				}
+			}
+		}
+
+		// Find the deepest element that contains the cursor
+		if (elementStack.length > 0) {
+			const currentElement = elementStack[elementStack.length - 1];
+			const tagName = currentElement.tagName;
+
+			// Count how many of this tag type appear before this one
+			let index = 0;
+			const beforeCursorContent = svgCode.substring(0, currentElement.position);
+			const countRegex = new RegExp(`<${tagName}(?:\\s[^>]*)?(?:>|/>)`, 'gi');
+			while (countRegex.exec(beforeCursorContent) !== null) {
+				index++;
+			}
+
+			return {tagName, index: index - 1}; // Convert to 0-based index
+		}
+
+		return null;
+	}
+
+	private highlightElement(tagName: string, index: number): void {
+		try {
+			const svgContainer = this.svgPreview.querySelector('.svg-container');
+			if (!svgContainer) {
+				console.debug('No SVG container found');
+				return;
+			}
+
+			// Find all elements of this tag type in the preview
+			const elements = svgContainer.querySelectorAll(tagName);
+			console.debug(`Found ${elements.length} elements of type ${tagName}, trying to highlight index ${index}`);
+
+			// Highlight the element at the specified index
+			if (elements.length > index && index >= 0) {
+				elements[index].classList.add('highlight');
+				console.debug('Successfully highlighted element');
+			} else {
+				console.debug('Index out of bounds or negative');
+			}
+		} catch (error) {
+			console.debug('Failed to highlight element:', error);
+		}
+	}
+
+	private clearHighlights(): void {
+		try {
+			const svgContainer = this.svgPreview.querySelector('.svg-container');
+			if (!svgContainer) return;
+
+			// Remove highlight class from all elements
+			const highlightedElements = svgContainer.querySelectorAll('.highlight');
+			highlightedElements.forEach(element=>{
+				element.classList.remove('highlight');
+			});
+		} catch (error) {
+			console.debug('Failed to clear highlights:', error);
 		}
 	}
 
