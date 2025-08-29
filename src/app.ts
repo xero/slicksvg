@@ -441,15 +441,20 @@ class SVGEditor {
 				console.debug('No SVG container found');
 				return;
 			}
+			const svgElement = svgContainer.querySelector('svg');
+			if (!svgElement) {
+				console.debug('No SVG root found');
+				return;
+			}
+			const cssHlColor = getComputedStyle(document.body).getPropertyValue('--color-hl').trim() || '#ff0';
+			this.ensureHighlightFilter(svgElement, cssHlColor);
 
-			// Find all elements of this tag type in the preview
 			const elements = svgContainer.querySelectorAll(tagName);
 			console.debug(`Found ${elements.length} elements of type ${tagName}, trying to highlight index ${index}`);
 
-			// Highlight the element at the specified index
 			if (elements.length > index && index >= 0) {
-				elements[index].classList.add('highlight');
-				console.debug('Successfully highlighted element');
+				elements[index].setAttribute('filter', 'url(#highlight-glow)');
+				console.debug('Successfully highlighted element with SVG filter');
 			} else {
 				console.debug('Index out of bounds or negative');
 			}
@@ -462,14 +467,44 @@ class SVGEditor {
 		try {
 			const svgContainer = this.svgPreview.querySelector('.svg-container');
 			if (!svgContainer) return;
-
-			// Remove highlight class from all elements
-			const highlightedElements = svgContainer.querySelectorAll('.highlight');
-			highlightedElements.forEach(element=>{
-				element.classList.remove('highlight');
+			const filteredElements = svgContainer.querySelectorAll('[filter="url(#highlight-glow)"]');
+			filteredElements.forEach(element=>{
+				element.removeAttribute('filter');
 			});
 		} catch (error) {
 			console.debug('Failed to clear highlights:', error);
+		}
+	}
+
+	private ensureHighlightFilter(svgElement: SVGSVGElement, color: string): void {
+		const SVG_NS = "http://www.w3.org/2000/svg";
+		let defs = svgElement.querySelector('defs');
+		if (!defs) {
+			defs = document.createElementNS(SVG_NS, 'defs');
+			svgElement.insertBefore(defs, svgElement.firstChild);
+		}
+		let filter = defs.querySelector('#highlight-glow');
+		if (!filter) {
+			const filterMarkup = `
+<filter id="highlight-glow" x="-10%" y="-10%" width="120%" height="120%" filterUnits="objectBoundingBox" primitiveUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+	<feColorMatrix type="matrix" values="1 0 0 0 0
+1 0 0 0 0
+1 0 0 0 0
+0 0 0 1 0" in="SourceGraphic" result="colormatrix"/>
+	<feComponentTransfer in="colormatrix" result="componentTransfer">
+    		<feFuncR type="table" tableValues="0.75 0.53"/>
+		<feFuncG type="table" tableValues="0.25 0.97"/>
+		<feFuncB type="table" tableValues="0.64 0.77"/>
+		<feFuncA type="table" tableValues="0 1"/>
+  	</feComponentTransfer>
+	<feBlend mode="normal" in="componentTransfer" in2="SourceGraphic" result="blend"/>
+</filter>
+`;
+			defs.insertAdjacentHTML('beforeend', filterMarkup);
+		} else {
+			// Update color if already present
+			const fe = filter.querySelector('feDropShadow');
+			if (fe) fe.setAttribute('flood-color', color);
 		}
 	}
 
