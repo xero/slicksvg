@@ -183,7 +183,7 @@
 				0 0 0 3px var(--color-err-bg);
 		}
 		.cm-editor {
-			 @apply flex-1 min-h-0 overflow-auto;
+			 @apply flex-1 min-h-0 overflow-auto mb-10 mt-12;
 		}
 		.cm-tooltip-below {
 			@apply hidden! pointer-events-none!;
