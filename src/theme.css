@@ -34,6 +34,7 @@
 	--color-err-fg:#9f0712;
 	--color-err-br: #ffe7e7;
   --color-svg: #151b2c;
+	--color-selection: #5d5fef;
   --breakpoint-xs: 30rem;
   --breakpoint-2xl: 100rem;
   --breakpoint-3xl: 120rem;
@@ -58,6 +59,7 @@
 	--color-err-bg:#82181a;
 	--color-err-fg: #ffc9c9;
 	--color-err-br: #8b060f;
+	--color-selection: #7dcfff;
 }
 /* <--//----------------------------------------------------------[document] */
 :root {
@@ -198,6 +200,16 @@
 		}
 		.cm-matchingBracket {
 			outline: none !important;
+		}
+		/* Text selection highlighting */
+		.cm-editor .cm-selectionBackground,
+		.cm-editor.cm-focused .cm-selectionBackground {
+			background: var(--color-selection) !important;
+		}
+		.cm-editor .cm-content ::selection,
+		.cm-editor .cm-line ::selection,
+		.cm-editor .cm-line::selection {
+			background-color: var(--color-selection) !important;
 		}
   }
   #preview {
