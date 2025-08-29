@@ -318,7 +318,7 @@ class SVGEditor {
 		this.svgPreview.addEventListener('touchstart', (e)=>this.handleTouchStart(e), {passive: false});
 		this.svgPreview.addEventListener('touchmove', (e)=>this.handleTouchMove(e), {passive: false});
 		this.svgPreview.addEventListener('touchend', (e)=>this.handleTouchEnd(e), {passive: false});
-		
+
 		// Setup dragbar for resizing split layout
 		this.setupResizeDragbar();
 	}
@@ -529,12 +529,12 @@ class SVGEditor {
 		// Clear any inline styles and resizing state when switching layout
 		const editor = this.get('editor');
 		const preview = this.get('preview');
-		
+
 		editor.style.width = '';
 		editor.style.height = '';
 		preview.style.width = '';
 		preview.style.height = '';
-		
+
 		editor.classList.remove('resizing');
 		preview.classList.remove('resizing');
 	}
@@ -1001,7 +1001,7 @@ class SVGEditor {
 			console.error('Dragbar element not found');
 			return;
 		}
-		
+
 		// Ensure event listeners are properly bound using explicit binding
 		try {
 			const boundStartResize = this.startResize.bind(this);
@@ -1044,8 +1044,8 @@ class SVGEditor {
 		let percent = Math.max(10, Math.min(90, (offset / total) * 100));
 
 		if (vertical) {
-			editor.style.height = percent + "%";
-			preview.style.height = (100 - percent) + "%";
+			editor.style.height = percent-1 + "%";
+			preview.style.height = (100 - percent-1) + "%";
 		} else {
 			editor.style.width = percent + "%";
 			preview.style.width = (100 - percent) + "%";
