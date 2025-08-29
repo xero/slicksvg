@@ -16,6 +16,36 @@ export default defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
+    // Mobile device testing
+    {
+      name: 'Mobile Chrome',
+      use: { ...devices['Pixel 5'] },
+    },
+    {
+      name: 'Mobile Safari',
+      use: { ...devices['iPhone 12'] },
+    },
+    {
+      name: 'Mobile Safari Pro',
+      use: { ...devices['iPhone 12 Pro'] },
+    },
+    {
+      name: 'Android Chrome',
+      use: { ...devices['Galaxy S9+'] },
+    },
+    // Tablet device testing
+    {
+      name: 'iPad',
+      use: { ...devices['iPad Pro'] },
+    },
+    {
+      name: 'iPad Mini',
+      use: { ...devices['iPad Mini'] },
+    },
+    {
+      name: 'Galaxy Tab',
+      use: { ...devices['Galaxy Tab S4'] },
+    },
   ],
   webServer: process.env.CI ? undefined : {
     command: 'npm run dev',
