@@ -195,6 +195,8 @@ class SVGEditor {
 
 		// Add focus listener to force insert mode when vim is enabled
 		this.editor.dom.addEventListener('focus', this.handleEditorFocus.bind(this));
+		// Add keydown listener to enable vim mode with Escape key
+		this.editor.dom.addEventListener('keydown', this.handleEditorKeydown.bind(this));
 	}
 
 	private initializePreview(): void {
@@ -369,21 +371,21 @@ class SVGEditor {
 
 	private toggleVim(): void {
 		this.isVimEnabled = !this.isVimEnabled;
-		
+
 		// Update the button state
 		const vimToggle = this.get('vim-toggle');
 		vimToggle.setAttribute('aria-pressed', this.isVimEnabled.toString());
 		vimToggle.textContent = this.isVimEnabled ? 'vim (on)' : 'vim';
-		
+
 		// Recreate the editor state with updated extensions
 		this.editor.setState(EditorState.create({
 			doc: this.editor.state.doc,
 			extensions: this.getExtensions()
 		}));
-		
+
 		// Focus editor after toggling
 		this.editor.focus();
-		
+
 		// Announce the change
 		this.announceAction(this.isVimEnabled ? 'Vim mode enabled' : 'Vim mode disabled');
 	}
@@ -392,11 +394,11 @@ class SVGEditor {
 		if (this.isVimEnabled) {
 			// Force insert mode when editor gains focus
 			// Use a more reliable method to enter insert mode
-			setTimeout(() => {
-				// Try to find the vim API from the extension
-				const vimAPI = (this.editor as any).vim;
-				if (vimAPI && vimAPI.handleKey) {
-					vimAPI.handleKey(this.editor, 'i');
+			setTimeout(()=>{
+				// Try to find the vim API from the extension using proper type access
+				const editorWithVim = this.editor as unknown as {vim?: {handleKey?: (editor: EditorView, key: string) => void}};
+				if (editorWithVim.vim?.handleKey) {
+					editorWithVim.vim.handleKey(this.editor, 'i');
 				} else {
 					// Fallback: dispatch a synthetic 'i' keydown event
 					const event = new KeyboardEvent('keydown', {
@@ -408,6 +410,14 @@ class SVGEditor {
 					this.editor.contentDOM.dispatchEvent(event);
 				}
 			}, 50);
+		}
+	}
+
+	private handleEditorKeydown(event: KeyboardEvent): void {
+		// Enable vim mode with Escape key when editor is focused
+		if (event.key === 'Escape' && !this.isVimEnabled) {
+			event.preventDefault();
+			this.toggleVim();
 		}
 	}
 

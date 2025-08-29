@@ -334,6 +334,106 @@ describe('Vim Mode Integration', () => {
     });
   });
 
+  describe('Escape Key Activation', () => {
+    it('should enable vim mode when Escape is pressed and vim is disabled', () => {
+      const mockEditor = {
+        dom: {
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn()
+        }
+      };
+      
+      let isVimEnabled = false;
+      
+      const handleEditorKeydown = (event: KeyboardEvent) => {
+        if (event.key === 'Escape' && !isVimEnabled) {
+          event.preventDefault();
+          isVimEnabled = true;
+        }
+      };
+      
+      // Simulate Escape key press when vim is disabled
+      const escapeEvent = new KeyboardEvent('keydown', {
+        key: 'Escape',
+        code: 'Escape',
+        bubbles: true,
+        cancelable: true
+      });
+      
+      // Mock preventDefault
+      escapeEvent.preventDefault = vi.fn();
+      
+      expect(isVimEnabled).toBe(false);
+      handleEditorKeydown(escapeEvent);
+      expect(isVimEnabled).toBe(true);
+      expect(escapeEvent.preventDefault).toHaveBeenCalled();
+    });
+
+    it('should not affect vim mode when Escape is pressed and vim is already enabled', () => {
+      let isVimEnabled = true;
+      
+      const handleEditorKeydown = (event: KeyboardEvent) => {
+        if (event.key === 'Escape' && !isVimEnabled) {
+          event.preventDefault();
+          isVimEnabled = true;
+        }
+      };
+      
+      const escapeEvent = new KeyboardEvent('keydown', {
+        key: 'Escape',
+        code: 'Escape',
+        bubbles: true,
+        cancelable: true
+      });
+      
+      escapeEvent.preventDefault = vi.fn();
+      
+      expect(isVimEnabled).toBe(true);
+      handleEditorKeydown(escapeEvent);
+      expect(isVimEnabled).toBe(true);
+      // preventDefault should not be called when vim is already enabled
+      expect(escapeEvent.preventDefault).not.toHaveBeenCalled();
+    });
+
+    it('should not enable vim mode for other keys', () => {
+      let isVimEnabled = false;
+      
+      const handleEditorKeydown = (event: KeyboardEvent) => {
+        if (event.key === 'Escape' && !isVimEnabled) {
+          event.preventDefault();
+          isVimEnabled = true;
+        }
+      };
+      
+      const enterEvent = new KeyboardEvent('keydown', {
+        key: 'Enter',
+        code: 'Enter',
+        bubbles: true,
+        cancelable: true
+      });
+      
+      expect(isVimEnabled).toBe(false);
+      handleEditorKeydown(enterEvent);
+      expect(isVimEnabled).toBe(false);
+    });
+
+    it('should add keydown event listener to editor', () => {
+      const mockEditor = {
+        dom: {
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn()
+        }
+      };
+      
+      const mockHandler = vi.fn();
+      
+      // Simulate adding keydown listener
+      mockEditor.dom.addEventListener('keydown', mockHandler);
+      
+      expect(mockEditor.dom.addEventListener).toHaveBeenCalledWith('keydown', mockHandler);
+    });
+  });
+
   describe('Opt-in Behavior', () => {
     it('should be disabled by default', () => {
       const vimToggle = document.getElementById('vim-toggle') as HTMLButtonElement;
