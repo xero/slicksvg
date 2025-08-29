@@ -102,9 +102,9 @@ test.describe('SVG Status Bar E2E Tests', () => {
 		// Wait for linting
 		await page.waitForTimeout(1000);
 
-		// Status bar should show valid for empty content
+		// Status bar should show valid, for empty content
 		const statusBar = page.locator('#svg-status-bar');
-		await expect(statusBar).toHaveText('SVG valid');
+		await expect(statusBar).toHaveText('Buffer empty');
 		await expect(statusBar).not.toHaveClass(/error/);
 	});
 
