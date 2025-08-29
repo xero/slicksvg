@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('SVG Editor Drag Resize E2E Tests', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('http://localhost:5173/src/');
+    await page.goto('/index.html');
     await page.waitForLoadState('networkidle');
     // Wait for application to be ready
     await page.waitForSelector('#dragbar', { timeout: 10000 });
@@ -12,7 +12,7 @@ test.describe('SVG Editor Drag Resize E2E Tests', () => {
     test('should have dragbar element visible between editor and preview', async ({ page }) => {
       const dragbar = page.locator('#dragbar');
       await expect(dragbar).toBeVisible();
-      
+
       // Check accessibility attributes
       await expect(dragbar).toHaveAttribute('role', 'separator');
       await expect(dragbar).toHaveAttribute('aria-label', 'Resize Panel');
@@ -367,10 +367,10 @@ test.describe('SVG Editor Drag Resize E2E Tests', () => {
       });
 
       // Should have some kind of focus indication
-      const hasFocusIndicator = focusStyles.outline !== 'none' || 
+      const hasFocusIndicator = focusStyles.outline !== 'none' ||
                                focusStyles.backgroundColor !== 'rgba(0, 0, 0, 0)' ||
                                parseFloat(focusStyles.opacity) !== 1;
-      
+
       expect(hasFocusIndicator).toBeTruthy();
     });
   });
@@ -396,7 +396,7 @@ test.describe('SVG Editor Drag Resize E2E Tests', () => {
         const text = await msg.textContent();
         return text?.includes('error') || text?.includes('Error');
       }));
-      
+
       expect(errorMessages.some(hasError => hasError)).toBeFalsy();
     });
 
@@ -416,7 +416,7 @@ test.describe('SVG Editor Drag Resize E2E Tests', () => {
       // Panels should still be visible and functional
       const editor = page.locator('#editor');
       const preview = page.locator('#preview');
-      
+
       await expect(editor).toBeVisible();
       await expect(preview).toBeVisible();
 
@@ -434,14 +434,14 @@ test.describe('SVG Editor Drag Resize E2E Tests', () => {
       for (let i = 0; i < 4; i++) {
         await flipButton.click();
         await page.waitForTimeout(100);
-        
+
         // Try to drag after each switch
         const dragbarBox = await dragbar.boundingBox();
         expect(dragbarBox).toBeTruthy();
 
         await dragbar.hover();
         await page.mouse.down();
-        
+
         // Drag in appropriate direction based on layout
         const isVertical = await page.locator('body').evaluate(el => el.classList.contains('vertical'));
         if (isVertical) {
@@ -449,7 +449,7 @@ test.describe('SVG Editor Drag Resize E2E Tests', () => {
         } else {
           await page.mouse.move(dragbarBox!.x + 20, dragbarBox!.y);
         }
-        
+
         await page.mouse.up();
         await page.waitForTimeout(100);
       }
@@ -457,7 +457,7 @@ test.describe('SVG Editor Drag Resize E2E Tests', () => {
       // Should still be functional
       const editor = page.locator('#editor');
       const preview = page.locator('#preview');
-      
+
       await expect(editor).toBeVisible();
       await expect(preview).toBeVisible();
     });
@@ -489,7 +489,7 @@ test.describe('SVG Editor Drag Resize E2E Tests', () => {
       // Verify resize actually happened
       const editor = page.locator('#editor');
       const preview = page.locator('#preview');
-      
+
       await expect(editor).toHaveClass(/resizing/);
       await expect(preview).toHaveClass(/resizing/);
     });
@@ -523,7 +523,7 @@ test.describe('SVG Editor Drag Resize E2E Tests', () => {
         // Should work on all screen sizes
         const editor = page.locator('#editor');
         const preview = page.locator('#preview');
-        
+
         await expect(editor).toBeVisible();
         await expect(preview).toBeVisible();
       }
