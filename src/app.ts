@@ -5,6 +5,7 @@ import {basicSetup} from 'codemirror';
 import {tokyoNightDay} from '@fsegurai/codemirror-theme-tokyo-night-day';
 import {tokyoNightStorm} from '@fsegurai/codemirror-theme-tokyo-night-storm';
 import {linter, lintGutter} from '@codemirror/lint';
+import {vim} from '@replit/codemirror-vim';
 
 // Global variable to hold status bar update callback
 let statusBarUpdateCallback: ((message: string, isError: boolean) => void) | null = null;
@@ -110,6 +111,7 @@ class SVGEditor {
 	private statusBar: HTMLElement;
 	private isVerticalLayout = false;
 	private isDarkMode = false;
+	private isVimEnabled = false;
 	private zoomLevel = 1;
 	private panX = 0;
 	private panY = 0;
@@ -120,6 +122,7 @@ class SVGEditor {
 	private flipX = false;
 	private flipY = false;
 	private themeCompartment = new Compartment();
+	private vimCompartment = new Compartment();
 	private isMultiTouch = false;
 	private initialPinchDistance = 0;
 	private initialZoomLevel = 1;
@@ -154,6 +157,24 @@ class SVGEditor {
 		root: ParentNode = document
 	): NodeListOf<T>=>root.querySelectorAll(selector);
 
+	private getExtensions() {
+		const extensions = [
+			basicSetup,
+			xml(),
+			EditorView.lineWrapping,
+			lintGutter(),
+			svgLinter,
+			this.themeCompartment.of(this.isDarkMode ? [tokyoNightStorm] : [tokyoNightDay]),
+			this.vimCompartment.of(this.isVimEnabled ? [vim()] : []),
+			EditorView.updateListener.of((update)=>{
+				if (update.docChanged) {
+					this.updateSVGPreview();
+				}
+			})
+		];
+		return extensions;
+	}
+
 	private initializeEditor(): void {
 		const editorContainer = this.get('editor');
 		// Create CodeMirror editor
@@ -167,22 +188,13 @@ class SVGEditor {
 		this.editor = new EditorView({
 			state: EditorState.create({
 				doc: startDoc,
-				extensions: [
-					basicSetup,
-					xml(),
-					EditorView.lineWrapping,
-					lintGutter(),
-					svgLinter,
-					this.themeCompartment.of([tokyoNightDay]),
-					EditorView.updateListener.of((update)=>{
-						if (update.docChanged) {
-							this.updateSVGPreview();
-						}
-					})
-				]
+				extensions: this.getExtensions()
 			}),
 			parent: editorContainer
 		});
+
+		// Add focus listener to force insert mode when vim is enabled
+		this.editor.dom.addEventListener('focus', this.handleEditorFocus.bind(this));
 	}
 
 	private initializePreview(): void {
@@ -276,6 +288,7 @@ class SVGEditor {
 			this.toggleMode();
 		}
 		this.get('dark').addEventListener('click', ()=>this.toggleMode());
+		this.get('vim-toggle').addEventListener('click', ()=>this.toggleVim());
 		this.get('cancel').addEventListener('click', ()=>this.modalClose());
 		this.get('resolution').addEventListener('click', ()=>this.showResolutionModal());
 		this.get('resize').addEventListener('click', ()=>this.resizeSVG());
@@ -352,6 +365,50 @@ class SVGEditor {
 				this.isDarkMode ? [tokyoNightStorm] : [tokyoNightDay]
 			)
 		});
+	}
+
+	private toggleVim(): void {
+		this.isVimEnabled = !this.isVimEnabled;
+		
+		// Update the button state
+		const vimToggle = this.get('vim-toggle');
+		vimToggle.setAttribute('aria-pressed', this.isVimEnabled.toString());
+		vimToggle.textContent = this.isVimEnabled ? 'vim (on)' : 'vim';
+		
+		// Recreate the editor state with updated extensions
+		this.editor.setState(EditorState.create({
+			doc: this.editor.state.doc,
+			extensions: this.getExtensions()
+		}));
+		
+		// Focus editor after toggling
+		this.editor.focus();
+		
+		// Announce the change
+		this.announceAction(this.isVimEnabled ? 'Vim mode enabled' : 'Vim mode disabled');
+	}
+
+	private handleEditorFocus(): void {
+		if (this.isVimEnabled) {
+			// Force insert mode when editor gains focus
+			// Use a more reliable method to enter insert mode
+			setTimeout(() => {
+				// Try to find the vim API from the extension
+				const vimAPI = (this.editor as any).vim;
+				if (vimAPI && vimAPI.handleKey) {
+					vimAPI.handleKey(this.editor, 'i');
+				} else {
+					// Fallback: dispatch a synthetic 'i' keydown event
+					const event = new KeyboardEvent('keydown', {
+						key: 'i',
+						code: 'KeyI',
+						bubbles: true,
+						cancelable: true
+					});
+					this.editor.contentDOM.dispatchEvent(event);
+				}
+			}, 50);
+		}
 	}
 
 	private zoomIn(): void {

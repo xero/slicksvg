@@ -57,6 +57,7 @@
     "@codemirror/view": "^6.38.1",
     "@fsegurai/codemirror-theme-tokyo-night-day": "^6.2.2",
     "@fsegurai/codemirror-theme-tokyo-night-storm": "^6.2.2",
+    "@replit/codemirror-vim": "^6.3.0",
     "codemirror": "^6.0.2"
   }
 }
