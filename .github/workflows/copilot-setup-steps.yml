@@ -48,7 +48,7 @@ jobs:
         run: |
           cat > .git/hooks/pre-commit <<'EOF'
           #!/bin/sh
-          bun run check:fix
+          bun run lint:fix
           RESULT=$?
           if [ $RESULT -ne 0 ]; then
           echo "bun check:fix failed. Commit aborted."
