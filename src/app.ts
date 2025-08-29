@@ -648,12 +648,10 @@ class SVGEditor {
 		}
 	}
 
-	private buildTransformAttribute(width: number, height: number): string {
+	private buildTransformAttribute(): string {
 		const transforms = [];
 		if (this.rotationDegrees > 0) {
-			const centerX = width / 2;
-			const centerY = height / 2;
-			transforms.push(`rotate(${this.rotationDegrees} ${centerX} ${centerY})`);
+			transforms.push(`rotate(${this.rotationDegrees})`);
 		}
 		if (this.flipX) {
 			transforms.push('matrix(-1,0,0,1,0,0)');
@@ -667,11 +665,7 @@ class SVGEditor {
 	private applyTransformToSVG(): void {
 		const svgCode = this.editor.state.doc.toString();
 		try {
-			const widthMatch = svgCode.match(/width="([^"]+)"/);
-			const heightMatch = svgCode.match(/height="([^"]+)"/);
-			const width = widthMatch ? parseInt(widthMatch[1]) : 100;
-			const height = heightMatch ? parseInt(heightMatch[1]) : 100;
-			const transformValue = this.buildTransformAttribute(width, height);
+			const transformValue = this.buildTransformAttribute();
 
 			let transformedSVG;
 			if (transformValue.trim()) {
