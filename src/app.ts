@@ -142,7 +142,6 @@ class SVGEditor {
 		this.initializePreview();
 		this.setupEventListeners();
 		this.setupDragAndDrop();
-		this.setupResizeDragbar();
 		this.setupReducedMotion();
 		this.updateSVGPreview();
 	}
@@ -322,6 +321,9 @@ class SVGEditor {
 		this.svgPreview.addEventListener('touchstart', (e)=>this.handleTouchStart(e), {passive: false});
 		this.svgPreview.addEventListener('touchmove', (e)=>this.handleTouchMove(e), {passive: false});
 		this.svgPreview.addEventListener('touchend', (e)=>this.handleTouchEnd(e), {passive: false});
+		
+		// Setup dragbar for resizing split layout
+		this.setupResizeDragbar();
 	}
 
 	private updateSVGPreview(): void {
@@ -994,8 +996,19 @@ class SVGEditor {
 
 	private setupResizeDragbar(): void {
 		const dragbar = this.get('dragbar');
-		dragbar.addEventListener('mousedown', this.startResize);
-		dragbar.addEventListener('touchstart', this.startResize, {passive: false});
+		if (!dragbar) {
+			console.error('Dragbar element not found');
+			return;
+		}
+		
+		// Ensure event listeners are properly bound using explicit binding
+		try {
+			const boundStartResize = this.startResize.bind(this);
+			dragbar.addEventListener('mousedown', boundStartResize);
+			dragbar.addEventListener('touchstart', boundStartResize, {passive: false});
+		} catch (error) {
+			console.error('Failed to add dragbar event listeners:', error);
+		}
 	}
 
 	private startResize = (e: MouseEvent | TouchEvent): void=>{
