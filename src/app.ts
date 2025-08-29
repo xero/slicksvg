@@ -52,7 +52,10 @@ const svgLinter = linter(view=>{
 			}
 			message = message.match(/: ([^\n]+)\n/)?.[1] || '';
 			if (statusBarUpdateCallback) {
-				statusBarUpdateCallback(`SVG error: ${message}` || 'SVG parsing error', true);
+				statusBarUpdateCallback(
+					message ? `SVG error: ${message}` : 'SVG parsing error',
+					true
+				);
 			}
 			diagnostics.push({
 				from,
@@ -200,8 +203,12 @@ class SVGEditor {
 	private toggleXray = ():void=>{
 		this.xray = !this.xray;
 		this.eyes.forEach(s=>s.classList.toggle('hide'));
-		this.xray ? this.updateElementHighlight() : this.clearHighlights();
 		this.editor.focus();
+		if (this.xray) {
+			this.updateElementHighlight();
+		} else {
+			this.clearHighlights();
+		}
 	}
 
 	private modalIsOpen = (): boolean=>this.modal.open;
@@ -381,7 +388,7 @@ class SVGEditor {
 		type StackEl = { tagName: string, openPos: number, index: number };
 		const stack: StackEl[] = [];
 		let lastElementAtCursor: StackEl | null = null;
-		let tagCounts: Record<string, number> = {};
+		const tagCounts: Record<string, number> = {};
 		let match: RegExpExecArray | null;
 
 		while ((match = tagRegex.exec(svgCode)) !== null) {
@@ -407,10 +414,10 @@ class SVGEditor {
 				// For self-closing, don't push to stack, but check if cursor is inside the tag
 				if (isSelfClosing) {
 					if (cursorPos >= matchStart && cursorPos <= matchEnd) {
-						lastElementAtCursor = { tagName, openPos: matchStart, index };
+						lastElementAtCursor = {tagName, openPos: matchStart, index};
 					}
 				} else {
-					stack.push({ tagName, openPos: matchStart, index });
+					stack.push({tagName, openPos: matchStart, index});
 				}
 			} else {
 				// Closing tag
@@ -429,7 +436,7 @@ class SVGEditor {
 		}
 
 		if (lastElementAtCursor) {
-			return { tagName: lastElementAtCursor.tagName, index: lastElementAtCursor.index };
+			return {tagName: lastElementAtCursor.tagName, index: lastElementAtCursor.index};
 		}
 		return null;
 	}
@@ -477,13 +484,13 @@ class SVGEditor {
 	}
 
 	private ensureHighlightFilter(svgElement: SVGSVGElement, color: string): void {
-		const SVG_NS = "http://www.w3.org/2000/svg";
+		const SVG_NS = 'http://www.w3.org/2000/svg';
 		let defs = svgElement.querySelector('defs');
 		if (!defs) {
 			defs = document.createElementNS(SVG_NS, 'defs');
 			svgElement.insertBefore(defs, svgElement.firstChild);
 		}
-		let filter = defs.querySelector('#highlight-glow');
+		const filter = defs.querySelector('#highlight-glow');
 		if (!filter) {
 			const filterMarkup = `
 <filter id="highlight-glow" x="-10%" y="-10%" width="120%" height="120%" filterUnits="objectBoundingBox" primitiveUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
