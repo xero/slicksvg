@@ -4,8 +4,7 @@
 /* <--//------------------------------------------------------------[colors] */
 @theme {
 	/* --- palette */
-	--color-mono:#585e71;
-	--color-mono-50:#faf8ff;
+	--color-mono-50: #faf8ff;
 	--color-mono-100:#eef0ff;
 	--color-mono-200:#dce2f9;
 	--color-mono-300:#c0c6dd;
@@ -28,6 +27,7 @@
 	--color-btn: #d2d7ec;
 	--color-btn-h: #e5f1fe;
 	--color-btn-txt: #565f89;
+	--color-dragbar: #b3b4d1;
 	--color-bounds:#c0c6dd;
 	--color-err: #fb2c36;
 	--color-err-bg: #fef2f2;
@@ -56,6 +56,7 @@
 	--color-btn: #24283b;
 	--color-btn-h: #1a1b26;
 	--color-btn-txt: #565f89;
+	--color-dragbar: #565f89;
 	--color-err-bg:#82181a;
 	--color-err-fg: #ffc9c9;
 	--color-err-br: #8b060f;
@@ -139,15 +140,13 @@
 				@apply h-1/2;
 			}
 		}
-		/* dragbar for resizing */
 		#dragbar {
-			@apply w-1.5 min-w-1.5 bg-header cursor-col-resize relative z-30;
+			@apply w-1.5 min-w-1.5 bg-dragbar/50 cursor-col-resize relative z-30;
 			&:hover, &:focus {
-				@apply bg-header/80;
+				@apply bg-dragbar;
 			}
-			&:focus,
 			&:active {
-				@apply bg-header/90;
+				@apply bg-dragbar/35;
 			}
 		}
 		&.vertical #dragbar {
