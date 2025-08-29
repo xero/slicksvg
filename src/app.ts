@@ -996,19 +996,15 @@ class SVGEditor {
 	}
 
 	private setupResizeDragbar(): void {
-		const dragbar = this.get('dragbar');
-		if (!dragbar) {
-			console.error('Dragbar element not found');
-			return;
-		}
-
-		// Ensure event listeners are properly bound using explicit binding
 		try {
+			const dragbar = this.get('dragbar');
+
+			// Ensure event listeners are properly bound using explicit binding
 			const boundStartResize = this.startResize.bind(this);
 			dragbar.addEventListener('mousedown', boundStartResize);
 			dragbar.addEventListener('touchstart', boundStartResize, {passive: false});
 		} catch (error) {
-			console.error('Failed to add dragbar event listeners:', error);
+			console.error('Failed to setup dragbar:', error);
 		}
 	}
 
@@ -1041,19 +1037,19 @@ class SVGEditor {
 		}
 
 		const offset = pagePos - (vertical ? parentRect.top : parentRect.left);
-		let percent = Math.max(10, Math.min(90, (offset / total) * 100));
+		const percent = Math.max(10, Math.min(90, (offset / total) * 100));
 
 		if (vertical) {
-			editor.style.height = percent-1 + "%";
-			preview.style.height = (100 - percent-1) + "%";
+			editor.style.height = `${percent - 1}%`;
+			preview.style.height = `${100 - percent - 1}%`;
 		} else {
-			editor.style.width = percent + "%";
-			preview.style.width = (100 - percent) + "%";
+			editor.style.width = `${percent}%`;
+			preview.style.width = `${100 - percent}%`;
 		}
 
 		// Add resizing class to override flex behavior
-		editor.classList.add("resizing");
-		preview.classList.add("resizing");
+		editor.classList.add('resizing');
+		preview.classList.add('resizing');
 	};
 
 	private endResize = (): void=>{
