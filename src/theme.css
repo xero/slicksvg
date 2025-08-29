@@ -152,6 +152,10 @@
 		&.vertical #dragbar {
 			@apply w-full h-1.5 cursor-row-resize;
 		}
+		&.vertical #editor, &.vertical #preview {
+			min-height: 10%;
+			min-width: 0;
+		}
   }
 	@media (prefers-reduced-motion: reduce) {
 		* {
@@ -188,6 +192,12 @@
   }
   #editor {
 		@apply relative flex-1 flex flex-col overflow-hidden;
+		width: 50%;
+		min-width: 10%;
+		min-height: 10%;
+		&.resizing {
+			flex: none;
+		}
 		.svg-status-bar {
 			@apply text-sm bg-menu text-lbl align-middle items-center min-h-6;
 		}
@@ -226,6 +236,12 @@
   }
   #preview {
     @apply flex flex-col bg-preview flex-1 relative overflow-hidden;
+    width: 50%;
+    min-width: 10%;
+    min-height: 10%;
+    &.resizing {
+      flex: none;
+    }
     .svg-preview-wrapper {
       @apply flex-1 flex items-center justify-center overflow-hidden;
       cursor: grab;

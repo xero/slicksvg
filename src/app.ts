@@ -130,9 +130,6 @@ class SVGEditor {
 	private initialZoomLevel = 1;
 	// Resize state variables
 	private isResizing = false;
-	private startPagePos = 0;
-	private startEditorSize = 0;
-	private startPreviewSize = 0;
 
 	constructor() {
 		this.modal = this.getTyped('dialog');
@@ -529,13 +526,17 @@ class SVGEditor {
 		this.isVerticalLayout = !this.isVerticalLayout;
 		document.body.classList.toggle('vertical');
 
-		// Clear any inline styles when switching layout
+		// Clear any inline styles and resizing state when switching layout
 		const editor = this.get('editor');
 		const preview = this.get('preview');
+		
 		editor.style.width = '';
 		editor.style.height = '';
 		preview.style.width = '';
 		preview.style.height = '';
+		
+		editor.classList.remove('resizing');
+		preview.classList.remove('resizing');
 	}
 
 	private toggleMode(): void {
@@ -1015,19 +1016,6 @@ class SVGEditor {
 		e.preventDefault();
 		this.isResizing = true;
 
-		const vertical = document.body.classList.contains('vertical');
-		const editorRect = this.get('editor').getBoundingClientRect();
-		const previewRect = this.get('preview').getBoundingClientRect();
-
-		if (e instanceof MouseEvent) {
-			this.startPagePos = vertical ? e.clientY : e.clientX;
-		} else {
-			this.startPagePos = vertical ? e.touches[0].clientY : e.touches[0].clientX;
-		}
-
-		this.startEditorSize = vertical ? editorRect.height : editorRect.width;
-		this.startPreviewSize = vertical ? previewRect.height : previewRect.width;
-
 		window.addEventListener('mousemove', this.doResize);
 		window.addEventListener('mouseup', this.endResize);
 		window.addEventListener('touchmove', this.doResize, {passive: false});
@@ -1037,8 +1025,14 @@ class SVGEditor {
 	private doResize = (e: MouseEvent | TouchEvent): void=>{
 		if (!this.isResizing) return;
 
-		let pagePos: number;
 		const vertical = document.body.classList.contains('vertical');
+		const editor = this.get('editor');
+		const preview = this.get('preview');
+		const parent = editor.parentNode as HTMLElement;
+		const parentRect = parent.getBoundingClientRect();
+		const total = vertical ? parentRect.height : parentRect.width;
+
+		let pagePos: number;
 		if (e instanceof MouseEvent) {
 			pagePos = vertical ? e.clientY : e.clientX;
 		} else {
@@ -1046,17 +1040,20 @@ class SVGEditor {
 			e.preventDefault();
 		}
 
-		const delta = pagePos - this.startPagePos;
-		const newEditorSize = Math.max(50, this.startEditorSize + delta);
-		const newPreviewSize = Math.max(50, this.startPreviewSize - delta);
+		const offset = pagePos - (vertical ? parentRect.top : parentRect.left);
+		let percent = Math.max(10, Math.min(90, (offset / total) * 100));
 
 		if (vertical) {
-			this.get('editor').style.height = `${newEditorSize}px`;
-			this.get('preview').style.height = `${newPreviewSize}px`;
+			editor.style.height = percent + "%";
+			preview.style.height = (100 - percent) + "%";
 		} else {
-			this.get('editor').style.width = `${newEditorSize}px`;
-			this.get('preview').style.width = `${newPreviewSize}px`;
+			editor.style.width = percent + "%";
+			preview.style.width = (100 - percent) + "%";
 		}
+
+		// Add resizing class to override flex behavior
+		editor.classList.add("resizing");
+		preview.classList.add("resizing");
 	};
 
 	private endResize = (): void=>{
