@@ -9,7 +9,7 @@ test.describe('SVG Status Bar E2E Tests', () => {
 		// Wait for the status bar to be visible
 		const statusBar = page.locator('#svg-status-bar');
 		await expect(statusBar).toBeVisible();
-		await expect(statusBar).toHaveText('svg valid');
+		await expect(statusBar).toHaveText('SVG valid');
 		await expect(statusBar).not.toHaveClass(/error/);
 	});
 
@@ -29,9 +29,9 @@ test.describe('SVG Status Bar E2E Tests', () => {
 		// Check status bar shows error
 		const statusBar = page.locator('#svg-status-bar');
 		await expect(statusBar).toBeVisible();
-		await expect(statusBar).not.toHaveText('svg valid');
+		await expect(statusBar).not.toHaveText('SVG valid');
 		await expect(statusBar).toHaveClass(/error/);
-		
+
 		// Verify the error message contains meaningful content
 		const statusText = await statusBar.textContent();
 		expect(statusText).toBeTruthy();
@@ -45,7 +45,7 @@ test.describe('SVG Status Bar E2E Tests', () => {
 
 		// First verify initial valid state
 		const statusBar = page.locator('#svg-status-bar');
-		await expect(statusBar).toHaveText('svg valid');
+		await expect(statusBar).toHaveText('SVG valid');
 		await expect(statusBar).not.toHaveClass(/error/);
 
 		// Create an error
@@ -56,7 +56,7 @@ test.describe('SVG Status Bar E2E Tests', () => {
 
 		// Verify error state
 		await expect(statusBar).toHaveClass(/error/);
-		await expect(statusBar).not.toHaveText('svg valid');
+		await expect(statusBar).not.toHaveText('SVG valid');
 
 		// Fix the error by typing valid SVG
 		await editor.fill('<svg width="100" height="100"><rect width="50" height="50"/></svg>');
@@ -66,7 +66,7 @@ test.describe('SVG Status Bar E2E Tests', () => {
 
 		// Verify that the error is now cleared and status returns to valid
 		await expect(statusBar).not.toHaveClass(/error/);
-		await expect(statusBar).toHaveText('svg valid');
+		await expect(statusBar).toHaveText('SVG valid');
 	});
 
 	test('should show warning for non-SVG content', async ({ page }) => {
@@ -86,7 +86,7 @@ test.describe('SVG Status Bar E2E Tests', () => {
 		const statusBar = page.locator('#svg-status-bar');
 		await expect(statusBar).toBeVisible();
 		await expect(statusBar).toHaveClass(/error/);
-		await expect(statusBar).toHaveText('Document should contain an SVG element');
+		await expect(statusBar).toHaveText('SVG error: invalid contents');
 	});
 
 	test('should handle empty content gracefully', async ({ page }) => {
@@ -102,9 +102,9 @@ test.describe('SVG Status Bar E2E Tests', () => {
 		// Wait for linting
 		await page.waitForTimeout(1000);
 
-		// Status bar should show valid for empty content
+		// Status bar should show valid, for empty content
 		const statusBar = page.locator('#svg-status-bar');
-		await expect(statusBar).toHaveText('svg valid');
+		await expect(statusBar).toHaveText('Buffer empty');
 		await expect(statusBar).not.toHaveClass(/error/);
 	});
 
@@ -131,14 +131,14 @@ test.describe('SVG Status Bar E2E Tests', () => {
 		// Verify error information is shown in status bar instead
 		const statusBar = page.locator('#svg-status-bar');
 		await expect(statusBar).toHaveClass(/error/);
-		await expect(statusBar).not.toHaveText('svg valid');
+		await expect(statusBar).not.toHaveText('SVG valid');
 	});
 
 	test('should preserve status bar across theme changes', async ({ page }) => {
 		// Wait for the status bar to be visible
 		const statusBar = page.locator('#svg-status-bar');
 		await expect(statusBar).toBeVisible();
-		await expect(statusBar).toHaveText('svg valid');
+		await expect(statusBar).toHaveText('SVG valid');
 
 		// Toggle dark mode
 		const darkButton = page.locator('#dark');
@@ -146,13 +146,13 @@ test.describe('SVG Status Bar E2E Tests', () => {
 
 		// Status bar should still be visible and functional
 		await expect(statusBar).toBeVisible();
-		await expect(statusBar).toHaveText('svg valid');
+		await expect(statusBar).toHaveText('SVG valid');
 
 		// Toggle back to light mode
 		await darkButton.click();
 
 		// Status bar should still work
 		await expect(statusBar).toBeVisible();
-		await expect(statusBar).toHaveText('svg valid');
+		await expect(statusBar).toHaveText('SVG valid');
 	});
 });

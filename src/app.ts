@@ -16,7 +16,7 @@ const svgLinter = linter(view=>{
 	try {
 		if (!text) {
 			if (statusBarUpdateCallback) {
-				statusBarUpdateCallback('svg valid', false);
+				statusBarUpdateCallback('Buffer empty', false);
 			}
 			return [];
 		}
@@ -26,7 +26,7 @@ const svgLinter = linter(view=>{
 		const parserError = doc.querySelector('parsererror');
 
 		if (parserError) {
-			let message = parserError.textContent || 'Invalid SVG/XML';
+			let message = parserError.textContent || 'SVG invalid';
 			const lineMatch = message.match(/line\s+(\d+)/i);
 			const columnMatch = message.match(/column\s+(\d+)/i);
 
@@ -52,7 +52,10 @@ const svgLinter = linter(view=>{
 			}
 			message = message.match(/: ([^\n]+)\n/)?.[1] || '';
 			if (statusBarUpdateCallback) {
-				statusBarUpdateCallback(message || 'SVG parsing error', true);
+				statusBarUpdateCallback(
+					message ? `SVG error: ${message}` : 'SVG parsing error',
+					true
+				);
 			}
 			diagnostics.push({
 				from,
@@ -62,9 +65,9 @@ const svgLinter = linter(view=>{
 			});
 		}
 		if (text.trim() && !text.includes('<svg')) {
-			const warningMessage = 'Document should contain an SVG element';
+			const warningMessage = 'invalid contents';
 			if (statusBarUpdateCallback) {
-				statusBarUpdateCallback(warningMessage, true);
+				statusBarUpdateCallback(`SVG error: ${warningMessage}`, true);
 			}
 			diagnostics.push({
 				from: 0,
@@ -74,7 +77,7 @@ const svgLinter = linter(view=>{
 			});
 		}
 		if (diagnostics.length === 0 && statusBarUpdateCallback) {
-			statusBarUpdateCallback('svg valid', false);
+			statusBarUpdateCallback('SVG valid', false);
 		}
 	} catch (error) {
 		const errorMessage = `Parse Error: ${error instanceof Error ? error.message : 'Unknown error'}`;
@@ -121,6 +124,7 @@ class SVGEditor {
 	private flipY = false;
 	private themeCompartment = new Compartment();
 	private isMultiTouch = false;
+	private xray = false;
 	private initialPinchDistance = 0;
 	private initialZoomLevel = 1;
 
@@ -178,6 +182,9 @@ class SVGEditor {
 						if (update.docChanged) {
 							this.updateSVGPreview();
 						}
+						if (this.xray && (update.selectionSet || update.docChanged)) {
+							this.updateElementHighlight();
+						}
 					})
 				]
 			}),
@@ -192,6 +199,18 @@ class SVGEditor {
 		this.previewContainer.appendChild(this.svgPreview);
 	}
 
+	private eyes = [this.get('awake'),this.get('asleep')];
+	private toggleXray = ():void=>{
+		this.xray = !this.xray;
+		this.eyes.forEach(s=>s.classList.toggle('hide'));
+		this.editor.focus();
+		if (this.xray) {
+			this.updateElementHighlight();
+		} else {
+			this.clearHighlights();
+		}
+	}
+
 	private modalIsOpen = (): boolean=>this.modal.open;
 
 	private modalShow(): void {
@@ -202,7 +221,7 @@ class SVGEditor {
 		firstInput.focus();
 		// Add focus trapping
 		this.modal.addEventListener('keydown', this.handleModalKeydown);
-	};
+	}
 
 	private modalClose():void {
 		this.modal.classList.add('closing');
@@ -288,6 +307,7 @@ class SVGEditor {
 		this.get('optimize').addEventListener('click', ()=>this.optimizeSVG());
 		this.get('download').addEventListener('click', ()=>this.downloadSVG());
 		this.get('upload').addEventListener('click', ()=>this.triggerFileUpload());
+		this.get('xray').addEventListener('click', ()=>this.toggleXray());
 		this.svgPreview.addEventListener('mousedown', (e)=>this.startPan(e));
 		document.addEventListener('mousemove', (e)=>this.doPan(e));
 		document.addEventListener('mouseup', ()=>this.endPan());
@@ -335,6 +355,163 @@ class SVGEditor {
 				svgContainer.style.transformOrigin = 'center center';
 				svgContainer.style.transition = 'transform 0.1s ease-out';
 			}
+		}
+	}
+
+	private updateElementHighlight(): void {
+		try {
+			// Get cursor position
+			const cursorPos = this.editor.state.selection.main.head;
+			const svgCode = this.editor.state.doc.toString();
+
+			// Parse the SVG content up to cursor position to find current element
+			const elementInfo = this.findElementAtCursor(svgCode, cursorPos);
+
+			// Clear previous highlights
+			this.clearHighlights();
+
+			// Apply new highlight if we found an element
+			if (elementInfo) {
+				console.debug('Highlighting element:', elementInfo);
+				this.highlightElement(elementInfo.tagName, elementInfo.index);
+			}
+		} catch (error) {
+			// Silently fail - highlighting is non-critical functionality
+			console.debug('Element highlighting failed:', error);
+		}
+	}
+
+	private findElementAtCursor(svgCode: string, cursorPos: number): { tagName: string; index: number } | null {
+		// We'll walk through the svgCode, tracking open tags and their positions.
+		// At each point, we'll know the deepest open element.
+		const tagRegex = /<(\/?)(\w+)(?:\s[^>]*)?(\/?)>/g;
+		type StackEl = { tagName: string, openPos: number, index: number };
+		const stack: StackEl[] = [];
+		let lastElementAtCursor: StackEl | null = null;
+		const tagCounts: Record<string, number> = {};
+		let match: RegExpExecArray | null;
+
+		while ((match = tagRegex.exec(svgCode)) !== null) {
+			const isClosing = !!match[1];
+			const tagName = match[2].toLowerCase();
+			const isSelfClosing = !!match[3];
+			const matchStart = match.index;
+			const matchEnd = tagRegex.lastIndex;
+
+			// Before processing this tag, check if cursorPos is between last tag and this one
+			if (tagRegex.lastIndex >= cursorPos && matchStart <= cursorPos) {
+				if (stack.length > 0) {
+					lastElementAtCursor = stack[stack.length - 1];
+				}
+			}
+
+			if (!isClosing) {
+				// Opening tag
+				tagCounts[tagName] = tagCounts[tagName] || 0;
+				const index = tagCounts[tagName];
+				tagCounts[tagName] += 1;
+
+				// For self-closing, don't push to stack, but check if cursor is inside the tag
+				if (isSelfClosing) {
+					if (cursorPos >= matchStart && cursorPos <= matchEnd) {
+						lastElementAtCursor = {tagName, openPos: matchStart, index};
+					}
+				} else {
+					stack.push({tagName, openPos: matchStart, index});
+				}
+			} else {
+				// Closing tag
+				for (let i = stack.length - 1; i >= 0; i--) {
+					if (stack[i].tagName === tagName) {
+						stack.splice(i, 1);
+						break;
+					}
+				}
+			}
+		}
+
+		// If cursor is at the very end, check stack
+		if (cursorPos >= svgCode.length && stack.length > 0) {
+			lastElementAtCursor = stack[stack.length - 1];
+		}
+
+		if (lastElementAtCursor) {
+			return {tagName: lastElementAtCursor.tagName, index: lastElementAtCursor.index};
+		}
+		return null;
+	}
+
+	private highlightElement(tagName: string, index: number): void {
+		try {
+			const svgContainer = this.svgPreview.querySelector('.svg-container');
+			if (!svgContainer) {
+				console.debug('No SVG container found');
+				return;
+			}
+			const svgElement = svgContainer.querySelector('svg');
+			if (!svgElement) {
+				console.debug('No SVG root found');
+				return;
+			}
+			const cssHlColor = getComputedStyle(document.body).getPropertyValue('--color-hl').trim() || '#ff0';
+			this.ensureHighlightFilter(svgElement, cssHlColor);
+
+			const elements = svgContainer.querySelectorAll(tagName);
+			console.debug(`Found ${elements.length} elements of type ${tagName}, trying to highlight index ${index}`);
+
+			if (elements.length > index && index >= 0) {
+				elements[index].setAttribute('filter', 'url(#highlight-glow)');
+				console.debug('Successfully highlighted element with SVG filter');
+			} else {
+				console.debug('Index out of bounds or negative');
+			}
+		} catch (error) {
+			console.debug('Failed to highlight element:', error);
+		}
+	}
+
+	private clearHighlights(): void {
+		try {
+			const svgContainer = this.svgPreview.querySelector('.svg-container');
+			if (!svgContainer) return;
+			const filteredElements = svgContainer.querySelectorAll('[filter="url(#highlight-glow)"]');
+			filteredElements.forEach(element=>{
+				element.removeAttribute('filter');
+			});
+		} catch (error) {
+			console.debug('Failed to clear highlights:', error);
+		}
+	}
+
+	private ensureHighlightFilter(svgElement: SVGSVGElement, color: string): void {
+		const SVG_NS = 'http://www.w3.org/2000/svg';
+		let defs = svgElement.querySelector('defs');
+		if (!defs) {
+			defs = document.createElementNS(SVG_NS, 'defs');
+			svgElement.insertBefore(defs, svgElement.firstChild);
+		}
+		const filter = defs.querySelector('#highlight-glow');
+		if (!filter) {
+			const filterMarkup = `
+<filter id="highlight-glow" x="-10%" y="-10%" width="120%" height="120%" filterUnits="objectBoundingBox" primitiveUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+	<feColorMatrix type="matrix" values="1 0 0 0 0
+1 0 0 0 0
+1 0 0 0 0
+0 0 0 1 0" in="SourceGraphic" result="colormatrix"/>
+	<feComponentTransfer in="colormatrix" result="componentTransfer">
+    		<feFuncR type="table" tableValues="0.75 0.53"/>
+		<feFuncG type="table" tableValues="0.25 0.97"/>
+		<feFuncB type="table" tableValues="0.64 0.77"/>
+		<feFuncA type="table" tableValues="0 1"/>
+  	</feComponentTransfer>
+	<feBlend mode="normal" in="componentTransfer" in2="SourceGraphic" result="blend"/>
+</filter>
+`;
+			defs.insertAdjacentHTML('beforeend', filterMarkup);
+		} else {
+			// Update color if already present
+			const fe = filter.querySelector('feDropShadow');
+			if (fe) fe.setAttribute('flood-color', color);
 		}
 	}
 
@@ -471,12 +648,10 @@ class SVGEditor {
 		}
 	}
 
-	private buildTransformAttribute(width: number, height: number): string {
+	private buildTransformAttribute(): string {
 		const transforms = [];
 		if (this.rotationDegrees > 0) {
-			const centerX = width / 2;
-			const centerY = height / 2;
-			transforms.push(`rotate(${this.rotationDegrees} ${centerX} ${centerY})`);
+			transforms.push(`rotate(${this.rotationDegrees})`);
 		}
 		if (this.flipX) {
 			transforms.push('matrix(-1,0,0,1,0,0)');
@@ -490,11 +665,7 @@ class SVGEditor {
 	private applyTransformToSVG(): void {
 		const svgCode = this.editor.state.doc.toString();
 		try {
-			const widthMatch = svgCode.match(/width="([^"]+)"/);
-			const heightMatch = svgCode.match(/height="([^"]+)"/);
-			const width = widthMatch ? parseInt(widthMatch[1]) : 100;
-			const height = heightMatch ? parseInt(heightMatch[1]) : 100;
-			const transformValue = this.buildTransformAttribute(width, height);
+			const transformValue = this.buildTransformAttribute();
 
 			let transformedSVG;
 			if (transformValue.trim()) {
