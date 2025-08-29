@@ -36,3 +36,23 @@ jobs:
         run: |
           bun i -g playwright eslint prettier
           bunx playwright install --with-deps
+          npx playwright install --with-deps
+
+      - name: Install project dependencies (npm)
+        run: npm install
+
+      - name: Install project dependencies (bun)
+        run: bun install
+
+      - name: Force linting via pre-commit hook
+        run: |
+          cat > .git/hooks/pre-commit <<'EOF'
+          #!/bin/sh
+          bun run check:fix
+          RESULT=$?
+          if [ $RESULT -ne 0 ]; then
+          echo "bun check:fix failed. Commit aborted."
+          exit 1
+          fi
+          EOF
+          chmod +x .git/hooks/pre-commit
