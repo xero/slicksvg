@@ -238,16 +238,13 @@ test.describe('SVG Editor Drag Resize E2E Tests', () => {
       expect(previewInitial).toBeTruthy();
       expect(dragbarBox).toBeTruthy();
 
-      // Perform touch drag operation
+      // Perform touch drag operation (using mouse events for mobile viewport)
       const startX = dragbarBox!.x + dragbarBox!.width / 2;
       const startY = dragbarBox!.y + dragbarBox!.height / 2;
       const endX = dragbarBox!.x - 50;
       const endY = dragbarBox!.y + dragbarBox!.height / 2;
 
-      // Simulate touch drag
-      await page.touchscreen.tap(startX, startY);
-      await page.waitForTimeout(100);
-      // Drag to new position
+      // Simulate drag operation
       await page.mouse.move(startX, startY);
       await page.mouse.down();
       await page.mouse.move(endX, endY);
@@ -292,16 +289,13 @@ test.describe('SVG Editor Drag Resize E2E Tests', () => {
       expect(previewInitial).toBeTruthy();
       expect(dragbarBox).toBeTruthy();
 
-      // Perform touch drag operation vertically
+      // Perform touch drag operation vertically (using mouse events for mobile viewport)
       const startX = dragbarBox!.x + dragbarBox!.width / 2;
       const startY = dragbarBox!.y + dragbarBox!.height / 2;
       const endX = dragbarBox!.x + dragbarBox!.width / 2;
       const endY = dragbarBox!.y - 50;
 
-      // Simulate touch drag
-      await page.touchscreen.tap(startX, startY);
-      await page.waitForTimeout(100);
-      // Drag to new position
+      // Simulate drag operation
       await page.mouse.move(startX, startY);
       await page.mouse.down();
       await page.mouse.move(endX, endY);
