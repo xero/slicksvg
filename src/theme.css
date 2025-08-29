@@ -25,6 +25,7 @@
   --color-menu-outside: #b3b4d1;
   --color-preview: #edeef3;
 	--color-header: #2959aa;
+	--color-hl: #ff4499;
 	--color-btn: #d2d7ec;
 	--color-btn-h: #e5f1fe;
 	--color-btn-txt: #565f89;
@@ -52,6 +53,7 @@
   --color-preview: #2f3244;
 	--color-bounds: #3b4261;
 	--color-header: #7dcfff;
+	--color-hl: #00ffd2;
 	--color-btn: #24283b;
 	--color-btn-h: #1a1b26;
 	--color-btn-txt: #565f89;
@@ -216,7 +218,7 @@
       @apply flex items-center justify-center
 						 border-4 border-dashed border-bounds;
       .highlight {
-        filter: drop-shadow(0px 0px 4px #0f0);
+        filter: drop-shadow(2px 2px 0px #000000);
       }
     }
     .error {

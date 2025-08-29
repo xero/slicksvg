@@ -16,7 +16,7 @@ const svgLinter = linter(view=>{
 	try {
 		if (!text) {
 			if (statusBarUpdateCallback) {
-				statusBarUpdateCallback('svg valid', false);
+				statusBarUpdateCallback('Buffer empty', false);
 			}
 			return [];
 		}
@@ -26,7 +26,7 @@ const svgLinter = linter(view=>{
 		const parserError = doc.querySelector('parsererror');
 
 		if (parserError) {
-			let message = parserError.textContent || 'Invalid SVG/XML';
+			let message = parserError.textContent || 'SVG invalid';
 			const lineMatch = message.match(/line\s+(\d+)/i);
 			const columnMatch = message.match(/column\s+(\d+)/i);
 
@@ -52,7 +52,7 @@ const svgLinter = linter(view=>{
 			}
 			message = message.match(/: ([^\n]+)\n/)?.[1] || '';
 			if (statusBarUpdateCallback) {
-				statusBarUpdateCallback(message || 'SVG parsing error', true);
+				statusBarUpdateCallback(`SVG error: ${message}` || 'SVG parsing error', true);
 			}
 			diagnostics.push({
 				from,
@@ -62,9 +62,9 @@ const svgLinter = linter(view=>{
 			});
 		}
 		if (text.trim() && !text.includes('<svg')) {
-			const warningMessage = 'Document should contain an SVG element';
+			const warningMessage = 'invalid contents';
 			if (statusBarUpdateCallback) {
-				statusBarUpdateCallback(warningMessage, true);
+				statusBarUpdateCallback(`SVG error: ${warningMessage}`, true);
 			}
 			diagnostics.push({
 				from: 0,
@@ -74,7 +74,7 @@ const svgLinter = linter(view=>{
 			});
 		}
 		if (diagnostics.length === 0 && statusBarUpdateCallback) {
-			statusBarUpdateCallback('svg valid', false);
+			statusBarUpdateCallback('SVG valid', false);
 		}
 	} catch (error) {
 		const errorMessage = `Parse Error: ${error instanceof Error ? error.message : 'Unknown error'}`;
@@ -121,6 +121,7 @@ class SVGEditor {
 	private flipY = false;
 	private themeCompartment = new Compartment();
 	private isMultiTouch = false;
+	private xray = false;
 	private initialPinchDistance = 0;
 	private initialZoomLevel = 1;
 
@@ -178,7 +179,7 @@ class SVGEditor {
 						if (update.docChanged) {
 							this.updateSVGPreview();
 						}
-						if (update.selectionSet || update.docChanged) {
+						if (this.xray && (update.selectionSet || update.docChanged)) {
 							this.updateElementHighlight();
 						}
 					})
@@ -195,6 +196,14 @@ class SVGEditor {
 		this.previewContainer.appendChild(this.svgPreview);
 	}
 
+	private eyes = [this.get('awake'),this.get('asleep')];
+	private toggleXray = ():void=>{
+		this.xray = !this.xray;
+		this.eyes.forEach(s=>s.classList.toggle('hide'));
+		this.xray ? this.updateElementHighlight() : this.clearHighlights();
+		this.editor.focus();
+	}
+
 	private modalIsOpen = (): boolean=>this.modal.open;
 
 	private modalShow(): void {
@@ -205,7 +214,7 @@ class SVGEditor {
 		firstInput.focus();
 		// Add focus trapping
 		this.modal.addEventListener('keydown', this.handleModalKeydown);
-	};
+	}
 
 	private modalClose():void {
 		this.modal.classList.add('closing');
@@ -291,6 +300,7 @@ class SVGEditor {
 		this.get('optimize').addEventListener('click', ()=>this.optimizeSVG());
 		this.get('download').addEventListener('click', ()=>this.downloadSVG());
 		this.get('upload').addEventListener('click', ()=>this.triggerFileUpload());
+		this.get('xray').addEventListener('click', ()=>this.toggleXray());
 		this.svgPreview.addEventListener('mousedown', (e)=>this.startPan(e));
 		document.addEventListener('mousemove', (e)=>this.doPan(e));
 		document.addEventListener('mouseup', ()=>this.endPan());
@@ -365,68 +375,62 @@ class SVGEditor {
 	}
 
 	private findElementAtCursor(svgCode: string, cursorPos: number): { tagName: string; index: number } | null {
-		// Get the content up to the cursor position
-		const contentUpToCursor = svgCode.substring(0, cursorPos);
+		// We'll walk through the svgCode, tracking open tags and their positions.
+		// At each point, we'll know the deepest open element.
+		const tagRegex = /<(\/?)(\w+)(?:\s[^>]*)?(\/?)>/g;
+		type StackEl = { tagName: string, openPos: number, index: number };
+		const stack: StackEl[] = [];
+		let lastElementAtCursor: StackEl | null = null;
+		let tagCounts: Record<string, number> = {};
+		let match: RegExpExecArray | null;
 
-		// Find all opening tags up to cursor position
-		const tagRegex = /<(\w+)(?:\s[^>]*)?>/g;
-		const closingTagRegex = /<\/(\w+)>/g;
+		while ((match = tagRegex.exec(svgCode)) !== null) {
+			const isClosing = !!match[1];
+			const tagName = match[2].toLowerCase();
+			const isSelfClosing = !!match[3];
+			const matchStart = match.index;
+			const matchEnd = tagRegex.lastIndex;
 
-		// Track open elements using a stack
-		const elementStack: { tagName: string; position: number }[] = [];
-		const tagCounts: { [key: string]: number } = {};
-
-		// Find all opening tags
-		let match;
-		while ((match = tagRegex.exec(contentUpToCursor)) !== null) {
-			const tagName = match[1].toLowerCase();
-			const tagPosition = match.index;
-
-			// Skip if this is a self-closing tag
-			const fullMatch = match[0];
-			if (fullMatch.endsWith('/>')) {
-				// Self-closing tag - count it but don't add to stack
-				tagCounts[tagName] = (tagCounts[tagName] || 0) + 1;
-				continue;
+			// Before processing this tag, check if cursorPos is between last tag and this one
+			if (tagRegex.lastIndex >= cursorPos && matchStart <= cursorPos) {
+				if (stack.length > 0) {
+					lastElementAtCursor = stack[stack.length - 1];
+				}
 			}
 
-			// Count this tag occurrence
-			tagCounts[tagName] = (tagCounts[tagName] || 0) + 1;
+			if (!isClosing) {
+				// Opening tag
+				tagCounts[tagName] = tagCounts[tagName] || 0;
+				const index = tagCounts[tagName];
+				tagCounts[tagName] += 1;
 
-			// Add to element stack
-			elementStack.push({tagName, position: tagPosition});
-		}
-
-		// Remove closed elements from stack
-		tagRegex.lastIndex = 0;
-		while ((match = closingTagRegex.exec(contentUpToCursor)) !== null) {
-			const closingTagName = match[1].toLowerCase();
-
-			// Remove the most recent matching opening tag from stack
-			for (let i = elementStack.length - 1; i >= 0; i--) {
-				if (elementStack[i].tagName === closingTagName) {
-					elementStack.splice(i, 1);
-					break;
+				// For self-closing, don't push to stack, but check if cursor is inside the tag
+				if (isSelfClosing) {
+					if (cursorPos >= matchStart && cursorPos <= matchEnd) {
+						lastElementAtCursor = { tagName, openPos: matchStart, index };
+					}
+				} else {
+					stack.push({ tagName, openPos: matchStart, index });
+				}
+			} else {
+				// Closing tag
+				for (let i = stack.length - 1; i >= 0; i--) {
+					if (stack[i].tagName === tagName) {
+						stack.splice(i, 1);
+						break;
+					}
 				}
 			}
 		}
 
-		// Find the deepest element that contains the cursor
-		if (elementStack.length > 0) {
-			const currentElement = elementStack[elementStack.length - 1];
-			const tagName = currentElement.tagName;
-
-			// Count how many of this tag type appear before this one
-			let index = 0;
-			const beforeCursorContent = svgCode.substring(0, currentElement.position);
-			const countRegex = new RegExp(`<${tagName}(?:\\s[^>]*)?(?:>|/>)`, 'gi');
-			while (countRegex.exec(beforeCursorContent) !== null) {
-				index++;
-			}
-
-			return {tagName, index: index - 1}; // Convert to 0-based index
+		// If cursor is at the very end, check stack
+		if (cursorPos >= svgCode.length && stack.length > 0) {
+			lastElementAtCursor = stack[stack.length - 1];
 		}
 
+		if (lastElementAtCursor) {
+			return { tagName: lastElementAtCursor.tagName, index: lastElementAtCursor.index };
+		}
 		return null;
 	}
 
