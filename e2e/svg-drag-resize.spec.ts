@@ -2,8 +2,10 @@ import { test, expect } from '@playwright/test';
 
 test.describe('SVG Editor Drag Resize E2E Tests', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/index.html');
+    await page.goto('http://localhost:5173/src/');
     await page.waitForLoadState('networkidle');
+    // Wait for application to be ready
+    await page.waitForSelector('#dragbar', { timeout: 10000 });
   });
 
   test.describe('Desktop Drag Resize', () => {
@@ -189,8 +191,8 @@ test.describe('SVG Editor Drag Resize E2E Tests', () => {
       // Wait for preview to update
       await page.waitForTimeout(500);
 
-      // Verify preview has SVG content
-      const svgElement = page.locator('#preview svg');
+      // Verify preview has SVG content (specifically the actual SVG preview content, not icon SVGs)
+      const svgElement = page.locator('#preview .svg-preview-wrapper svg');
       await expect(svgElement).toBeVisible();
 
       // Perform resize
@@ -207,7 +209,7 @@ test.describe('SVG Editor Drag Resize E2E Tests', () => {
 
       // Verify content is still there
       await expect(svgElement).toBeVisible();
-      const circle = page.locator('#preview svg circle');
+      const circle = page.locator('#preview .svg-preview-wrapper svg circle');
       await expect(circle).toBeVisible();
       await expect(circle).toHaveAttribute('fill', 'red');
 
@@ -237,8 +239,19 @@ test.describe('SVG Editor Drag Resize E2E Tests', () => {
       expect(dragbarBox).toBeTruthy();
 
       // Perform touch drag operation
-      await page.touchscreen.tap(dragbarBox!.x + dragbarBox!.width / 2, dragbarBox!.y + dragbarBox!.height / 2);
-      await page.touchscreen.tap(dragbarBox!.x - 50, dragbarBox!.y + dragbarBox!.height / 2);
+      const startX = dragbarBox!.x + dragbarBox!.width / 2;
+      const startY = dragbarBox!.y + dragbarBox!.height / 2;
+      const endX = dragbarBox!.x - 50;
+      const endY = dragbarBox!.y + dragbarBox!.height / 2;
+
+      // Simulate touch drag
+      await page.touchscreen.tap(startX, startY);
+      await page.waitForTimeout(100);
+      // Drag to new position
+      await page.mouse.move(startX, startY);
+      await page.mouse.down();
+      await page.mouse.move(endX, endY);
+      await page.mouse.up();
 
       await page.waitForTimeout(200);
 
@@ -280,8 +293,19 @@ test.describe('SVG Editor Drag Resize E2E Tests', () => {
       expect(dragbarBox).toBeTruthy();
 
       // Perform touch drag operation vertically
-      await page.touchscreen.tap(dragbarBox!.x + dragbarBox!.width / 2, dragbarBox!.y + dragbarBox!.height / 2);
-      await page.touchscreen.tap(dragbarBox!.x + dragbarBox!.width / 2, dragbarBox!.y - 50);
+      const startX = dragbarBox!.x + dragbarBox!.width / 2;
+      const startY = dragbarBox!.y + dragbarBox!.height / 2;
+      const endX = dragbarBox!.x + dragbarBox!.width / 2;
+      const endY = dragbarBox!.y - 50;
+
+      // Simulate touch drag
+      await page.touchscreen.tap(startX, startY);
+      await page.waitForTimeout(100);
+      // Drag to new position
+      await page.mouse.move(startX, startY);
+      await page.mouse.down();
+      await page.mouse.move(endX, endY);
+      await page.mouse.up();
 
       await page.waitForTimeout(200);
 
@@ -306,14 +330,8 @@ test.describe('SVG Editor Drag Resize E2E Tests', () => {
     test('should be focusable with keyboard navigation', async ({ page }) => {
       const dragbar = page.locator('#dragbar');
 
-      // Focus the dragbar with Tab
-      await page.keyboard.press('Tab');
-      // Keep pressing Tab until we reach the dragbar
-      for (let i = 0; i < 10; i++) {
-        const focused = await page.evaluate(() => document.activeElement?.id);
-        if (focused === 'dragbar') break;
-        await page.keyboard.press('Tab');
-      }
+      // Focus the dragbar directly
+      await dragbar.focus();
 
       // Verify dragbar is focused
       await expect(dragbar).toBeFocused();

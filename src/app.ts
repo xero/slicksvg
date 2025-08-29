@@ -537,6 +537,10 @@ class SVGEditor {
 
 		editor.classList.remove('resizing');
 		preview.classList.remove('resizing');
+
+		// Update dragbar orientation based on layout
+		const dragbar = this.get('dragbar');
+		dragbar.setAttribute('aria-orientation', this.isVerticalLayout ? 'horizontal' : 'vertical');
 	}
 
 	private toggleMode(): void {
