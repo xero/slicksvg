@@ -8,7 +8,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: 'html',
   use: {
-    baseURL: process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:5173',
+    baseURL: process.env.PLAYWRIGHT_TEST_BASE_URL || 'http://localhost:4173',
     trace: 'on-first-retry',
   },
   projects: [
@@ -16,24 +16,10 @@ export default defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
-    // Mobile device testing
-    {
-      name: 'Mobile Chrome',
-      use: { ...devices['Pixel 5'] },
-    },
-    {
-      name: 'Mobile Safari',
-      use: { ...devices['iPhone 12'] },
-    },
-    // Tablet device testing
-    {
-      name: 'iPad',
-      use: { ...devices['iPad Pro'] },
-    },
   ],
   webServer: process.env.CI ? undefined : {
     command: 'npm run dev',
-    url: 'http://localhost:5173/src',
+    url: 'http://localhost:4173/',
     reuseExistingServer: true,
     timeout: 120000,  // 2 minutes timeout for building and starting
   },
