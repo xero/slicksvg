@@ -7,6 +7,12 @@ import {tokyoNightDay} from '@fsegurai/codemirror-theme-tokyo-night-day';
 import {tokyoNightStorm} from '@fsegurai/codemirror-theme-tokyo-night-storm';
 import {linter, lintGutter} from '@codemirror/lint';
 
+// --- Constants
+const DEFAULT_SVG_SIZE = 200;
+const RANDOM_FILENAME_LENGTH = 6;
+const ZOOM_MAX = 50;
+const ZOOM_MIN = 0.1;
+
 // Global variable to hold status bar update callback
 let statusBarUpdateCallback: ((message: string, isError: boolean) => void) | null = null;
 
@@ -95,23 +101,76 @@ const svgLinter = linter(view=>{
 	}
 	return diagnostics;
 },
-{delay: 750});
+	{delay: 750});
 
 // Extend Window interface for testing functions
 declare global {
 	interface Window {
 		announceError?: (message: string) => void;
-		svgEditor?: SVGEditor;
+		svgEditor?: slick;
 		updateStatusBar?: (message: string, isError?: boolean) => void;
 	}
 }
 
-class SVGEditor {
-	public editor: EditorView;
-	private previewContainer: HTMLElement;
-	private svgPreview: HTMLElement;
-	private modal: HTMLDialogElement;
-	private statusBar: HTMLElement;
+// --- Utility functions
+function announce(message: string, type: 'action' | 'error') {
+	const id = type === 'action' ? 'test-announcements' : 'error-announcements';
+	let announcer = document.getElementById(id);
+	if (!announcer) {
+		announcer = document.createElement('div');
+		announcer.id = id;
+		if (type === 'error') {
+			announcer.setAttribute('aria-live', 'assertive');
+			announcer.setAttribute('aria-atomic', 'true');
+			announcer.style.position = 'absolute';
+			announcer.style.left = '-10000px';
+		}
+		document.body.appendChild(announcer);
+	}
+	announcer.textContent = message;
+}
+
+function bindClick(getter: (id: string) => HTMLElement, config: Array<[string, () => void]>) {
+	for (const [id, handler] of config) {
+		getter(id).addEventListener('click', handler);
+	}
+}
+
+function setOrInsertSvgAttr(svg: string, attr: string, value: string): string {
+	const regex = new RegExp(`${attr}="[^"]*"`);
+	if (regex.test(svg)) {
+		return svg.replace(regex, `${attr}="${value}"`);
+	}
+	return svg.replace(/(<svg[^>]*)(>)/, `$1 ${attr}="${value}"$2`);
+}
+
+function replaceEditorContent(editor: EditorView, newContent: string, moveCursorToStart = true) {
+	const transaction = editor.state.update({
+		changes: {
+			from: 0,
+			to: editor.state.doc.length,
+			insert: newContent
+		},
+		selection: moveCursorToStart ? {anchor: 0} : undefined
+	});
+	editor.dispatch(transaction);
+}
+
+function resetElementStyles(...elements: HTMLElement[]) {
+	for (const el of elements) {
+		el.style.width = '';
+		el.style.height = '';
+		el.classList.remove('resizing');
+	}
+}
+
+// --- SVGEditor Class
+class slick {
+	public editor!: EditorView;
+	private previewContainer!: HTMLElement;
+	private svgPreview!: HTMLElement;
+	private modal!: HTMLDialogElement;
+	private statusBar!: HTMLElement;
 	private isVerticalLayout = false;
 	private isDarkMode = false;
 	private zoomLevel = 1;
@@ -128,7 +187,6 @@ class SVGEditor {
 	private xray = false;
 	private initialPinchDistance = 0;
 	private initialZoomLevel = 1;
-	// Resize state variables
 	private isResizing = false;
 
 	constructor() {
@@ -146,11 +204,11 @@ class SVGEditor {
 	private get(i: string) {
 		const e = document.getElementById(i);
 		if (!e) throw new Error(`Element #${i} not found`);
-		return e
+		return e;
 	}
 
 	// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters
-  private getTyped = <T extends Element = HTMLElement>(q: string): T=>{
+	private getTyped = <T extends Element = HTMLElement>(q: string): T=>{
 		const e = document.querySelector(q);
 		if (!e) throw new Error(`Element ${q} was not found`);
 		return e as T;
@@ -163,12 +221,11 @@ class SVGEditor {
 
 	private initializeEditor(): void {
 		const editorContainer = this.get('editor');
-		// Create CodeMirror editor
-		const startDoc = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
-  <circle cx="100" cy="100" r="80" fill="#6291e0" stroke="#295da9" stroke-width="2"/>
-  <text x="100" y="110" text-anchor="middle" fill="white" font-family="Arial" font-size="16">
-    Hello SVG
-  </text>
+		const startDoc = `<svg xmlns="http://www.w3.org/2000/svg" width="${DEFAULT_SVG_SIZE}" height="${DEFAULT_SVG_SIZE}" viewBox="0 0 ${DEFAULT_SVG_SIZE} ${DEFAULT_SVG_SIZE}">
+	<circle cx="100" cy="100" r="80" fill="#6291e0" stroke="#295da9" stroke-width="2"/>
+	<text x="100" y="110" text-anchor="middle" fill="white" font-family="Arial" font-size="16">
+		Hello SVG
+	</text>
 </svg>`;
 
 		this.editor = new EditorView({
@@ -203,8 +260,10 @@ class SVGEditor {
 		this.previewContainer.appendChild(this.svgPreview);
 	}
 
-	private eyes = [this.get('awake'),this.get('asleep')];
-	private toggleXray = ():void=>{
+	private get eyes() {
+		return [this.get('awake'), this.get('asleep')];
+	}
+	private toggleXray = (): void=>{
 		this.xray = !this.xray;
 		this.eyes.forEach(s=>s.classList.toggle('hide'));
 		this.editor.focus();
@@ -220,16 +279,13 @@ class SVGEditor {
 	private modalShow(): void {
 		this.modal.classList.remove('closing');
 		void (!this.modalIsOpen() && this.modal.showModal());
-		// Focus the first input when modal opens
 		const firstInput = this.modal.querySelector('#width') as HTMLInputElement;
 		firstInput.focus();
-		// Add focus trapping
 		this.modal.addEventListener('keydown', this.handleModalKeydown);
 	}
 
-	private modalClose():void {
+	private modalClose(): void {
 		this.modal.classList.add('closing');
-		// Remove focus trapping
 		this.modal.removeEventListener('keydown', this.handleModalKeydown);
 		setTimeout(()=>{
 			this.modal.classList.remove('closing');
@@ -248,13 +304,11 @@ class SVGEditor {
 		const lastElement = focusableElements[focusableElements.length - 1];
 
 		if (e.shiftKey) {
-			// Shift+Tab - going backwards
 			if (document.activeElement === firstElement) {
 				e.preventDefault();
 				lastElement.focus();
 			}
 		} else {
-			// Tab - going forwards
 			if (document.activeElement === lastElement) {
 				e.preventDefault();
 				firstElement.focus();
@@ -263,24 +317,11 @@ class SVGEditor {
 	};
 
 	private announceAction(message: string): void {
-		const announcer = document.getElementById('test-announcements');
-		if (announcer) {
-			announcer.textContent = message;
-		}
+		announce(message, 'action');
 	}
 
 	public announceError(message: string): void {
-		let liveRegion = document.getElementById('error-announcements');
-		if (!liveRegion) {
-			liveRegion = document.createElement('div');
-			liveRegion.id = 'error-announcements';
-			liveRegion.setAttribute('aria-live', 'assertive');
-			liveRegion.setAttribute('aria-atomic', 'true');
-			liveRegion.style.position = 'absolute';
-			liveRegion.style.left = '-10000px';
-			document.body.appendChild(liveRegion);
-		}
-		liveRegion.textContent = message;
+		announce(message, 'error');
 	}
 
 	public updateStatusBar(message: string, isError: boolean = false): void {
@@ -298,28 +339,28 @@ class SVGEditor {
 		if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
 			this.toggleMode();
 		}
-		this.get('dark').addEventListener('click', ()=>this.toggleMode());
-		this.get('cancel').addEventListener('click', ()=>this.modalClose());
-		this.get('resolution').addEventListener('click', ()=>this.showResolutionModal());
-		this.get('resize').addEventListener('click', ()=>this.resizeSVG());
-		this.get('flip').addEventListener('click', ()=>this.toggleLayout());
-		this.get('zoomin').addEventListener('click', ()=>this.zoomIn());
-		this.get('zoomout').addEventListener('click', ()=>this.zoomOut());
-		this.get('rotate').addEventListener('click', ()=>this.rotateSVG());
-		this.get('flipx').addEventListener('click', ()=>this.flipSVGX());
-		this.get('flipy').addEventListener('click', ()=>this.flipSVGY());
-		this.get('optimize').addEventListener('click', ()=>this.optimizeSVG());
-		this.get('download').addEventListener('click', ()=>this.downloadSVG());
-		this.get('upload').addEventListener('click', ()=>this.triggerFileUpload());
-		this.get('xray').addEventListener('click', ()=>this.toggleXray());
+		bindClick(this.get.bind(this), [
+			['dark', ()=>this.toggleMode()],
+			['cancel', ()=>this.modalClose()],
+			['resolution', ()=>this.showResolutionModal()],
+			['resize', ()=>this.resizeSVG()],
+			['flip', ()=>this.toggleLayout()],
+			['zoomin', ()=>this.zoomIn()],
+			['zoomout', ()=>this.zoomOut()],
+			['rotate', ()=>this.rotateSVG()],
+			['flipx', ()=>this.flipSVGX()],
+			['flipy', ()=>this.flipSVGY()],
+			['optimize', ()=>this.optimizeSVG()],
+			['download', ()=>this.downloadSVG()],
+			['upload', ()=>this.triggerFileUpload()],
+			['xray', ()=>this.toggleXray()]
+		]);
 		this.svgPreview.addEventListener('mousedown', (e)=>this.startPan(e));
 		document.addEventListener('mousemove', (e)=>this.doPan(e));
 		document.addEventListener('mouseup', ()=>this.endPan());
 		this.svgPreview.addEventListener('touchstart', (e)=>this.handleTouchStart(e), {passive: false});
 		this.svgPreview.addEventListener('touchmove', (e)=>this.handleTouchMove(e), {passive: false});
 		this.svgPreview.addEventListener('touchend', (e)=>this.handleTouchEnd(e), {passive: false});
-
-		// Setup dragbar for resizing split layout
 		this.setupResizeDragbar();
 	}
 
@@ -327,11 +368,9 @@ class SVGEditor {
 		const svgCode = this.editor.state.doc.toString();
 		try {
 			this.svgPreview.innerHTML = '';
-
 			const svgContainer = document.createElement('div');
 			svgContainer.className = 'svg-container';
 			svgContainer.innerHTML = svgCode;
-
 			this.svgPreview.appendChild(svgContainer);
 			this.applySVGStyles();
 		} catch (error) {
@@ -344,18 +383,8 @@ class SVGEditor {
 		if (svgElement) {
 			const hasWidth = svgElement.hasAttribute('width');
 			const hasHeight = svgElement.hasAttribute('height');
-
-			if (!hasWidth || !hasHeight) {
-				if (!hasWidth) {
-					svgElement.style.width = '200px';
-				}
-				if (!hasHeight) {
-					svgElement.style.height = '200px';
-				}
-			}
-
-			// apply CSS transforms for zoom/pan only, preserving SVG transform attributes
-			// uses CSS transforms on a wrapper div instead of directly on the SVG element
+			if (!hasWidth) svgElement.style.width = `${DEFAULT_SVG_SIZE}px`;
+			if (!hasHeight) svgElement.style.height = `${DEFAULT_SVG_SIZE}px`;
 			const svgContainer = svgElement.parentElement;
 			if (svgContainer && svgContainer.classList.contains('svg-container')) {
 				svgContainer.style.transform = `translate(${this.panX}px, ${this.panY}px) scale(${this.zoomLevel})`;
@@ -367,30 +396,19 @@ class SVGEditor {
 
 	private updateElementHighlight(): void {
 		try {
-			// Get cursor position
 			const cursorPos = this.editor.state.selection.main.head;
 			const svgCode = this.editor.state.doc.toString();
-
-			// Parse the SVG content up to cursor position to find current element
 			const elementInfo = this.findElementAtCursor(svgCode, cursorPos);
-
-			// Clear previous highlights
 			this.clearHighlights();
-
-			// Apply new highlight if we found an element
 			if (elementInfo) {
-				console.debug('Highlighting element:', elementInfo);
 				this.highlightElement(elementInfo.tagName, elementInfo.index);
 			}
 		} catch (error) {
-			// Silently fail - highlighting is non-critical functionality
 			console.debug('Element highlighting failed:', error);
 		}
 	}
 
 	private findElementAtCursor(svgCode: string, cursorPos: number): { tagName: string; index: number } | null {
-		// We'll walk through the svgCode, tracking open tags and their positions.
-		// At each point, we'll know the deepest open element.
 		const tagRegex = /<(\/?)(\w+)(?:\s[^>]*)?(\/?)>/g;
 		type StackEl = { tagName: string, openPos: number, index: number };
 		const stack: StackEl[] = [];
@@ -405,7 +423,6 @@ class SVGEditor {
 			const matchStart = match.index;
 			const matchEnd = tagRegex.lastIndex;
 
-			// Before processing this tag, check if cursorPos is between last tag and this one
 			if (tagRegex.lastIndex >= cursorPos && matchStart <= cursorPos) {
 				if (stack.length > 0) {
 					lastElementAtCursor = stack[stack.length - 1];
@@ -413,12 +430,10 @@ class SVGEditor {
 			}
 
 			if (!isClosing) {
-				// Opening tag
 				tagCounts[tagName] = tagCounts[tagName] || 0;
 				const index = tagCounts[tagName];
 				tagCounts[tagName] += 1;
 
-				// For self-closing, don't push to stack, but check if cursor is inside the tag
 				if (isSelfClosing) {
 					if (cursorPos >= matchStart && cursorPos <= matchEnd) {
 						lastElementAtCursor = {tagName, openPos: matchStart, index};
@@ -427,7 +442,6 @@ class SVGEditor {
 					stack.push({tagName, openPos: matchStart, index});
 				}
 			} else {
-				// Closing tag
 				for (let i = stack.length - 1; i >= 0; i--) {
 					if (stack[i].tagName === tagName) {
 						stack.splice(i, 1);
@@ -437,7 +451,6 @@ class SVGEditor {
 			}
 		}
 
-		// If cursor is at the very end, check stack
 		if (cursorPos >= svgCode.length && stack.length > 0) {
 			lastElementAtCursor = stack[stack.length - 1];
 		}
@@ -451,26 +464,15 @@ class SVGEditor {
 	private highlightElement(tagName: string, index: number): void {
 		try {
 			const svgContainer = this.svgPreview.querySelector('.svg-container');
-			if (!svgContainer) {
-				console.debug('No SVG container found');
-				return;
-			}
+			if (!svgContainer) return;
 			const svgElement = svgContainer.querySelector('svg');
-			if (!svgElement) {
-				console.debug('No SVG root found');
-				return;
-			}
-			const cssHlColor = getComputedStyle(document.body).getPropertyValue('--color-hl').trim() || '#ff0';
+			if (!svgElement) return;
+			const cssHlColor = getComputedStyle(document.body).getPropertyValue('--color-hl').trim() || '#0f0';
 			this.ensureHighlightFilter(svgElement, cssHlColor);
 
 			const elements = svgContainer.querySelectorAll(tagName);
-			console.debug(`Found ${elements.length} elements of type ${tagName}, trying to highlight index ${index}`);
-
 			if (elements.length > index && index >= 0) {
 				elements[index].setAttribute('filter', 'url(#highlight-glow)');
-				console.debug('Successfully highlighted element with SVG filter');
-			} else {
-				console.debug('Index out of bounds or negative');
 			}
 		} catch (error) {
 			console.debug('Failed to highlight element:', error);
@@ -502,21 +504,20 @@ class SVGEditor {
 			const filterMarkup = `
 <filter id="highlight-glow" x="-10%" y="-10%" width="120%" height="120%" filterUnits="objectBoundingBox" primitiveUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
 	<feColorMatrix type="matrix" values="1 0 0 0 0
-1 0 0 0 0
-1 0 0 0 0
-0 0 0 1 0" in="SourceGraphic" result="colormatrix"/>
+	1 0 0 0 0
+	1 0 0 0 0
+	0 0 0 1 0" in="SourceGraphic" result="colormatrix"/>
 	<feComponentTransfer in="colormatrix" result="componentTransfer">
-    		<feFuncR type="table" tableValues="0.75 0.53"/>
+		<feFuncR type="table" tableValues="0.75 0.53"/>
 		<feFuncG type="table" tableValues="0.25 0.97"/>
 		<feFuncB type="table" tableValues="0.64 0.77"/>
 		<feFuncA type="table" tableValues="0 1"/>
-  	</feComponentTransfer>
+	</feComponentTransfer>
 	<feBlend mode="normal" in="componentTransfer" in2="SourceGraphic" result="blend"/>
 </filter>
 `;
 			defs.insertAdjacentHTML('beforeend', filterMarkup);
 		} else {
-			// Update color if already present
 			const fe = filter.querySelector('feDropShadow');
 			if (fe) fe.setAttribute('flood-color', color);
 		}
@@ -525,20 +526,7 @@ class SVGEditor {
 	private toggleLayout(): void {
 		this.isVerticalLayout = !this.isVerticalLayout;
 		document.body.classList.toggle('vertical');
-
-		// Clear any inline styles and resizing state when switching layout
-		const editor = this.get('editor');
-		const preview = this.get('preview');
-
-		editor.style.width = '';
-		editor.style.height = '';
-		preview.style.width = '';
-		preview.style.height = '';
-
-		editor.classList.remove('resizing');
-		preview.classList.remove('resizing');
-
-		// Update dragbar orientation based on layout
+		resetElementStyles(this.get('editor'), this.get('preview'));
 		const dragbar = this.get('dragbar');
 		dragbar.setAttribute('aria-orientation', this.isVerticalLayout ? 'horizontal' : 'vertical');
 	}
@@ -546,7 +534,6 @@ class SVGEditor {
 	private toggleMode(): void {
 		this.isDarkMode = !this.isDarkMode;
 		document.body.classList.toggle('dark');
-
 		this.editor.dispatch({
 			effects: this.themeCompartment.reconfigure(
 				this.isDarkMode ? [tokyoNightStorm] : [tokyoNightDay]
@@ -555,13 +542,12 @@ class SVGEditor {
 	}
 
 	private zoomIn(): void {
-		this.zoomLevel = Math.min(this.zoomLevel * 1.2, 50);
+		this.zoomLevel = Math.min(this.zoomLevel * 1.2, ZOOM_MAX);
 		this.applySVGStyles();
 		this.announceAction(`Zoomed in to ${Math.round(this.zoomLevel * 100)}%`);
 	}
-
 	private zoomOut(): void {
-		this.zoomLevel = Math.max(this.zoomLevel / 1.2, 0.1);
+		this.zoomLevel = Math.max(this.zoomLevel / 1.2, ZOOM_MIN);
 		this.applySVGStyles();
 		this.announceAction(`Zoomed out to ${Math.round(this.zoomLevel * 100)}%`);
 	}
@@ -572,22 +558,17 @@ class SVGEditor {
 		this.lastPanY = e.clientY;
 		e.preventDefault();
 	}
-
 	private doPan(e: MouseEvent): void {
 		if (!this.isPanning) return;
-
 		const deltaX = e.clientX - this.lastPanX;
 		const deltaY = e.clientY - this.lastPanY;
-
 		this.panX += deltaX;
 		this.panY += deltaY;
 		this.lastPanX = e.clientX;
 		this.lastPanY = e.clientY;
-
 		this.applySVGStyles();
 		e.preventDefault();
 	}
-
 	private endPan(): void {
 		this.isPanning = false;
 	}
@@ -608,40 +589,34 @@ class SVGEditor {
 			this.isMultiTouch = false;
 		}
 	}
-
 	private handleTouchMove(e: TouchEvent): void {
 		if (this.isMultiTouch && e.touches.length === 2) {
 			const currentDistance = this.calculatePinchDistance(e.touches[0], e.touches[1]);
 			const scale = currentDistance / this.initialPinchDistance;
 			const newZoomLevel = this.initialZoomLevel * scale;
-			this.zoomLevel = Math.max(0.1, Math.min(newZoomLevel, 50));
+			this.zoomLevel = Math.max(ZOOM_MIN, Math.min(newZoomLevel, ZOOM_MAX));
 			this.applySVGStyles();
 			e.preventDefault();
 		} else if (!this.isMultiTouch && e.touches.length === 1 && this.isPanning) {
 			const touch = e.touches[0];
 			const deltaX = touch.clientX - this.lastPanX;
 			const deltaY = touch.clientY - this.lastPanY;
-
 			this.panX += deltaX;
 			this.panY += deltaY;
 			this.lastPanX = touch.clientX;
 			this.lastPanY = touch.clientY;
-
 			this.applySVGStyles();
 			e.preventDefault();
 		}
 	}
-
 	private handleTouchEnd(e: TouchEvent): void {
 		if (e.touches.length < 2) {
 			this.isMultiTouch = false;
 		}
 		if (e.touches.length === 0) {
-			// End panning when all touches are removed
 			this.isPanning = false;
 		}
 	}
-
 	private calculatePinchDistance(touch1: Touch, touch2: Touch): number {
 		const dx = touch1.clientX - touch2.clientX;
 		const dy = touch1.clientY - touch2.clientY;
@@ -652,13 +627,10 @@ class SVGEditor {
 		this.rotationDegrees = 0;
 		this.flipX = false;
 		this.flipY = false;
-
 		const transformMatch = svgCode.match(/transform="([^"]*)"/);
 		if (!transformMatch) return;
-
 		const transformValue = transformMatch[1];
 		const rotateMatch = transformValue.match(/rotate\((\d+)[^)]*\)/);
-
 		if (rotateMatch) {
 			const angle = parseInt(rotateMatch[1]);
 			this.rotationDegrees = angle % 360;
@@ -689,7 +661,6 @@ class SVGEditor {
 		const svgCode = this.editor.state.doc.toString();
 		try {
 			const transformValue = this.buildTransformAttribute();
-
 			let transformedSVG;
 			if (transformValue.trim()) {
 				const transformMatch = svgCode.match(/(<svg[^>]*)\s+transform="[^"]*"([^>]*>)/);
@@ -699,23 +670,12 @@ class SVGEditor {
 						`$1 transform="${transformValue}"$2`
 					);
 				} else {
-					transformedSVG = svgCode.replace(
-						/(<svg[^>]*)(>)/,
-						`$1 transform="${transformValue}"$2`
-					);
+					transformedSVG = setOrInsertSvgAttr(svgCode, 'transform', transformValue);
 				}
 			} else {
 				transformedSVG = svgCode.replace(/\s+transform="[^"]*"/, '');
 			}
-
-			const transaction = this.editor.state.update({
-				changes: {
-					from: 0,
-					to: this.editor.state.doc.length,
-					insert: transformedSVG
-				}
-			});
-			this.editor.dispatch(transaction);
+			replaceEditorContent(this.editor, transformedSVG, false);
 		} catch (error) {
 			console.error('SVG transformation failed:', error);
 		}
@@ -728,7 +688,6 @@ class SVGEditor {
 		this.applyTransformToSVG();
 		this.announceAction(`SVG rotated 90 degrees`);
 	}
-
 	private flipSVGX(): void {
 		const svgCode = this.editor.state.doc.toString();
 		this.parseCurrentTransforms(svgCode);
@@ -736,7 +695,6 @@ class SVGEditor {
 		this.applyTransformToSVG();
 		this.announceAction('SVG flipped horizontally');
 	}
-
 	private flipSVGY(): void {
 		const svgCode = this.editor.state.doc.toString();
 		this.parseCurrentTransforms(svgCode);
@@ -749,148 +707,100 @@ class SVGEditor {
 		const svgCode = this.editor.state.doc.toString();
 		const widthMatch = svgCode.match(/width="([^"]+)"/);
 		const heightMatch = svgCode.match(/height="([^"]+)"/);
-
 		let currentWidth = widthMatch ? parseInt(widthMatch[1]) : null;
 		let currentHeight = heightMatch ? parseInt(heightMatch[1]) : null;
-
-		// if width or height are missing, fall back to viewbox
 		if (currentWidth === null || currentHeight === null) {
 			const viewBoxMatch = svgCode.match(/viewBox="([^"]+)"/);
 			if (viewBoxMatch) {
 				const viewBoxValues = viewBoxMatch[1].split(/\s+/);
 				if (viewBoxValues.length >= 4) {
-					if (currentWidth === null) {
-						currentWidth = parseInt(viewBoxValues[2]);
-					}
-					if (currentHeight === null) {
-						currentHeight = parseInt(viewBoxValues[3]);
-					}
+					if (currentWidth === null) currentWidth = parseInt(viewBoxValues[2]);
+					if (currentHeight === null) currentHeight = parseInt(viewBoxValues[3]);
 				}
 			}
 		}
-		// final fallback to defaults if still null
-		currentWidth = currentWidth || 200;
-		currentHeight = currentHeight || 200;
-
+		currentWidth = currentWidth || DEFAULT_SVG_SIZE;
+		currentHeight = currentHeight || DEFAULT_SVG_SIZE;
 		(this.get('width') as HTMLInputElement).value = currentWidth.toString();
 		(this.get('height') as HTMLInputElement).value = currentHeight.toString();
-
 		this.modalShow();
 	}
 
 	private resizeSVG(): void {
 		const widthInput = this.get('width') as HTMLInputElement;
 		const heightInput = this.get('height') as HTMLInputElement;
-
 		const newWidth = parseInt(widthInput.value);
 		const newHeight = parseInt(heightInput.value);
-
 		if (!newWidth || newWidth <= 0 || !newHeight || newHeight <= 0) {
 			alert('Please enter valid positive numbers for width and height');
 			return;
 		}
-
 		const svgCode = this.editor.state.doc.toString();
-
 		try {
-			let updatedSVG = svgCode;
-
-			if (updatedSVG.includes('width="')) {
-				updatedSVG = updatedSVG.replace(/width="[^"]*"/, `width="${newWidth}"`);
-			} else {
-				updatedSVG = updatedSVG.replace(/(<svg[^>]*)(>)/, `$1 width="${newWidth}"$2`);
-			}
-
-			if (updatedSVG.includes('height="')) {
-				updatedSVG = updatedSVG.replace(/height="[^"]*"/, `height="${newHeight}"`);
-			} else {
-				updatedSVG = updatedSVG.replace(/(<svg[^>]*)(>)/, `$1 height="${newHeight}"$2`);
-			}
-
+			let updatedSVG = setOrInsertSvgAttr(svgCode, 'width', `${newWidth}`);
+			updatedSVG = setOrInsertSvgAttr(updatedSVG, 'height', `${newHeight}`);
 			const viewBoxValue = `0 0 ${newWidth} ${newHeight}`;
-			if (updatedSVG.includes('viewBox="')) {
-				updatedSVG = updatedSVG.replace(/viewBox="[^"]*"/, `viewBox="${viewBoxValue}"`);
-			} else {
-				updatedSVG = updatedSVG.replace(/(<svg[^>]*)(>)/, `$1 viewBox="${viewBoxValue}"$2`);
-			}
-
-			const transaction = this.editor.state.update({
-				changes: {
-					from: 0,
-					to: this.editor.state.doc.length,
-					insert: updatedSVG
-				}
-			});
-			this.editor.dispatch(transaction);
-
+			updatedSVG = setOrInsertSvgAttr(updatedSVG, 'viewBox', viewBoxValue);
+			replaceEditorContent(this.editor, updatedSVG, false);
 		} catch (error) {
 			console.error('SVG resize failed:', error);
 			alert('Failed to resize SVG. Please check the SVG format.');
 		}
-
 		this.modalClose();
 	}
 
 	private optimizeSVG(): void {
 		const svgCode = this.editor.state.doc.toString();
 		try {
-			// Comprehensive SVG optimization
 			const optimized = svgCode
-				// Remove XML processing instructions
-				.replace(/<\?xml[^>]*\?>/g, '')
-				// Remove DOCTYPE declarations
-				.replace(/<!DOCTYPE[^>]*>/g, '')
-				// Remove comments
-				.replace(/<!--[\s\S]*?-->/g, '')
-				// Remove extra whitespace between tags
-				.replace(/>\s+</g, '><')
-				// Remove whitespace around attribute values
-				.replace(/\s*=\s*"/g, '="')
-				// Remove unnecessary precision in numbers (limit to 3 decimal places)
-				.replace(/(\d+\.\d{3})\d+/g, '$1')
-				// Remove trailing zeros after decimal point
-				.replace(/(\d+)\.0+\b/g, '$1')
-				.replace(/(\d+\.\d*?)0+\b/g, '$1')
-				// Remove redundant default attribute values
-				.replace(/\s+fill="none"/g, '')
-				.replace(/\s+stroke="none"/g, '')
-				.replace(/\s+stroke-width="1"/g, '')
-				.replace(/\s+opacity="1"/g, '')
-				.replace(/\s+fill-opacity="1"/g, '')
-				.replace(/\s+stroke-opacity="1"/g, '')
-				// Remove empty attributes
-				.replace(/\s+[a-zA-Z-]+=""/g, '')
-				// Remove redundant transform attributes
-				.replace(/\s+transform="matrix\(1,0,0,1,0,0\)"/g, '')
-				.replace(/\s+transform="translate\(0,0\)"/g, '')
-				.replace(/\s+transform="scale\(1\)"/g, '')
-				.replace(/\s+transform="rotate\(0\)"/g, '')
-				// Remove unnecessary namespace declarations if not used
-				.replace(/\s+xmlns:[a-z]+="[^"]*"/g, (match)=>{
-					const prefix = match.match(/xmlns:([a-z]+)=/)?.[1];
-					if (prefix && !svgCode.includes(`${prefix}:`)) {
-						return '';
-					}
-					return match;
-				})
-				// Remove metadata, desc, and title elements (optional optimization)
-				.replace(/<metadata[^>]*>[\s\S]*?<\/metadata>/g, '')
-				.replace(/<desc[^>]*>[\s\S]*?<\/desc>/g, '')
-				// Remove empty groups
-				.replace(/<g[^>]*>\s*<\/g>/g, '')
-				// Consolidate whitespace
-				.replace(/\s+/g, ' ')
-				// Trim whitespace
-				.trim();
-
-			const transaction = this.editor.state.update({
-				changes: {
-					from: 0,
-					to: this.editor.state.doc.length,
-					insert: optimized
+			// Remove XML processing instructions
+			.replace(/<\?xml[^>]*\?>/g, '')
+			// Remove DOCTYPE declarations
+			.replace(/<!DOCTYPE[^>]*>/g, '')
+			// Remove comments
+			.replace(/<!--[\s\S]*?-->/g, '')
+			// Remove extra whitespace between tags
+			.replace(/>\s+</g, '><')
+			// Remove whitespace around attribute values
+			.replace(/\s*=\s*"/g, '="')
+			// Remove unnecessary precision in numbers (limit to 3 decimal places)
+			.replace(/(\d+\.\d{3})\d+/g, '$1')
+			// Remove trailing zeros after decimal point
+			.replace(/(\d+)\.0+\b/g, '$1')
+			.replace(/(\d+\.\d*?)0+\b/g, '$1')
+			// Remove redundant default attribute values
+			.replace(/\s+fill="none"/g, '')
+			.replace(/\s+stroke="none"/g, '')
+			.replace(/\s+stroke-width="1"/g, '')
+			.replace(/\s+opacity="1"/g, '')
+			.replace(/\s+fill-opacity="1"/g, '')
+			.replace(/\s+stroke-opacity="1"/g, '')
+			// Remove empty attributes
+			.replace(/\s+[a-zA-Z-]+=""/g, '')
+			// Remove redundant transform attributes
+			.replace(/\s+transform="matrix\(1,0,0,1,0,0\)"/g, '')
+			.replace(/\s+transform="translate\(0,0\)"/g, '')
+			.replace(/\s+transform="scale\(1\)"/g, '')
+			.replace(/\s+transform="rotate\(0\)"/g, '')
+			// Remove unnecessary namespace declarations if not used
+			.replace(/\s+xmlns:[a-z]+="[^"]*"/g, (match)=>{
+				const prefix = match.match(/xmlns:([a-z]+)=/)?.[1];
+				if (prefix && !svgCode.includes(`${prefix}:`)) {
+					return '';
 				}
-			});
-			this.editor.dispatch(transaction);
+				return match;
+			})
+			// Remove metadata, desc, and title elements
+			.replace(/<metadata[^>]*>[\s\S]*?<\/metadata>/g, '')
+			.replace(/<desc[^>]*>[\s\S]*?<\/desc>/g, '')
+			.replace(/<title[^>]*>[\s\S]*?<\/title>/g, '')
+			// Remove empty groups
+			.replace(/<g[^>]*>\s*<\/g>/g, '')
+			// Consolidate whitespace
+			.replace(/\s+/g, ' ')
+			// Trim whitespace
+			.trim();
+			replaceEditorContent(this.editor, optimized, false);
 		} catch (error) {
 			console.error('SVG optimization failed:', error);
 		}
@@ -898,19 +808,8 @@ class SVGEditor {
 
 	private loadSVGContent(content: string): void {
 		try {
-			// Reset all view states before loading new content
 			this.resetViewState();
-
-			// Update editor with new SVG content
-			const transaction = this.editor.state.update({
-				changes: {
-					from: 0,
-					to: this.editor.state.doc.length,
-					insert: content
-				},
-				selection: {anchor: 0} // Reset cursor to start of document
-			});
-			this.editor.dispatch(transaction);
+			replaceEditorContent(this.editor, content, true);
 		} catch (error) {
 			console.error('Failed to load SVG content:', error);
 			alert('Failed to load SVG content. Please check the file format.');
@@ -928,7 +827,6 @@ class SVGEditor {
 			alert('Please select a valid SVG file.');
 			return;
 		}
-
 		const reader = new FileReader();
 		reader.onload = (e)=>{
 			const content = e.target?.result as string;
@@ -951,7 +849,6 @@ class SVGEditor {
 		fileInput.type = 'file';
 		fileInput.accept = '.svg,image/svg+xml';
 		fileInput.style.display = 'none';
-
 		fileInput.addEventListener('change', (e)=>{
 			const target = e.target as HTMLInputElement;
 			const file = target.files?.[0];
@@ -959,7 +856,6 @@ class SVGEditor {
 				this.handleFileUpload(file);
 			}
 		});
-
 		document.body.appendChild(fileInput);
 		fileInput.click();
 		document.body.removeChild(fileInput);
@@ -967,17 +863,14 @@ class SVGEditor {
 
 	private setupDragAndDrop(): void {
 		let dragCounter = 0;
-
 		document.addEventListener('dragenter', (e)=>{
 			e.preventDefault();
 			dragCounter++;
 			document.body.classList.add('drag-over');
 		});
-
 		document.addEventListener('dragover', (e)=>{
 			e.preventDefault();
 		});
-
 		document.addEventListener('dragleave', (e)=>{
 			e.preventDefault();
 			dragCounter--;
@@ -985,12 +878,10 @@ class SVGEditor {
 				document.body.classList.remove('drag-over');
 			}
 		});
-
 		document.addEventListener('drop', (e)=>{
 			e.preventDefault();
 			dragCounter = 0;
 			document.body.classList.remove('drag-over');
-
 			const files = e.dataTransfer?.files;
 			if (files && files.length > 0) {
 				const file = files[0];
@@ -1002,8 +893,6 @@ class SVGEditor {
 	private setupResizeDragbar(): void {
 		try {
 			const dragbar = this.get('dragbar');
-
-			// Ensure event listeners are properly bound using explicit binding
 			const boundStartResize = this.startResize.bind(this);
 			dragbar.addEventListener('mousedown', boundStartResize);
 			dragbar.addEventListener('touchstart', boundStartResize, {passive: false});
@@ -1015,7 +904,6 @@ class SVGEditor {
 	private startResize = (e: MouseEvent | TouchEvent): void=>{
 		e.preventDefault();
 		this.isResizing = true;
-
 		window.addEventListener('mousemove', this.doResize);
 		window.addEventListener('mouseup', this.endResize);
 		window.addEventListener('touchmove', this.doResize, {passive: false});
@@ -1024,14 +912,12 @@ class SVGEditor {
 
 	private doResize = (e: MouseEvent | TouchEvent): void=>{
 		if (!this.isResizing) return;
-
 		const vertical = document.body.classList.contains('vertical');
 		const editor = this.get('editor');
 		const preview = this.get('preview');
 		const parent = editor.parentNode as HTMLElement;
 		const parentRect = parent.getBoundingClientRect();
 		const total = vertical ? parentRect.height : parentRect.width;
-
 		let pagePos: number;
 		if (e instanceof MouseEvent) {
 			pagePos = vertical ? e.clientY : e.clientX;
@@ -1039,10 +925,8 @@ class SVGEditor {
 			pagePos = vertical ? e.touches[0].clientY : e.touches[0].clientX;
 			e.preventDefault();
 		}
-
 		const offset = pagePos - (vertical ? parentRect.top : parentRect.left);
 		const percent = Math.max(10, Math.min(90, (offset / total) * 100));
-
 		if (vertical) {
 			editor.style.height = `${percent - 1}%`;
 			preview.style.height = `${100 - percent - 1}%`;
@@ -1050,8 +934,6 @@ class SVGEditor {
 			editor.style.width = `${percent}%`;
 			preview.style.width = `${100 - percent}%`;
 		}
-
-		// Add resizing class to override flex behavior
 		editor.classList.add('resizing');
 		preview.classList.add('resizing');
 	};
@@ -1067,7 +949,7 @@ class SVGEditor {
 	private generateRandomFilename(): string {
 		const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 		let randomStr = '';
-		for (let i = 0; i < 6; i++) {
+		for (let i = 0; i < RANDOM_FILENAME_LENGTH; i++) {
 			randomStr += chars.charAt(Math.floor(Math.random() * chars.length));
 		}
 		return `slicksvg-${randomStr}.svg`;
@@ -1080,23 +962,18 @@ class SVGEditor {
 				alert('No SVG content to download. Please create some SVG content first.');
 				return;
 			}
-
 			const filename = this.generateRandomFilename();
 			const blob = new Blob([svgContent], {type: 'image/svg+xml'});
 			const url = URL.createObjectURL(blob);
 			const downloadLink = document.createElement('a');
-
 			downloadLink.href = url;
 			downloadLink.download = filename;
 			downloadLink.style.display = 'none';
-
 			document.body.appendChild(downloadLink);
 			downloadLink.click();
 			document.body.removeChild(downloadLink);
-
 			URL.revokeObjectURL(url);
 			this.announceAction(`SVG downloaded as ${filename}`);
-
 		} catch (error) {
 			console.error('Download failed:', error);
 			alert('Failed to download SVG. Please try again.');
@@ -1104,9 +981,9 @@ class SVGEditor {
 	}
 }
 
+// --- Initialization
 function initializeEditor(): void {
-	const editor = new SVGEditor();
-	// Expose function globally for testing
+	const editor = new slick();
 	window.announceError = editor.announceError.bind(editor);
 	window.updateStatusBar = editor.updateStatusBar.bind(editor);
 	window.svgEditor = editor;

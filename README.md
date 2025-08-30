@@ -12,7 +12,7 @@ _\___     \:   |    |    |    |/   Y    :/    /
 ```
 A **Node.js**-based, web SVG editor written in **TypeScript**, with no frontend frameworks. The UI and all interactions are managed using vanilla TypeScript, DOM APIs, and modern browser features. The app provides a full-screen split view for editing and previewing SVG code in real time.
 
-**Features**: Real-time editing • Resizable split view • Xray mode highlighting • Dark/light themes • SVG optimization • Transform tools • Touch support • Comprehensive testing
+**Features**: Real-time editing • Resizable split view • Xray mode highlighting • Dark/light themes • SVG optimization • Transform tools • Mobile / Touch support • Comprehensive testing
 
 ## Screenshots
 
@@ -39,11 +39,11 @@ A **Node.js**-based, web SVG editor written in **TypeScript**, with no frontend 
 - **Non-intrusive**: Highlighting preserves original SVG appearance and doesn't modify code
 
 ### SVG Tools
-- **📁 Upload**: Drag & drop or click to upload SVG files with validation
-- **💾 Download**: Save current SVG code as a file
-- **📐 Resize**: Change SVG dimensions with modal dialog interface
-- **⚡ Optimize**: Remove unnecessary whitespace, comments, and optimize SVG code for smaller file sizes
-- **🔄 Transform**:
+- **Upload**: Drag & drop or click to upload SVG files with validation
+- **Download**: Save current SVG code as a file
+- **Resize**: Change SVG dimensions with modal dialog interface
+- **Optimize**: Remove unnecessary whitespace, comments, and optimize SVG code for smaller file sizes
+- **Transform**:
   - Rotate in 90° increments
   - Flip horizontal/vertical
   - Reset transformations
@@ -76,7 +76,8 @@ A **Node.js**-based, web SVG editor written in **TypeScript**, with no frontend 
 ## Setup
 
 > [!NOTE]
-> You can use `bun` or `npm` (`bunx` / `npx`) interchangeably in all examples
+> You can use `bun` or `npm` (`bunx` / `npx`) interchangeably in all examples.
+> For building, you may use the convenient shortcut: `bun bake` (same as `bun run build`).
 
 1. Install dependencies:
 
@@ -84,92 +85,100 @@ A **Node.js**-based, web SVG editor written in **TypeScript**, with no frontend 
     bun install
     ```
 
-2. Build the project:
-
-    ```sh
-    bun run build
-    ```
-
-3. Start the development server:
+2. Start the development server:
 
     ```sh
     bun run dev
+    # or
+    npm run dev
     ```
 
-4. Open your browser to `http://localhost:5173`
+3. Build the project (**single-file ready**):
 
-**Alternative build for single-file deployment:**
-```sh
-bun run build  # Creates a single HTML file in dist/src/index.html
-```
+    ```sh
+    bun bake
+    # or
+    bun run build
+    # or
+    npm run build
+    ```
+
+    - This produces a single HTML file at `dist/index.html`.
+
+4. Preview the built app:
+
+    ```sh
+    bun run preview
+    # or
+    npm run preview
+    ```
+
+    - Then open your browser to [http://localhost:4173](http://localhost:4173)
+
+---
 
 ## Available Scripts
 
-- `bun run dev` - Start Vite development server with hot reload (port 5173)
-- `bun run build` - Build single HTML file with all assets inlined
-- `bun run style` - Build CSS only
-- `bun run scripts` - Build JavaScript only
-- `bun run lint` - Run ESLint
-- `bun run lint:fix` - Run ESLint with auto-fix
+- `bun bake` — Build the app (shortcut for `bun run build`)
+- `bun run dev` — Start Vite development server (port 5173)
+- `bun run build` — Validate CSS, build single-file HTML (`dist/index.html`)
+- `bun run preview` — Local preview of built app (port 4173)
+- `bun run lint` — Run ESLint
+- `bun run lint:fix` — Run ESLint with auto-fix
+- `bun run test` — Run all unit and E2E tests
+- `bun run test:all` — Run all tests with coverage
+- `bun run test:unit` — Run unit tests only
+- `bun run test:e2e` — Run E2E tests only (with local server)
+- `bun run test:integration` — Run tests with coverage reporting
+
+---
 
 ### Testing
 
-The project includes comprehensive automated testing with both unit/integration tests and end-to-end tests:
+The project includes both unit/integration tests and end-to-end (E2E) tests.
 
 #### Unit and Integration Tests (Vitest)
 
-Place unit and integration tests in the `tests/` directory:
+- `bun run check` — Run unit tests (Vitest)
+- `bun run check:coverage` — Run unit/integration tests with coverage
 
-- `bun run check` - Run unit tests with Vitest
-- `bun run check:watch` - Run unit tests in watch mode
-- `bun run check:ui` - Run unit tests with interactive UI
-- `bun run check:coverage` - Run tests with coverage reporting
-
-**Current Unit Test Coverage:**
-
-- **Core SVGEditor functionality** - Element selection, error handling, theme switching
-- **Transform operations** - Rotation, flipping, zoom controls, pan interactions
-- **SVG parsing and validation** - Content validation, dimension extraction, transform parsing
-- **Modal dialog functionality** - Show/hide, input validation, focus management
-- **Touch and pinch zoom** - Multi-touch calculations, gesture handling
-- **Drag-resize functionality** - Split panel resizing, percentage calculations, layout awareness
-- **Error handling** - File upload errors, malformed SVG, input validation
-- **Accessibility features** - Keyboard navigation, screen reader support, focus management
-- **Performance optimization** - Event cleanup, memory management, transform caching
-- **SVG optimization** - Code minification, whitespace removal, attribute optimization
-- **SVG linting** - Real-time XML/SVG validation, error reporting
-- **File operations** - Upload and download functionality, drag & drop support
-- **Tokyo Night theme integration** - Light/dark mode theming, syntax highlighting
+Test files are located in the `tests/` directory.
 
 #### End-to-End Tests (Playwright)
 
-Place E2E tests in the `e2e/` directory:
+- `bun run check:e2e` — Run E2E tests (Playwright, with local server)
+- `bun run check:e2e:headed` — Run E2E tests with browser UI visible
+- `bun run check:e2e:debug` — Debug E2E tests step by step
+- `bun run check:e2e:ui` — Run E2E tests with Playwright's interactive UI
 
-- `bun run check:e2e` - Run end-to-end tests with Playwright
-- `bun run check:e2e:headed` - Run E2E tests with browser UI visible
-- `bun run check:e2e:debug` - Debug E2E tests step by step
-- `bun run check:e2e:ui` - Run E2E tests with interactive UI
+E2E tests are located in the `e2e/` directory.
 
-**Current E2E Test Coverage:**
-- **Core editor functionality** - SVG editing, preview updates, UI interactions
-- **Drag-resize functionality** - Split panel resizing, accessibility compliance, mobile compatibility
-- **File upload workflows** - Drag & drop, file validation, error handling
-- **Transform operations** - Rotation, flipping, zoom, layout switching
-- **Accessibility testing** - Keyboard navigation, screen reader compatibility, focus management
-- **Error handling** - Invalid content, network failures, rapid interactions
-- **Mobile and touch support** - Responsive design, pinch-to-zoom, orientation changes
-- **Performance testing** - Load times, memory usage, rapid interactions
-- **Cross-browser compatibility** - Different browsers, screen densities, color schemes
-- **SVG linting integration** - Real-time validation feedback, error highlighting
-- **File operations** - Upload workflows, drag & drop functionality, clear operations
+##### Playwright Install
+
+Before running E2E tests for the first time, install Playwright browsers and dependencies:
+
+```sh
+bun run playwright:install
+bun run playwright:install-deps
+```
+
+---
 
 #### Running All Tests
 
-- `bun run test` - Run both unit and E2E tests
-- `bun run test:all` - Run all tests with coverage reporting
-- `bun run test:unit` - Run unit tests only
-- `bun run test:e2e` - Run E2E tests only
-- `bun run test:integration` - Run tests with coverage
+- `bun run test` — Run all unit and E2E tests
+- `bun run test:all` — Run all tests with coverage
+- `bun run test:unit` — Run unit tests only
+- `bun run test:e2e` — Run E2E tests only
+- `bun run test:integration` — Run tests with coverage
+
+---
+
+> [!NOTE]
+> All scripts can be run with `bun run <script>` or `npm run <script>`.
+> For building, `bun bake` is a shortcut for `bun run build`.
+
+---
 
 #### Test Setup
 
