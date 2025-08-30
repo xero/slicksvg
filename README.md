@@ -1,5 +1,15 @@
-# SlickSVG - SVG Editor
+# SlickSVG - Split Screen SVG Editor
+```
+   ____     ____     ____ _______  _____   _____
+ _/  _//__ |   /    /    V    __/__\    | /    /
+_\___     \:   |    |    |    |/   Y    :/    /
+\    |     |   |    |    |    |    |    /     \
+|    :     |   |____|    |__  :    |    \      \
+:____      |   :    /    |  \      |_____\ svg  \
+     \____/ \______/ \__/    \____/       \_____/
 
+        https://github.com/xero/slicksvg
+```
 A **Node.js**-based, web SVG editor written in **TypeScript**, with no frontend frameworks. The UI and all interactions are managed using vanilla TypeScript, DOM APIs, and modern browser features. The app provides a full-screen split view for editing and previewing SVG code in real time.
 
 **Features**: Real-time editing • Resizable split view • Xray mode highlighting • Dark/light themes • SVG optimization • Transform tools • Touch support • Comprehensive testing
