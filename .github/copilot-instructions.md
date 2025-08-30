@@ -34,7 +34,7 @@ To correctly test this app, please follow these steps:
 2. **Build the app**
    Run:
    ```sh
-   bun make
+   bun run build
    ```
 
 3. **Serve the app**
@@ -53,8 +53,6 @@ If you encounter any errors or unexpected behavior, please include console outpu
 ## Available Scripts
 
 - `bun run build` - Build CSS and JavaScript bundles
-- `bun run style` - Build CSS only
-- `bun run scripts` - Build JavaScript only
 - `bun run lint` - Run ESLint
 - `bun run lint:fix` - Run ESLint with auto-fix
 
@@ -66,11 +64,6 @@ The project includes comprehensive automated testing with both unit/integration 
 
 Place unit and integration tests in the `tests/` directory:
 
-- `bun run test:unit` or `npm run check` - Run unit tests with Vitest
-- `bun run check:watch` - Run unit tests in watch mode
-- `bun run check:ui` - Run unit tests with interactive UI
-- `bun run check:coverage` or `npm run test:integration` - Run tests with coverage reporting
-
 **Current Unit Test Coverage:**
 
 - **Core SVGEditor functionality** - Element selection, error handling, theme switching
@@ -78,21 +71,35 @@ Place unit and integration tests in the `tests/` directory:
 - **SVG parsing and validation** - Content validation, dimension extraction, transform parsing
 - **Modal dialog functionality** - Show/hide, input validation, focus management
 - **Touch and pinch zoom** - Multi-touch calculations, gesture handling
+- **Drag-resize functionality** - Split panel resizing, percentage calculations, layout awareness
 - **Error handling** - File upload errors, malformed SVG, input validation
 - **Accessibility features** - Keyboard navigation, screen reader support, focus management
 - **Performance optimization** - Event cleanup, memory management, transform caching
+- **SVG optimization** - Code minification, whitespace removal, attribute optimization
+- **SVG linting** - Real-time XML/SVG validation, error reporting
+- **File operations** - Upload and download functionality, drag & drop support
+- **Tokyo Night theme integration** - Light/dark mode theming, syntax highlighting
+
+bun testing commands (e.g. `bun run test:e2e`)
+
+- **test**: npm run check && npm run check:e2e
+- **test:unit**: npm run check
+- **test:integration**: npm run check:coverage
+- **test:e2e**: start-server-and-test preview http://localhost:4173 check:e2e
+- **preview**: vite preview --host --port 4173
+- **check**: vitest run
+- **check:e2e**: bunx playwright test --reporter=line --workers=2
+
 
 #### End-to-End Tests (Playwright)
 
 Place E2E tests in the `e2e/` directory:
 
-- `bun run check:e2e` or `npm run check:e2e` - Run end-to-end tests with Playwright
-- `bun run check:e2e:headed` - Run E2E tests with browser UI visible
-- `bun run check:e2e:debug` - Debug E2E tests step by step
-- `bun run check:e2e:ui` - Run E2E tests with interactive UI
+- `bun run test:e2e` - Run end-to-end tests with Playwright
 
 **Current E2E Test Coverage:**
 - **Core editor functionality** - SVG editing, preview updates, UI interactions
+- **Drag-resize functionality** - Split panel resizing, accessibility compliance, mobile compatibility
 - **File upload workflows** - Drag & drop, file validation, error handling
 - **Transform operations** - Rotation, flipping, zoom, layout switching
 - **Accessibility testing** - Keyboard navigation, screen reader compatibility, focus management
@@ -100,16 +107,14 @@ Place E2E tests in the `e2e/` directory:
 - **Mobile and touch support** - Responsive design, pinch-to-zoom, orientation changes
 - **Performance testing** - Load times, memory usage, rapid interactions
 - **Cross-browser compatibility** - Different browsers, screen densities, color schemes
+- **SVG linting integration** - Real-time validation feedback, error highlighting
+- **File operations** - Upload workflows, drag & drop functionality, clear operations
+
 
 #### Running All Tests
 
 - `bun run test` - Run both unit and E2E tests
 - `bun run test:all` - Run all tests with coverage reporting
-
-or
-
-- `npm run test` - Run both unit and E2E tests
-- `npm run test:all` - Run all tests with coverage reporting
 
 #### Test Configuration
 
@@ -122,20 +127,28 @@ or
 ```
 tests/                       # Unit and integration tests (Vitest)
 ├── svg-editor-core.test.ts     # Core class functionality
+├── svg-drag-resize.test.ts     # Drag-resize functionality and calculations
 ├── svg-transforms.test.ts      # Transform operations and SVG parsing
 ├── svg-error-handling.test.ts  # Error scenarios and edge cases
 ├── svg-accessibility.test.ts   # Accessibility features and integration
 ├── svg-upload.test.ts          # File upload functionality
+├── svg-download.test.ts        # File download functionality
 ├── svg-optimization.test.ts    # SVG optimization features
 ├── svg-resolution-change.test.ts # Resolution modal and resizing
 ├── svg-fallback-sizing.test.ts # SVG sizing logic
-└── pinch-zoom.test.ts          # Pinch zoom calculations
+├── svg-linting.test.ts         # SVG/XML linting functionality
+├── svg-drag-drop-clear.test.ts # Drag & drop and clear functionality
+├── pinch-zoom.test.ts          # Pinch zoom calculations
+└── tokyo-night-theme-integration.test.ts # Tokyo Night theme integration
 
 e2e/                         # End-to-end tests (Playwright)
 ├── svg-editor.spec.ts          # Core editor functionality
+├── svg-drag-resize.spec.ts     # Drag-resize E2E testing and accessibility
 ├── svg-upload.spec.ts          # Upload workflows
 ├── svg-accessibility.spec.ts   # Accessibility testing
 ├── svg-error-handling.spec.ts  # Error scenarios
+├── svg-linting.spec.ts         # Linting integration tests
+├── svg-drag-drop-clear.spec.ts # Drag & drop and clear functionality
 └── svg-mobile-performance.spec.ts # Mobile, performance, compatibility
 ```
 
