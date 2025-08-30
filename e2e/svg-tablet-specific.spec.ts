@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('SVG Editor Tablet-Specific E2E Tests', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/src/index.html');
+    await page.goto('/index.html');
     // Wait for the app to load completely
     await expect(page.getByRole('main')).toBeVisible();
     await expect(page.getByRole('complementary')).toBeVisible();
