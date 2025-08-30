@@ -39,7 +39,7 @@ test.describe('SVG Editor Mobile Devices E2E Tests', () => {
       // Test toolbar accessibility in landscape
       await expect(page.locator('#zoomin')).toBeVisible();
       await expect(page.locator('#zoomout')).toBeVisible();
-      await expect(page.locator('#reset')).toBeVisible();
+      await expect(page.locator('#resolution')).toBeVisible();
       
       // Test zoom functionality works in landscape
       await page.locator('#zoomin').click();
@@ -206,7 +206,7 @@ test.describe('SVG Editor Mobile Devices E2E Tests', () => {
       });
       
       // Test that SVG rendering is crisp on high DPI
-      const svgPreview = page.locator('#preview svg');
+      const svgPreview = page.locator('.svg-preview-wrapper svg');
       await expect(svgPreview).toBeVisible();
       
       // Test zoom functionality with high DPI

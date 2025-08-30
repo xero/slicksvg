@@ -54,8 +54,8 @@ test.describe('SVG Editor Tablet-Specific E2E Tests', () => {
       await expect(page.getByRole('complementary')).toBeVisible();
       
       // In landscape, should have more horizontal space
-      const mainBounds = await page.locator('[role="main"]').boundingBox();
-      const complementaryBounds = await page.locator('[role="complementary"]').boundingBox();
+      const mainBounds = await page.getByRole('main').boundingBox();
+      const complementaryBounds = await page.getByRole('complementary').boundingBox();
       
       if (mainBounds && complementaryBounds) {
         // Should utilize the full width effectively
@@ -347,7 +347,7 @@ test.describe('SVG Editor Tablet-Specific E2E Tests', () => {
       // Simulate switch control navigation (sequential focus)
       const interactiveElements = [
         '#upload', '#dark', '#flip', '#rotate', '#flipx', '#flipy',
-        '#zoomin', '#zoomout', '#reset', '#resolution'
+        '#zoomin', '#zoomout', '#resolution'
       ];
       
       for (const element of interactiveElements) {

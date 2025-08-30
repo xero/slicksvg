@@ -175,7 +175,7 @@ test.describe('SVG Editor Mobile Accessibility E2E Tests', () => {
       await page.setViewportSize({ width: 375, height: 667 });
       
       // Test that status changes are announced
-      const statusBar = page.locator('#status');
+      const statusBar = page.locator('#svg-status-bar');
       await expect(statusBar).toBeVisible();
       
       // Check for live region attributes
@@ -227,7 +227,7 @@ test.describe('SVG Editor Mobile Accessibility E2E Tests', () => {
       // Test that focused elements are clearly visible
       const interactiveElements = [
         '#upload', '#dark', '#flip', '#rotate', '#flipx', '#flipy',
-        '#zoomin', '#zoomout', '#reset'
+        '#zoomin', '#zoomout', '#resolution'
       ];
       
       for (const selector of interactiveElements) {
@@ -263,7 +263,7 @@ test.describe('SVG Editor Mobile Accessibility E2E Tests', () => {
       // Test sequential navigation through all interactive elements
       const interactiveSelectors = [
         '#upload', '#dark', '#flip', '#rotate', '#flipx', '#flipy',
-        '#zoomin', '#zoomout', '#reset', '#resolution'
+        '#zoomin', '#zoomout', '#resolution'
       ];
       
       // Start navigation
