@@ -41,7 +41,7 @@
     "playwright": "^1.54.2",
     "postcss": "^8.5.6",
     "postcss-cli": "^11.0.1",
-    "start-server-and-test": "^2.0.13",
+    "start-server-and-test": "^2.1.0",
     "tailwindcss": "^4.1.12",
     "terser": "^5.43.1",
     "typescript": "^5.9.2",
