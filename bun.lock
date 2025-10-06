@@ -13,7 +13,7 @@
         "codemirror": "^6.0.2",
       },
       "devDependencies": {
-        "@eslint/js": "^9.33.0",
+        "@eslint/js": "^9.37.0",
         "@playwright/test": "^1.55.0",
         "@tailwindcss/postcss": "^4.1.12",
         "@testing-library/dom": "^10.4.1",
@@ -103,7 +103,7 @@
 
     "@eslint/eslintrc": ["@eslint/eslintrc@3.3.1", "", { "dependencies": { "ajv": "^6.12.4", "debug": "^4.3.2", "espree": "^10.0.1", "globals": "^14.0.0", "ignore": "^5.2.0", "import-fresh": "^3.2.1", "js-yaml": "^4.1.0", "minimatch": "^3.1.2", "strip-json-comments": "^3.1.1" } }, ""],
 
-    "@eslint/js": ["@eslint/js@9.34.0", "", {}, ""],
+    "@eslint/js": ["@eslint/js@9.37.0", "", {}, "sha512-jaS+NJ+hximswBG6pjNX0uEJZkrT0zwpVi3BA3vX22aFGjJjmgSTSmPpZCRKmoBL5VY/M6p0xsSJx7rk7sy5gg=="],
 
     "@eslint/object-schema": ["@eslint/object-schema@2.1.6", "", {}, ""],
 
@@ -990,6 +990,8 @@
     "csso/css-tree": ["css-tree@2.2.1", "", { "dependencies": { "mdn-data": "2.0.28", "source-map-js": "^1.0.1" } }, ""],
 
     "dom-serializer/entities": ["entities@4.5.0", "", {}, ""],
+
+    "eslint/@eslint/js": ["@eslint/js@9.34.0", "", {}, ""],
 
     "fast-glob/glob-parent": ["glob-parent@5.1.2", "", { "dependencies": { "is-glob": "^4.0.1" } }, ""],
 
