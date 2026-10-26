@@ -186,7 +186,7 @@ test.describe('SVG Editor Mobile Accessibility E2E Tests', () => {
       const editor = page.locator('#editor .cm-content');
       await editor.click();
       
-      await page.keyboard.press('Control+a');
+      await page.keyboard.press('ControlOrMeta+a');
       await page.keyboard.type('<invalid>not closed');
       
       // Wait for status update
@@ -513,7 +513,7 @@ test.describe('SVG Editor Mobile Accessibility E2E Tests', () => {
       const dictatedSVG = '<svg width="100" height="100"><circle cx="50" cy="50" r="30" fill="blue"/></svg>';
       
       // Clear existing content
-      await page.keyboard.press('Control+a');
+      await page.keyboard.press('ControlOrMeta+a');
       
       // Simulate dictated input (all at once, like voice input)
       await page.evaluate((content) => {
@@ -568,7 +568,7 @@ test.describe('SVG Editor Mobile Accessibility E2E Tests', () => {
       await editor.click();
       
       // Test common keyboard shortcuts
-      await page.keyboard.press('Control+a'); // Select all
+      await page.keyboard.press('ControlOrMeta+a'); // Select all
       await page.keyboard.type('<rect x="10" y="10" width="50" height="30"/>');
       
       // Test navigation shortcuts

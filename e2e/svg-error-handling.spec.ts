@@ -12,7 +12,7 @@ test.describe('SVG Editor Error Handling E2E Tests', () => {
     // Clear the editor and enter invalid content
     const editor = page.locator('#editor .cm-content');
     await editor.click();
-    await page.keyboard.press('Control+a');
+    await page.keyboard.press('ControlOrMeta+a');
     await page.keyboard.type('This is not valid SVG content');
 
     // The preview should handle this gracefully without crashing
@@ -343,7 +343,7 @@ test.describe('SVG Editor Error Handling E2E Tests', () => {
 
     for (const svgContent of edgeCaseSVGs) {
       await editor.click();
-      await page.keyboard.press('Control+a');
+      await page.keyboard.press('ControlOrMeta+a');
       await page.keyboard.type(svgContent);
 
       // Wait a moment for processing

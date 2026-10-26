@@ -20,7 +20,7 @@ test.describe('SVG Status Bar E2E Tests', () => {
 
 		// Clear editor and type malformed SVG
 		await editor.click();
-		await page.keyboard.press('Control+a');
+		await page.keyboard.press('ControlOrMeta+a');
 		await page.keyboard.type('<svg><rect width="100" height="100"></svg>'); // Missing closing rect tag
 
 		// Wait for linting to process
@@ -76,7 +76,7 @@ test.describe('SVG Status Bar E2E Tests', () => {
 
 		// Type non-SVG content
 		await editor.click();
-		await page.keyboard.press('Control+a');
+		await page.keyboard.press('ControlOrMeta+a');
 		await page.keyboard.type('<div>This is not SVG</div>');
 
 		// Wait for linting
@@ -96,7 +96,7 @@ test.describe('SVG Status Bar E2E Tests', () => {
 
 		// Clear all content
 		await editor.click();
-		await page.keyboard.press('Control+a');
+		await page.keyboard.press('ControlOrMeta+a');
 		await page.keyboard.press('Delete');
 
 		// Wait for linting
@@ -115,7 +115,7 @@ test.describe('SVG Status Bar E2E Tests', () => {
 
 		// Create an error
 		await editor.click();
-		await page.keyboard.press('Control+a');
+		await page.keyboard.press('ControlOrMeta+a');
 		await page.keyboard.type('<svg><rect></svg>'); // Missing closing rect tag
 
 		// Wait for linting

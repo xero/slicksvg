@@ -210,7 +210,7 @@ test.describe('SVG Editor Tablet-Specific E2E Tests', () => {
       
       // Test keyboard shortcuts work when docked
       await page.locator('#editor .cm-content').click();
-      await page.keyboard.press('Control+a');
+      await page.keyboard.press('ControlOrMeta+a');
       
       // Simulate undocking (portrait)
       await page.setViewportSize({ width: 1024, height: 1366 });

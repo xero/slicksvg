@@ -358,7 +358,7 @@ test.describe('SVG Editor Integration E2E Tests', () => {
     await editor.click();
 
     // Clear existing content
-    await page.keyboard.press('Control+a');
+    await page.keyboard.press('ControlOrMeta+a');
 
     // Add new SVG content
     const newSVG = '<svg width="200" height="200"><circle cx="100" cy="100" r="50" fill="red"/></svg>';

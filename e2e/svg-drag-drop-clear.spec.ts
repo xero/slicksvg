@@ -18,7 +18,7 @@ test.describe('SVG Drag and Drop Content Clearing', () => {
 
     // Position cursor in the middle of the content
     await editor.click();
-    await page.keyboard.press('Control+a'); // Select all
+    await page.keyboard.press('ControlOrMeta+a'); // Select all
     await page.keyboard.press('ArrowRight'); // Move cursor to end
     await page.keyboard.press('ArrowLeft'); // Move back a bit
     await page.keyboard.press('ArrowLeft');
@@ -136,7 +136,7 @@ test.describe('SVG Drag and Drop Content Clearing', () => {
 
     // Position cursor somewhere in the middle
     await editor.click();
-    await page.keyboard.press('Control+a');
+    await page.keyboard.press('ControlOrMeta+a');
     for (let i = 0; i < 5; i++) {
       await page.keyboard.press('ArrowRight');
     }

@@ -12,7 +12,7 @@ test.describe('SVG Editor Linting', () => {
 
 		// Clear editor and type malformed SVG
 		await editor.click();
-		await page.keyboard.press('Control+a');
+		await page.keyboard.press('ControlOrMeta+a');
 		await page.keyboard.type('<svg><rect width="100" height="100"></svg>'); // Missing closing rect tag
 
 		// Wait a moment for linting to process
@@ -34,7 +34,7 @@ test.describe('SVG Editor Linting', () => {
 
 		// First, add malformed SVG to trigger errors
 		await editor.click();
-		await page.keyboard.press('Control+a');
+		await page.keyboard.press('ControlOrMeta+a');
 		await page.keyboard.type('<svg><rect width="100" height="100"></svg>'); // Missing closing rect tag
 
 		// Wait for lint errors to appear
@@ -50,7 +50,7 @@ test.describe('SVG Editor Linting', () => {
 
 		// Now fix the SVG with a fully valid, complete SVG
 		await editor.click();
-		await page.keyboard.press('Control+a');
+		await page.keyboard.press('ControlOrMeta+a');
 		await page.keyboard.type('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="100" height="100" fill="blue"/></svg>'); // Valid SVG
 
 		// Wait for linting to reprocess and check preview works
@@ -80,7 +80,7 @@ test.describe('SVG Editor Linting', () => {
 
 		// Type invalid XML
 		await editor.click();
-		await page.keyboard.press('Control+a');
+		await page.keyboard.press('ControlOrMeta+a');
 		await page.keyboard.type('<svg><rect width="100" height="100" <invalid></svg>'); // Invalid syntax
 
 		// Wait for linting
@@ -101,7 +101,7 @@ test.describe('SVG Editor Linting', () => {
 
 		// Type valid XML but not SVG
 		await editor.click();
-		await page.keyboard.press('Control+a');
+		await page.keyboard.press('ControlOrMeta+a');
 		await page.keyboard.type('<html><body>Not an SVG</body></html>');
 
 		// Wait for linting
@@ -123,7 +123,7 @@ test.describe('SVG Editor Linting', () => {
 
 		// Clear all content
 		await editor.click();
-		await page.keyboard.press('Control+a');
+		await page.keyboard.press('ControlOrMeta+a');
 		await page.keyboard.press('Delete');
 
 		// Wait for linting
@@ -141,7 +141,7 @@ test.describe('SVG Editor Linting', () => {
 
 		// Add malformed SVG
 		await editor.click();
-		await page.keyboard.press('Control+a');
+		await page.keyboard.press('ControlOrMeta+a');
 		await page.keyboard.type('<svg><rect></svg>'); // Missing closing rect tag
 
 		// Wait for linting
@@ -177,7 +177,7 @@ test.describe('SVG Editor Linting', () => {
 		</svg>`; // Missing closing rect tag
 
 		await editor.click();
-		await page.keyboard.press('Control+a');
+		await page.keyboard.press('ControlOrMeta+a');
 		await page.keyboard.type(complexSVG);
 
 		// Wait for linting
@@ -198,7 +198,7 @@ test.describe('SVG Editor Linting', () => {
 
 		// Type valid SVG
 		await editor.click();
-		await page.keyboard.press('Control+a');
+		await page.keyboard.press('ControlOrMeta+a');
 		await page.keyboard.type('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><circle cx="100" cy="100" r="50" fill="red"/></svg>');
 
 		// Wait for preview update and linting with more time
@@ -209,7 +209,7 @@ test.describe('SVG Editor Linting', () => {
 
 		// Test editing still works
 		await editor.click();
-		await page.keyboard.press('Control+a');
+		await page.keyboard.press('ControlOrMeta+a');
 		await page.keyboard.type('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><circle cx="100" cy="100" r="50" fill="blue"/></svg>');
 
 		// Wait for update with more time
@@ -229,7 +229,7 @@ test.describe('SVG Editor Linting', () => {
 
 		// Verify the content is still editable
 		await editor.click();
-		await page.keyboard.press('Control+a');
+		await page.keyboard.press('ControlOrMeta+a');
 		const finalContent = await editor.textContent();
 		expect(finalContent).toContain('fill="blue"');
 	});

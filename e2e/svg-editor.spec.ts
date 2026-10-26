@@ -26,7 +26,7 @@ test.describe('SVG Editor', () => {
     // Change the SVG code - use more specific selector for CodeMirror editor
     const editor = page.locator('#editor .cm-content');
     await editor.click();
-    await page.keyboard.press('Control+a');
+    await page.keyboard.press('ControlOrMeta+a');
     await page.keyboard.type(`<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
   <circle cx="100" cy="100" r="80" fill="#ff0000" stroke="#aa0000" stroke-width="2"/>
   <text x="100" y="110" text-anchor="middle" fill="white" font-family="Arial" font-size="16">
@@ -195,7 +195,7 @@ test.describe('SVG Editor', () => {
 
     // Add very long text to test line wrapping
     await editor.click();
-    await page.keyboard.press('Control+a');
+    await page.keyboard.press('ControlOrMeta+a');
     await page.keyboard.type(`<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
   <circle cx="100" cy="100" r="80" fill="#6291e0" stroke="#295da9" stroke-width="2"/>
   <text x="100" y="110" text-anchor="middle" fill="white" font-family="Arial" font-size="16">This is a very long line of text that should demonstrate the line wrapping feature when it is enabled, because it will wrap within the editor instead of creating horizontal scrollbars</text>
