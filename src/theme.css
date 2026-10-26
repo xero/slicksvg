@@ -173,6 +173,18 @@
 		svg {
 			@apply w-8 h-8 fill-btn-txt;
 		}
+		svg.line {
+			@apply fill-none stroke-btn-txt;
+			stroke-width: 2.5;
+			stroke-linecap: round;
+			stroke-linejoin: round;
+		}
+		&:disabled {
+			@apply opacity-40 cursor-default;
+			&:hover, &:focus {
+				@apply bg-btn;
+			}
+		}
   }
 /* <--//---------------------------------------------------------[interface] */
   #editor,

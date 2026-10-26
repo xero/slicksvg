@@ -6,7 +6,9 @@ import {basicSetup} from 'codemirror';
 import {tokyoNightDay} from '@fsegurai/codemirror-theme-tokyo-night-day';
 import {tokyoNightStorm} from '@fsegurai/codemirror-theme-tokyo-night-storm';
 import {linter, lintGutter} from '@codemirror/lint';
-import {findElementAtCursor} from './xray';
+import {findElementAtCursor, type ElementRef} from './xray';
+import {startTags, readAttribute, planAttributeEdits, stampSource, SOURCE_ATTR, type StartTag, type TextChange} from './source-map';
+import {undo, redo, undoDepth, redoDepth, isolateHistory} from '@codemirror/commands';
 
 // --- Constants
 const DEFAULT_SVG_SIZE = 200;
@@ -137,14 +139,6 @@ function bindClick(getter: (id: string) => HTMLElement, config: Array<[string, (
 	}
 }
 
-function setOrInsertSvgAttr(svg: string, attr: string, value: string): string {
-	const regex = new RegExp(`${attr}="[^"]*"`);
-	if (regex.test(svg)) {
-		return svg.replace(regex, `${attr}="${value}"`);
-	}
-	return svg.replace(/(<svg[^>]*)(>)/, `$1 ${attr}="${value}"$2`);
-}
-
 function replaceEditorContent(editor: EditorView, newContent: string, moveCursorToStart = true) {
 	const transaction = editor.state.update({
 		changes: {
@@ -243,6 +237,7 @@ class slick {
 					EditorView.updateListener.of((update)=>{
 						if (update.docChanged) {
 							this.updateSVGPreview();
+							this.updateHistoryButtons();
 						}
 						if (this.xray && (update.selectionSet || update.docChanged)) {
 							this.updateElementHighlight();
@@ -354,8 +349,12 @@ class slick {
 			['optimize', ()=>this.optimizeSVG()],
 			['download', ()=>this.downloadSVG()],
 			['upload', ()=>this.triggerFileUpload()],
-			['xray', ()=>this.toggleXray()]
+			['xray', ()=>this.toggleXray()],
+			['undo', ()=>this.undoEdit()],
+			['redo', ()=>this.redoEdit()]
 		]);
+		document.addEventListener('keydown', this.handleHistoryKeys);
+		this.updateHistoryButtons();
 		this.svgPreview.addEventListener('mousedown', (e)=>this.startPan(e));
 		document.addEventListener('mousemove', (e)=>this.doPan(e));
 		document.addEventListener('mouseup', ()=>this.endPan());
@@ -371,7 +370,9 @@ class slick {
 			this.svgPreview.innerHTML = '';
 			const svgContainer = document.createElement('div');
 			svgContainer.className = 'svg-container';
-			svgContainer.innerHTML = svgCode;
+			// stamped with source ordinals when the source parses, so preview
+			// elements can be traced back to their tags
+			svgContainer.innerHTML = stampSource(svgCode) ?? svgCode;
 			this.svgPreview.appendChild(svgContainer);
 			this.applySVGStyles();
 		} catch (error) {
@@ -402,14 +403,14 @@ class slick {
 			const elementInfo = findElementAtCursor(svgCode, cursorPos);
 			this.clearHighlights();
 			if (elementInfo) {
-				this.highlightElement(elementInfo.tagName, elementInfo.index);
+				this.highlightElement(elementInfo);
 			}
 		} catch (error) {
 			console.debug('Element highlighting failed:', error);
 		}
 	}
 
-	private highlightElement(tagName: string, index: number): void {
+	private highlightElement(ref: ElementRef): void {
 		try {
 			const svgContainer = this.svgPreview.querySelector('.svg-container');
 			if (!svgContainer) return;
@@ -418,14 +419,14 @@ class slick {
 			const cssHlColor = getComputedStyle(document.body).getPropertyValue('--color-hl').trim() || '#0f0';
 			this.ensureHighlightFilter(svgElement, cssHlColor);
 
-			const elements = svgContainer.querySelectorAll(tagName);
-			if (elements.length > index && index >= 0) {
-				const target = elements[index];
-				// keep the element's own filter so clearHighlights can restore it
-				const ownFilter = target.getAttribute('filter');
-				if (ownFilter !== null) target.setAttribute('data-xray-filter', ownFilter);
-				target.setAttribute('filter', 'url(#highlight-glow)');
-			}
+			// by its source stamp when the source parsed, else by counting tag names
+			const target = svgContainer.querySelector(`[${SOURCE_ATTR}="${ref.ordinal}"]`)
+				?? Array.from(svgContainer.querySelectorAll(ref.tagName)).at(ref.index);
+			if (!target) return;
+			// keep the element's own filter so clearHighlights can restore it
+			const ownFilter = target.getAttribute('filter');
+			if (ownFilter !== null) target.setAttribute('data-xray-filter', ownFilter);
+			target.setAttribute('filter', 'url(#highlight-glow)');
 		} catch (error) {
 			console.debug('Failed to highlight element:', error);
 		}
@@ -581,24 +582,14 @@ class slick {
 		return Math.sqrt(dx * dx + dy * dy);
 	}
 
-	private parseCurrentTransforms(svgCode: string): void {
+	private parseCurrentTransforms(transformValue: string): void {
 		this.rotationDegrees = 0;
-		this.flipX = false;
-		this.flipY = false;
-		const transformMatch = svgCode.match(/transform="([^"]*)"/);
-		if (!transformMatch) return;
-		const transformValue = transformMatch[1];
-		const rotateMatch = transformValue.match(/rotate\((\d+)[^)]*\)/);
+		const rotateMatch = /rotate\((\d+)[^)]*\)/.exec(transformValue);
 		if (rotateMatch) {
-			const angle = parseInt(rotateMatch[1]);
-			this.rotationDegrees = angle % 360;
+			this.rotationDegrees = parseInt(rotateMatch[1]) % 360;
 		}
-		if (transformValue.includes('matrix(-1,0,0,1,0,0)')) {
-			this.flipX = true;
-		}
-		if (transformValue.includes('matrix(1,0,0,-1,0,0)')) {
-			this.flipY = true;
-		}
+		this.flipX = transformValue.includes('matrix(-1,0,0,1,0,0)');
+		this.flipY = transformValue.includes('matrix(1,0,0,-1,0,0)');
 	}
 
 	private buildTransformAttribute(): string {
@@ -615,50 +606,72 @@ class slick {
 		return transforms.join(' ');
 	}
 
-	private applyTransformToSVG(): void {
-		const svgCode = this.editor.state.doc.toString();
-		try {
-			const transformValue = this.buildTransformAttribute();
-			let transformedSVG;
-			if (transformValue.trim()) {
-				const transformMatch = svgCode.match(/(<svg[^>]*)\s+transform="[^"]*"([^>]*>)/);
-				if (transformMatch) {
-					transformedSVG = svgCode.replace(
-						/(<svg[^>]*)\s+transform="[^"]*"([^>]*>)/,
-						`$1 transform="${transformValue}"$2`
-					);
-				} else {
-					transformedSVG = setOrInsertSvgAttr(svgCode, 'transform', transformValue);
-				}
-			} else {
-				transformedSVG = svgCode.replace(/\s+transform="[^"]*"/, '');
-			}
-			replaceEditorContent(this.editor, transformedSVG, false);
-		} catch (error) {
-			console.error('SVG transformation failed:', error);
+	/** The start tag of the document's root <svg>, where whole-image edits land. */
+	private rootTag(source: string): StartTag | null {
+		return startTags(source).find(tag=>tag.name === 'svg') ?? null;
+	}
+
+	/** Splice changes into the source as one undo step of its own. */
+	private applyEdits(changes: TextChange[], userEvent: string): boolean {
+		if (changes.length === 0) return false;
+		this.editor.dispatch({changes, annotations: isolateHistory.of('full'), userEvent});
+		return true;
+	}
+
+	/** Change the rotation or flip flags, then rewrite the root transform to match. */
+	private transformRoot(change: () => void, message: string): void {
+		const source = this.editor.state.doc.toString();
+		const root = this.rootTag(source);
+		if (!root) {
+			this.announceError('No <svg> element to transform');
+			return;
 		}
+		this.parseCurrentTransforms(readAttribute(source, root, 'transform') ?? '');
+		change();
+		const value = this.buildTransformAttribute();
+		this.applyEdits(planAttributeEdits(source, root, [{name: 'transform', value: value || null}]), 'slick.transform');
+		this.announceAction(message);
 	}
 
 	private rotateSVG(): void {
-		const svgCode = this.editor.state.doc.toString();
-		this.parseCurrentTransforms(svgCode);
-		this.rotationDegrees = (this.rotationDegrees + 90) % 360;
-		this.applyTransformToSVG();
-		this.announceAction(`SVG rotated 90 degrees`);
+		this.transformRoot(()=>{this.rotationDegrees = (this.rotationDegrees + 90) % 360;}, 'SVG rotated 90 degrees');
 	}
 	private flipSVGX(): void {
-		const svgCode = this.editor.state.doc.toString();
-		this.parseCurrentTransforms(svgCode);
-		this.flipX = !this.flipX;
-		this.applyTransformToSVG();
-		this.announceAction('SVG flipped horizontally');
+		this.transformRoot(()=>{this.flipX = !this.flipX;}, 'SVG flipped horizontally');
 	}
 	private flipSVGY(): void {
-		const svgCode = this.editor.state.doc.toString();
-		this.parseCurrentTransforms(svgCode);
-		this.flipY = !this.flipY;
-		this.applyTransformToSVG();
-		this.announceAction('SVG flipped vertically');
+		this.transformRoot(()=>{this.flipY = !this.flipY;}, 'SVG flipped vertically');
+	}
+
+	private undoEdit(focusEditor = true): void {
+		if (undo(this.editor)) this.announceAction('Undid last change');
+		if (focusEditor) this.editor.focus();
+	}
+	private redoEdit(focusEditor = true): void {
+		if (redo(this.editor)) this.announceAction('Redid last change');
+		if (focusEditor) this.editor.focus();
+	}
+
+	/** Mod+Z and Mod+Shift+Z (or Mod+Y) reach the editor's history from the
+	 * preview and the toolbar; inside the editor and the dialog they are left
+	 * to the editor and the browser. */
+	private handleHistoryKeys = (e: KeyboardEvent): void=>{
+		if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+		const target = e.target;
+		if (target instanceof Element && (target.closest('.cm-editor, dialog') || target.matches('input, textarea, select'))) return;
+		const key = e.key.toLowerCase();
+		if (key === 'z' && !e.shiftKey) {
+			e.preventDefault();
+			this.undoEdit(false);
+		} else if (key === 'y' || (key === 'z' && e.shiftKey)) {
+			e.preventDefault();
+			this.redoEdit(false);
+		}
+	}
+
+	private updateHistoryButtons(): void {
+		this.get('undo').toggleAttribute('disabled', undoDepth(this.editor.state) === 0);
+		this.get('redo').toggleAttribute('disabled', redoDepth(this.editor.state) === 0);
 	}
 
 	private showResolutionModal(): void {
@@ -693,15 +706,15 @@ class slick {
 			alert('Please enter valid positive numbers for width and height');
 			return;
 		}
-		const svgCode = this.editor.state.doc.toString();
-		try {
-			let updatedSVG = setOrInsertSvgAttr(svgCode, 'width', `${newWidth}`);
-			updatedSVG = setOrInsertSvgAttr(updatedSVG, 'height', `${newHeight}`);
-			const viewBoxValue = `0 0 ${newWidth} ${newHeight}`;
-			updatedSVG = setOrInsertSvgAttr(updatedSVG, 'viewBox', viewBoxValue);
-			replaceEditorContent(this.editor, updatedSVG, false);
-		} catch (error) {
-			console.error('SVG resize failed:', error);
+		const source = this.editor.state.doc.toString();
+		const root = this.rootTag(source);
+		if (root) {
+			this.applyEdits(planAttributeEdits(source, root, [
+				{name: 'width', value: `${newWidth}`},
+				{name: 'height', value: `${newHeight}`},
+				{name: 'viewBox', value: `0 0 ${newWidth} ${newHeight}`}
+			]), 'slick.resize');
+		} else {
 			alert('Failed to resize SVG. Please check the SVG format.');
 		}
 		this.modalClose();

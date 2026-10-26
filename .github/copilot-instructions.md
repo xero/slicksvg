@@ -140,7 +140,8 @@ tests/                       # Unit and integration tests (Vitest)
 ├── svg-drag-drop-clear.test.ts # Drag & drop and clear functionality
 ├── pinch-zoom.test.ts          # Pinch zoom calculations
 ├── tokyo-night-theme-integration.test.ts # Tokyo Night theme integration
-└── svg-xray.test.ts            # X-ray cursor-to-element lookup
+├── svg-xray.test.ts            # X-ray cursor-to-element lookup
+└── source-map.test.ts          # Tag scanning, attribute edits, stamping
 
 e2e/                         # End-to-end tests (Playwright)
 ├── svg-editor.spec.ts          # Core editor functionality
@@ -151,7 +152,8 @@ e2e/                         # End-to-end tests (Playwright)
 ├── svg-linting.spec.ts         # Linting integration tests
 ├── svg-drag-drop-clear.spec.ts # Drag & drop and clear functionality
 ├── svg-mobile-performance.spec.ts # Mobile, performance, compatibility
-└── svg-xray.spec.ts            # X-ray mode highlighting
+├── svg-xray.spec.ts            # X-ray mode highlighting
+└── svg-history.spec.ts         # Undo, redo, and root-tag edits
 ```
 
 > **Note**: Keep test files in their respective directories to avoid runner conflicts. Vitest excludes the `e2e/` directory, and Playwright only looks in the `e2e/` directory.
@@ -163,6 +165,8 @@ For comprehensive testing instructions, setup details, and CI configuration, see
 ```
 src/
 ├── app.ts           # Main TypeScript application
+├── source-map.ts    # Source text scanning, attribute edits, preview stamping
+├── xray.ts          # X-ray cursor-to-element lookup
 ├── theme.css        # CSS styles with Tailwind
 └── index.html       # Main HTML file
 
