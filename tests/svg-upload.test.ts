@@ -53,7 +53,7 @@ describe('SVG Upload Functionality', () => {
 
     // Set up global objects
     global.window = window;
-    global.document = document;
+    Object.defineProperty(globalThis, 'document', {value: document, writable: true, configurable: true});
     global.FileReader = window.FileReader;
     global.File = window.File;
   });

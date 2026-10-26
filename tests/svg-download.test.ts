@@ -55,7 +55,7 @@ describe('SVG Download Integration Tests', () => {
 
 		window = dom.window as unknown as Window;
 		document = window.document;
-		global.document = document;
+		Object.defineProperty(globalThis, 'document', {value: document, writable: true, configurable: true});
 		global.window = window;
 		global.Element = window.Element;
 		global.HTMLElement = window.HTMLElement;
@@ -111,9 +111,9 @@ describe('SVG Download Integration Tests', () => {
 		global.URL.revokeObjectURL = vi.fn();
 
 		// Mock Blob
-		global.Blob = vi.fn(() => ({
-			type: 'image/svg+xml'
-		})) as any;
+		global.Blob = vi.fn(function() {
+			return {type: 'image/svg+xml'};
+		}) as any;
 	});
 
 	afterEach(() => {
@@ -246,7 +246,7 @@ describe('SVG Download Integration Tests', () => {
 			const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
 			// Mock Blob to throw error
-			global.Blob = vi.fn(() => {
+			global.Blob = vi.fn(function() {
 				throw new Error('Blob creation failed');
 			}) as any;
 

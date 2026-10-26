@@ -278,7 +278,7 @@ class slick {
 
 	private modalShow(): void {
 		this.modal.classList.remove('closing');
-		void (!this.modalIsOpen() && this.modal.showModal());
+		if (!this.modalIsOpen()) this.modal.showModal();
 		const firstInput = this.modal.querySelector('#width') as HTMLInputElement;
 		firstInput.focus();
 		this.modal.addEventListener('keydown', this.handleModalKeydown);
