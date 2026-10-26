@@ -208,6 +208,19 @@ export function applyChanges(source: string, changes: TextChange[]): string {
  * are found by counting tag names instead.
  */
 export function stampSource(source: string): string | null {
+	const parsed = parseSource(source);
+	if (!parsed) return null;
+	for (const [i, el] of parsed.elements.entries()) el.setAttribute(SOURCE_ATTR, String(i));
+	return new XMLSerializer().serializeToString(parsed.doc);
+}
+
+/**
+ * The source parsed as XML, with its elements in source order: the same
+ * order the tag scanner numbers them, so `elements[ordinal]` is the element
+ * behind a start tag or a stamped preview element. Null when the source does
+ * not parse or the parser and the scanner disagree about the elements.
+ */
+export function parseSource(source: string): {doc: Document; elements: Element[]} | null {
 	const doc = new DOMParser().parseFromString(source, 'image/svg+xml');
 	if (doc.getElementsByTagName('parsererror').length > 0) return null;
 	const tags = startTags(source);
@@ -218,9 +231,6 @@ export function stampSource(source: string): string | null {
 	};
 	walk(doc.documentElement);
 	if (elements.length !== tags.length) return null;
-	for (const [i, el] of elements.entries()) {
-		if (el.tagName.toLowerCase() !== tags[i].name) return null;
-		el.setAttribute(SOURCE_ATTR, String(i));
-	}
-	return new XMLSerializer().serializeToString(doc);
+	if (elements.some((el, i)=>el.tagName.toLowerCase() !== tags[i].name)) return null;
+	return {doc, elements};
 }
