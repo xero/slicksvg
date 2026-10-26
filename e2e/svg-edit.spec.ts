@@ -161,4 +161,29 @@ test.describe('SVG Editor Preview Editing', () => {
     await drag(page, page.locator('.svg-container rect'), 40, 30);
     expect(await getSource(page)).toBe(FIXTURE.replace('</svg>', ''));
   });
+
+  test('should duplicate the selection beside it with its own id, and select the copy', async ({ page }) => {
+    const duplicate = page.locator('#duplicate');
+    await expect(duplicate).toBeDisabled();
+    await page.locator('.svg-container rect').click();
+    await expect(duplicate).toBeEnabled();
+
+    await duplicate.click();
+    expect(await getSource(page)).toBe(FIXTURE.replace(
+      'fill="#6291e0"/>\n',
+      'fill="#6291e0"/>\n  <rect id="box-copy" x="30" y="30" width="60" height="60" fill="#6291e0"/>\n',
+    ));
+    expect(await page.evaluate(() => {
+      const state = (window as any).svgEditor.editor.state;
+      return state.doc.sliceString(state.selection.main.from, state.selection.main.to) as string;
+    })).toMatch(/^<rect id="box-copy"/);
+
+    // the keyboard does the same from the canvas, and the copy of a copy gets a fresh id
+    await page.keyboard.press('ControlOrMeta+d');
+    expect(await getSource(page)).toContain('<rect id="box-copy-copy" x="40" y="40"');
+
+    await page.locator('#undo').click();
+    await page.locator('#undo').click();
+    expect(await getSource(page)).toBe(FIXTURE);
+  });
 });

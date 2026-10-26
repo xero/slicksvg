@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   scanTags, startTags, attributesOf, readAttribute, planAttributeEdits, applyChanges, stampSource, SOURCE_ATTR,
-  elementExtent, removalRange,
+  elementExtent, removalRange, duplicateInsertion,
 } from '../src/source-map';
 
 const root = (source: string) => startTags(source)[0];
@@ -168,5 +168,19 @@ describe('Source map element extents', () => {
 
   it('should remove only the element when it shares a line', () => {
     expect(applyChanges(source, [removalRange(source, 3)!])).toBe('<svg>\n  <g id="a">\n    <rect/>\n  </g>\n   <text>hi</text>\n</svg>');
+  });
+});
+
+describe('Source map duplicate insertion', () => {
+  it('should put the copy on its own line under an element that has its line to itself', () => {
+    const source = '<svg>\n  <g id="a">\n    <rect/>\n  </g>\n</svg>';
+    const cut = duplicateInsertion(source, 1, '<g id="b"/>')!;
+    expect(applyChanges(source, [cut])).toBe('<svg>\n  <g id="a">\n    <rect/>\n  </g>\n  <g id="b"/>\n</svg>');
+  });
+
+  it('should put the copy right after an element that shares its line', () => {
+    const source = '<svg><rect/><circle/></svg>';
+    expect(applyChanges(source, [duplicateInsertion(source, 1, '<rect x="1"/>')!])).toBe('<svg><rect/><rect x="1"/><circle/></svg>');
+    expect(duplicateInsertion('<svg><g><rect/></svg>', 1, '')).toBeNull();
   });
 });

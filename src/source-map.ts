@@ -278,3 +278,17 @@ export function removalRange(source: string, ordinal: number): TextChange | null
 		? {from: lineStart, to: nextBreak === -1 ? lineEnd : nextBreak + 1, insert: ''}
 		: {from: extent.start, to: extent.end, insert: ''};
 }
+
+/** Where a copy of the element at `ordinal` goes: right after it, and on a
+ * line of its own with the same indentation when the element has its line to
+ * itself. */
+export function duplicateInsertion(source: string, ordinal: number, copy: string): TextChange | null {
+	const extent = elementExtent(source, ordinal);
+	if (!extent) return null;
+	const lineStart = source.lastIndexOf('\n', extent.start - 1) + 1;
+	const indent = source.slice(lineStart, extent.start);
+	const nextBreak = source.indexOf('\n', extent.end);
+	const lineEnd = nextBreak === -1 ? source.length : nextBreak;
+	const alone = /^\s*$/.test(indent) && /^\s*$/.test(source.slice(extent.end, lineEnd));
+	return {from: extent.end, to: extent.end, insert: alone ? `\n${indent}${copy}` : copy};
+}

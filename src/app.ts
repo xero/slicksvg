@@ -7,7 +7,7 @@ import {tokyoNightDay} from '@fsegurai/codemirror-theme-tokyo-night-day';
 import {tokyoNightStorm} from '@fsegurai/codemirror-theme-tokyo-night-storm';
 import {linter, lintGutter, forceLinting} from '@codemirror/lint';
 import {findElementAtCursor, type ElementRef} from './xray';
-import {startTags, readAttribute, planAttributeEdits, stampSource, parseSource, removalRange, SOURCE_ATTR, type StartTag, type TextChange} from './source-map';
+import {startTags, readAttribute, planAttributeEdits, applyChanges, stampSource, parseSource, elementExtent, removalRange, duplicateInsertion, SOURCE_ATTR, type StartTag, type TextChange} from './source-map';
 import {findSvgTarget, selectionChain, nextInChain, ordinalOf, boxCorners} from './select';
 import {planMove, planResize, planRotate, planFlip, parentCenter, invert, applyToVector, pixelsPerUnit, decimalsFor, roundTo, type Matrix, type Point, type Rect, type Handle, type EditPlan} from './geometry';
 import {undo, redo, undoDepth, redoDepth, isolateHistory} from '@codemirror/commands';
@@ -494,7 +494,8 @@ class slick {
 			['upload', ()=>this.triggerFileUpload()],
 			['xray', ()=>this.toggleXray()],
 			['undo', ()=>this.undoEdit()],
-			['redo', ()=>this.redoEdit()]
+			['redo', ()=>this.redoEdit()],
+			['duplicate', ()=>this.duplicateSelected()]
 		]);
 		document.addEventListener('keydown', this.handleHistoryKeys);
 		this.updateHistoryButtons();
@@ -882,7 +883,9 @@ class slick {
 	}
 
 	private refreshSelection(): void {
-		this.placeHandles(this.drawBox(this.selectBox, this.selectedElement()));
+		const current = this.selectedElement();
+		this.placeHandles(this.drawBox(this.selectBox, current));
+		this.get('duplicate').toggleAttribute('disabled', !current);
 	}
 
 	/** Put a box over an element, or take it away. */
@@ -957,6 +960,9 @@ class slick {
 		} else if (e.key === 'Delete' || e.key === 'Backspace') {
 			e.preventDefault();
 			this.deleteSelected();
+		} else if (e.key.toLowerCase() === 'd' && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
+			e.preventDefault();
+			this.duplicateSelected();
 		}
 	}
 
@@ -1157,6 +1163,43 @@ class slick {
 		if (this.commitPlan(found, plan.attrs, 'slick.flip')) this.announceAction(`${current.tagName.toLowerCase()} flipped ${axis === 'x' ? 'horizontally' : 'vertically'}`);
 	}
 
+	/** Put a copy of the selection right after it in the code, shifted a
+	 * little so both can be seen, with an id of its own, and select the copy. */
+	private duplicateSelected(): void {
+		const current = this.selectedElement();
+		if (!current) return;
+		const found = this.sourceFor(current);
+		if (!found) return;
+		const extent = elementExtent(found.sourceText, found.tag.ordinal);
+		if (!extent) {
+			this.announceError('This element\'s closing tag could not be found, so it was not duplicated.');
+			return;
+		}
+		const original = found.sourceText.slice(extent.start, extent.end);
+		const changes = [];
+		const shift = planMove(found.source, 10, 10);
+		if (shift.ok) changes.push(...Object.entries(shift.attrs).map(([name, value])=>({name, value})));
+		const id = found.source.getAttribute('id');
+		if (id !== null) {
+			const doc = found.source.ownerDocument;
+			let next = `${id}-copy`;
+			for (let n = 2; doc.getElementById(next); n++) next = `${id}-copy${n}`;
+			changes.push({name: 'id', value: next});
+		}
+		const copyTag = startTags(original).at(0);
+		const copy = copyTag ? applyChanges(original, planAttributeEdits(original, copyTag, changes)) : original;
+		const insertion = duplicateInsertion(found.sourceText, found.tag.ordinal, copy);
+		if (!insertion) return;
+		// the copy's ordinal follows the original and everything inside it
+		const ordinal = found.tag.ordinal + startTags(original).length;
+		const name = current.tagName.toLowerCase();
+		this.skipSync = true;
+		this.applyEdits([insertion], 'slick.duplicate');
+		const made = this.elementForOrdinal(ordinal);
+		if (made) this.selectElement(made);
+		this.announceAction(`${name} duplicated`);
+	}
+
 	/** Remove the selection from the code, with the line it sat on when it
 	 * had the line to itself. */
 	private deleteSelected(): void {
@@ -1263,8 +1306,8 @@ class slick {
 	}
 
 	/** Mod+Z and Mod+Shift+Z (or Mod+Y) reach the editor's history from the
-	 * preview and the toolbar; inside the editor and the dialog they are left
-	 * to the editor and the browser. */
+	 * preview and the toolbar, and Mod+D duplicates the selection; inside the
+	 * editor and the dialog they are left to the editor and the browser. */
 	private handleHistoryKeys = (e: KeyboardEvent): void=>{
 		if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
 		const target = e.target;
@@ -1276,6 +1319,9 @@ class slick {
 		} else if (key === 'y' || (key === 'z' && e.shiftKey)) {
 			e.preventDefault();
 			this.redoEdit(false);
+		} else if (key === 'd' && !e.shiftKey && this.selectedOrdinal !== null) {
+			e.preventDefault();
+			this.duplicateSelected();
 		}
 	}
 
