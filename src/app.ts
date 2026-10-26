@@ -5,7 +5,7 @@ import {xml} from '@codemirror/lang-xml';
 import {basicSetup} from 'codemirror';
 import {tokyoNightDay} from '@fsegurai/codemirror-theme-tokyo-night-day';
 import {tokyoNightStorm} from '@fsegurai/codemirror-theme-tokyo-night-storm';
-import {linter, lintGutter} from '@codemirror/lint';
+import {linter, lintGutter, forceLinting} from '@codemirror/lint';
 import {findElementAtCursor, type ElementRef} from './xray';
 import {startTags, readAttribute, planAttributeEdits, stampSource, parseSource, removalRange, SOURCE_ATTR, type StartTag, type TextChange} from './source-map';
 import {findSvgTarget, selectionChain, nextInChain, ordinalOf, boxCorners} from './select';
@@ -1065,6 +1065,9 @@ class slick {
 		d.attrs = plan.attrs;
 		d.live.show(plan.attrs);
 		this.refreshSelection();
+		// the status bar reads out the edit as it will be written
+		const readout = Object.entries(plan.attrs).map(([name, value])=>value === null ? `no ${name}` : `${name}="${value}"`).join(' ');
+		this.updateStatusBar(`${g.target.tagName.toLowerCase()} ${readout || 'unchanged'}`, false);
 	}
 
 	/** End the gesture: a drag is written to the code; a press that did not
@@ -1083,6 +1086,7 @@ class slick {
 		if (Object.keys(d.attrs).length === 0 || !this.commitPlan(d.found, d.attrs, `slick.${g.mode}`)) {
 			d.live.revert();
 			this.refreshSelection();
+			forceLinting(this.editor);
 			return;
 		}
 		const verb = g.mode === 'move' ? 'moved' : g.mode === 'resize' ? 'resized' : 'rotated';
@@ -1097,6 +1101,8 @@ class slick {
 		g.drag.live.revert();
 		this.tapTarget = null;
 		this.refreshSelection();
+		// the lint status takes the status bar back
+		forceLinting(this.editor);
 	}
 
 	/** Move the selection by whole units of its parent, from the keyboard.
