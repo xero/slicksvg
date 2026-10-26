@@ -276,6 +276,21 @@
         stroke-dasharray: 2 3;
         opacity: 0.7;
       }
+      /* resize and rotate handles take the pointer; the rest passes through */
+      .handles {
+        rect, circle {
+          @apply fill-menu-alt stroke-header pointer-events-auto;
+          stroke-width: 1.5;
+          touch-action: none;
+        }
+        circle {
+          cursor: grab;
+        }
+        line {
+          @apply stroke-header;
+          stroke-width: 1;
+        }
+      }
     }
     .svg-container {
 			color: var(--color-svg);

@@ -234,3 +234,47 @@ export function parseSource(source: string): {doc: Document; elements: Element[]
 	if (elements.some((el, i)=>el.tagName.toLowerCase() !== tags[i].name)) return null;
 	return {doc, elements};
 }
+
+/**
+ * The whole extent of the element at `ordinal`: from its start tag to the
+ * end of its closing tag, or of the tag itself when it is self-closing. Null
+ * when no closing tag balances it.
+ */
+export function elementExtent(source: string, ordinal: number): {start: number; end: number} | null {
+	const open: {ordinal: number; name: string; start: number}[] = [];
+	let count = 0;
+	for (const tag of scanTags(source)) {
+		if (tag.kind === 'close') {
+			for (let i = open.length - 1; i >= 0; i--) {
+				if (open[i].name !== tag.name) continue;
+				// closes this element, and anything left open inside it
+				const [closed] = open.splice(i);
+				if (closed.ordinal === ordinal) return {start: closed.start, end: tag.end};
+				break;
+			}
+			continue;
+		}
+		const current = {ordinal: count, name: tag.name, start: tag.start};
+		count += 1;
+		if (tag.kind === 'self') {
+			if (current.ordinal === ordinal) return {start: tag.start, end: tag.end};
+			continue;
+		}
+		open.push(current);
+	}
+	return null;
+}
+
+/** The cut that removes the element at `ordinal`: the element itself, or the
+ * whole line when it has the line to itself. */
+export function removalRange(source: string, ordinal: number): TextChange | null {
+	const extent = elementExtent(source, ordinal);
+	if (!extent) return null;
+	const lineStart = source.lastIndexOf('\n', extent.start - 1) + 1;
+	const nextBreak = source.indexOf('\n', extent.end);
+	const lineEnd = nextBreak === -1 ? source.length : nextBreak;
+	const alone = /^\s*$/.test(source.slice(lineStart, extent.start)) && /^\s*$/.test(source.slice(extent.end, lineEnd));
+	return alone
+		? {from: lineStart, to: nextBreak === -1 ? lineEnd : nextBreak + 1, insert: ''}
+		: {from: extent.start, to: extent.end, insert: ''};
+}

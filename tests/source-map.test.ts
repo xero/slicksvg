@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   scanTags, startTags, attributesOf, readAttribute, planAttributeEdits, applyChanges, stampSource, SOURCE_ATTR,
+  elementExtent, removalRange,
 } from '../src/source-map';
 
 const root = (source: string) => startTags(source)[0];
@@ -138,5 +139,34 @@ describe('Source map preview stamping', () => {
   it('should return null for source that is not well-formed XML', () => {
     expect(stampSource('<svg><rect></svg>')).toBeNull();
     expect(stampSource('not svg at all')).toBeNull();
+  });
+});
+
+describe('Source map element extents', () => {
+  const source = '<svg>\n  <g id="a">\n    <rect/>\n  </g>\n  <circle/> <text>hi</text>\n</svg>';
+
+  it('should span an element from its start tag to the end of its closing tag', () => {
+    const g = elementExtent(source, 1)!;
+    expect(source.slice(g.start, g.end)).toBe('<g id="a">\n    <rect/>\n  </g>');
+    const rect = elementExtent(source, 2)!;
+    expect(source.slice(rect.start, rect.end)).toBe('<rect/>');
+    const text = elementExtent(source, 4)!;
+    expect(source.slice(text.start, text.end)).toBe('<text>hi</text>');
+  });
+
+  it('should return null for an element with no closing tag', () => {
+    expect(elementExtent('<svg><g><rect></svg>', 2)).toBeNull();
+    expect(elementExtent('<svg><g><rect/>', 1)).toBeNull();
+    expect(elementExtent(source, 9)).toBeNull();
+  });
+
+  it('should remove a whole line when the element has it to itself', () => {
+    expect(applyChanges(source, [removalRange(source, 1)!])).toBe('<svg>\n  <circle/> <text>hi</text>\n</svg>');
+    const last = '<svg>\n  <rect/>';
+    expect(applyChanges(last, [removalRange(last, 1)!])).toBe('<svg>\n');
+  });
+
+  it('should remove only the element when it shares a line', () => {
+    expect(applyChanges(source, [removalRange(source, 3)!])).toBe('<svg>\n  <g id="a">\n    <rect/>\n  </g>\n   <text>hi</text>\n</svg>');
   });
 });

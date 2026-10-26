@@ -142,7 +142,8 @@ tests/                       # Unit and integration tests (Vitest)
 ├── tokyo-night-theme-integration.test.ts # Tokyo Night theme integration
 ├── svg-xray.test.ts            # X-ray cursor-to-element lookup
 ├── source-map.test.ts          # Tag scanning, attribute edits, stamping
-└── select.test.ts              # Preview selection picking and group walking
+├── select.test.ts              # Preview selection picking and group walking
+└── geometry.test.ts            # Move, resize, rotate, and flip planning
 
 e2e/                         # End-to-end tests (Playwright)
 ├── svg-editor.spec.ts          # Core editor functionality
@@ -155,7 +156,8 @@ e2e/                         # End-to-end tests (Playwright)
 ├── svg-mobile-performance.spec.ts # Mobile, performance, compatibility
 ├── svg-xray.spec.ts            # X-ray mode highlighting
 ├── svg-history.spec.ts         # Undo, redo, and root-tag edits
-└── svg-select.spec.ts          # Click-to-select, group walking, editor sync
+├── svg-select.spec.ts          # Click-to-select, group walking, editor sync
+└── svg-edit.spec.ts            # Drag, nudge, resize, rotate, flip, delete
 ```
 
 > **Note**: Keep test files in their respective directories to avoid runner conflicts. Vitest excludes the `e2e/` directory, and Playwright only looks in the `e2e/` directory.
@@ -168,6 +170,7 @@ For comprehensive testing instructions, setup details, and CI configuration, see
 src/
 ├── app.ts           # Main TypeScript application
 ├── source-map.ts    # Source text scanning, attribute edits, preview stamping
+├── geometry.ts      # Move, resize, rotate, and flip planners
 ├── select.ts        # Preview selection picking and box geometry
 ├── xray.ts          # X-ray cursor-to-element lookup
 ├── theme.css        # CSS styles with Tailwind

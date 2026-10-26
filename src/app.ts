@@ -7,8 +7,9 @@ import {tokyoNightDay} from '@fsegurai/codemirror-theme-tokyo-night-day';
 import {tokyoNightStorm} from '@fsegurai/codemirror-theme-tokyo-night-storm';
 import {linter, lintGutter} from '@codemirror/lint';
 import {findElementAtCursor, type ElementRef} from './xray';
-import {startTags, readAttribute, planAttributeEdits, stampSource, SOURCE_ATTR, type StartTag, type TextChange} from './source-map';
+import {startTags, readAttribute, planAttributeEdits, stampSource, parseSource, removalRange, SOURCE_ATTR, type StartTag, type TextChange} from './source-map';
 import {findSvgTarget, selectionChain, nextInChain, ordinalOf, boxCorners} from './select';
+import {planMove, planResize, planRotate, planFlip, parentCenter, invert, applyToVector, pixelsPerUnit, decimalsFor, roundTo, type Matrix, type Point, type Rect, type Handle, type EditPlan} from './geometry';
 import {undo, redo, undoDepth, redoDepth, isolateHistory} from '@codemirror/commands';
 
 // --- Constants
@@ -18,6 +19,10 @@ const ZOOM_MAX = 50;
 const ZOOM_MIN = 0.1;
 // how far a press may travel and still count as a click
 const DRAG_THRESHOLD = 3;
+// resize handles are this many screen pixels square; the rotate handle sits
+// this far above the top edge
+const HANDLE_SIZE = 8;
+const ROTATE_OFFSET = 24;
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 // Global variable to hold status bar update callback
@@ -163,6 +168,88 @@ function resetElementStyles(...elements: HTMLElement[]) {
 }
 
 // --- SVGEditor Class
+type GestureMode = 'move' | 'resize' | 'rotate';
+
+/** The source behind a preview element: the text, the start tag, and the
+ * parsed element the planners read. */
+interface Found {sourceText: string; tag: StartTag; source: Element}
+
+interface Drag {
+	found: Found;
+	live: LiveEdit;
+	attrs: Record<string, string | null>;
+	/** Screen pixels to the units the edit is made in. */
+	toUnits: Matrix;
+	decimals: number;
+	bbox: Rect;
+	minSize: number;
+	/** The element's centre in its parent's units, and on screen. */
+	center: Point;
+	screenCenter: Point;
+}
+
+interface Gesture {
+	mode: GestureMode;
+	handle: Handle | null;
+	fromHandle: boolean;
+	startX: number;
+	startY: number;
+	target: Element;
+	/** Filled in once the pointer has travelled far enough to be a drag. */
+	drag: Drag | null;
+}
+
+/**
+ * Attribute changes shown on the preview's own copy of an element while a
+ * gesture is under way, and taken back if it is cancelled. Each call states
+ * the whole change from the start of the gesture, so an attribute no longer
+ * in it goes back to what it was.
+ */
+class LiveEdit {
+	private originals = new Map<string, string | null>();
+	constructor(private el: Element) {}
+
+	private put(name: string, value: string | null): void {
+		if (value === null) this.el.removeAttribute(name);
+		else this.el.setAttribute(name, value);
+	}
+
+	show(attrs: Record<string, string | null>): void {
+		for (const [name, original] of this.originals) if (!(name in attrs)) this.put(name, original);
+		for (const [name, value] of Object.entries(attrs)) {
+			if (!this.originals.has(name)) this.originals.set(name, this.el.getAttribute(name));
+			this.put(name, value);
+		}
+	}
+
+	revert(): void {
+		for (const [name, original] of this.originals) this.put(name, original);
+		this.originals.clear();
+	}
+}
+
+const toMatrix = (m: DOMMatrix): Matrix=>({a: m.a, b: m.b, c: m.c, d: m.d, e: m.e, f: m.f});
+
+function bboxOf(el: Element): Rect | null {
+	if (!(el instanceof SVGGraphicsElement)) return null;
+	try {
+		const bb = el.getBBox();
+		return {x: bb.x, y: bb.y, width: bb.width, height: bb.height};
+	} catch {
+		return null;
+	}
+}
+
+/** The resize cursor pointing the way a handle actually faces on screen,
+ * which for a rotated element is not the way its name says. */
+function cursorFor(centre: Point, at: Point): string {
+	const deg = ((Math.atan2(at.y - centre.y, at.x - centre.x) * 180) / Math.PI + 180) % 180;
+	if (deg < 22.5 || deg >= 157.5) return 'ew-resize';
+	if (deg < 67.5) return 'nwse-resize';
+	if (deg < 112.5) return 'ns-resize';
+	return 'nesw-resize';
+}
+
 class slick {
 	public editor!: EditorView;
 	private previewContainer!: HTMLElement;
@@ -195,6 +282,11 @@ class slick {
 	private pressY = 0;
 	private pressMoved = false;
 	private tapTarget: EventTarget | null = null;
+	private gesture: Gesture | null = null;
+	private handles!: SVGGElement;
+	private handleEls = new Map<string, SVGGraphicsElement>();
+	private rotateLink!: SVGLineElement;
+	private skipSync = false;
 
 	constructor() {
 		this.modal = this.getTyped('dialog');
@@ -278,6 +370,24 @@ class slick {
 		this.overlay.setAttribute('aria-hidden', 'true');
 		this.hoverBox = this.makeBox('hover-box');
 		this.selectBox = this.makeBox('select-box');
+		this.handles = document.createElementNS(SVG_NS, 'g');
+		this.handles.classList.add('handles', 'hide');
+		this.rotateLink = document.createElementNS(SVG_NS, 'line');
+		this.handles.appendChild(this.rotateLink);
+		for (const name of ['nw', 'ne', 'se', 'sw', 'n', 'e', 's', 'w']) {
+			const handle = document.createElementNS(SVG_NS, 'rect');
+			handle.setAttribute('data-handle', name);
+			handle.setAttribute('width', `${HANDLE_SIZE}`);
+			handle.setAttribute('height', `${HANDLE_SIZE}`);
+			this.handles.appendChild(handle);
+			this.handleEls.set(name, handle);
+		}
+		const rotate = document.createElementNS(SVG_NS, 'circle');
+		rotate.setAttribute('data-handle', 'rotate');
+		rotate.setAttribute('r', `${HANDLE_SIZE / 2 + 1}`);
+		this.handles.appendChild(rotate);
+		this.handleEls.set('rotate', rotate);
+		this.overlay.appendChild(this.handles);
 		this.previewContainer.appendChild(this.overlay);
 		new ResizeObserver(()=>this.refreshSelection()).observe(this.svgPreview);
 	}
@@ -388,17 +498,38 @@ class slick {
 		]);
 		document.addEventListener('keydown', this.handleHistoryKeys);
 		this.updateHistoryButtons();
-		this.svgPreview.addEventListener('mousedown', (e)=>this.startPan(e));
-		document.addEventListener('mousemove', (e)=>this.doPan(e));
-		document.addEventListener('mouseup', ()=>this.endPan());
+		this.svgPreview.addEventListener('mousedown', (e)=>this.onPress(e));
+		this.overlay.addEventListener('mousedown', (e)=>this.onHandlePress(e, e.clientX, e.clientY));
+		this.overlay.addEventListener('touchstart', (e)=>{
+			const touch = e.touches.item(0);
+			if (touch) this.onHandlePress(e, touch.clientX, touch.clientY);
+		}, {passive: false});
+		document.addEventListener('mousemove', (e)=>{
+			if (this.gesture) this.gestureMove(e.clientX, e.clientY, e.shiftKey);
+			else this.doPan(e);
+		});
+		document.addEventListener('mouseup', ()=>{
+			if (this.gesture) this.gestureEnd();
+			else this.endPan();
+		});
+		// Escape reaches the selection from the toolbar too; in the editor and
+		// the dialog it keeps its own meaning
+		document.addEventListener('keydown', (e)=>{
+			if (e.key !== 'Escape') return;
+			if (this.gesture?.drag) {
+				this.cancelGesture();
+				return;
+			}
+			const target = e.target;
+			if (target instanceof Element && target.closest('.cm-editor, dialog')) return;
+			this.clearSelection();
+		});
 		this.svgPreview.addEventListener('touchstart', (e)=>this.handleTouchStart(e), {passive: false});
 		this.svgPreview.addEventListener('touchmove', (e)=>this.handleTouchMove(e), {passive: false});
 		this.svgPreview.addEventListener('touchend', (e)=>this.handleTouchEnd(e), {passive: false});
 		this.svgPreview.addEventListener('mousemove', (e)=>this.hoverAt(e));
 		this.svgPreview.addEventListener('mouseleave', ()=>this.drawBox(this.hoverBox, null));
-		this.svgPreview.addEventListener('keydown', (e)=>{
-			if (e.key === 'Escape') this.clearSelection();
-		});
+		this.svgPreview.addEventListener('keydown', (e)=>this.onCanvasKey(e));
 		this.setupResizeDragbar();
 	}
 
@@ -551,13 +682,27 @@ class slick {
 		this.announceAction(`Zoomed out to ${Math.round(this.zoomLevel * 100)}%`);
 	}
 
-	private startPan(e: MouseEvent): void {
-		this.isPanning = true;
+	/** A press on the canvas: on the selection it starts a move, anywhere
+	 * else a pan, and either way a press that does not travel is a click. */
+	private onPress(e: MouseEvent): void {
+		if (e.button !== 0) return;
+		e.preventDefault();
 		this.pressMoved = false;
 		this.tapTarget = e.target;
 		this.pressX = this.lastPanX = e.clientX;
 		this.pressY = this.lastPanY = e.clientY;
-		e.preventDefault();
+		const current = this.onSelection(e.target);
+		if (current && !e.ctrlKey && !e.metaKey) {
+			this.gesture = {mode: 'move', handle: null, fromHandle: false, startX: e.clientX, startY: e.clientY, target: current, drag: null};
+			return;
+		}
+		this.isPanning = true;
+	}
+
+	/** The selected element, when a press on this target lands on it or inside it. */
+	private onSelection(target: EventTarget | null): Element | null {
+		const current = this.selectedElement();
+		return current && target instanceof Node && current.contains(target) ? current : null;
 	}
 	private doPan(e: MouseEvent): void {
 		if (!this.isPanning) return;
@@ -582,6 +727,8 @@ class slick {
 
 	private handleTouchStart(e: TouchEvent): void {
 		if (e.touches.length === 2) {
+			// a second finger turns a drag into a pinch; the drag keeps its move
+			if (this.gesture) this.gestureEnd();
 			this.isMultiTouch = true;
 			this.initialPinchDistance = this.calculatePinchDistance(e.touches[0], e.touches[1]);
 			this.initialZoomLevel = this.zoomLevel;
@@ -589,16 +736,27 @@ class slick {
 			e.preventDefault();
 		} else if (e.touches.length === 1) {
 			this.isMultiTouch = false;
-			this.isPanning = true;
 			this.tapTarget = e.target;
 			this.pressX = this.lastPanX = e.touches[0].clientX;
 			this.pressY = this.lastPanY = e.touches[0].clientY;
+			const current = this.onSelection(e.target);
+			if (current) {
+				this.gesture = {mode: 'move', handle: null, fromHandle: false, startX: this.pressX, startY: this.pressY, target: current, drag: null};
+				this.isPanning = false;
+			} else {
+				this.isPanning = true;
+			}
 			e.preventDefault();
 		} else {
 			this.isMultiTouch = false;
 		}
 	}
 	private handleTouchMove(e: TouchEvent): void {
+		if (this.gesture && e.touches.length === 1) {
+			this.gestureMove(e.touches[0].clientX, e.touches[0].clientY, false);
+			e.preventDefault();
+			return;
+		}
 		if (this.isMultiTouch && e.touches.length === 2) {
 			const currentDistance = this.calculatePinchDistance(e.touches[0], e.touches[1]);
 			const scale = currentDistance / this.initialPinchDistance;
@@ -620,6 +778,10 @@ class slick {
 		}
 	}
 	private handleTouchEnd(e: TouchEvent): void {
+		if (e.touches.length === 0 && this.gesture) {
+			this.gestureEnd();
+			return;
+		}
 		if (e.touches.length < 2) {
 			this.isMultiTouch = false;
 		}
@@ -700,6 +862,10 @@ class slick {
 	/** The selection follows the editor cursor, as the x-ray glow does. The
 	 * root <svg> is never selected: it is the canvas, not a thing on it. */
 	private syncSelectionFromCursor(): void {
+		if (this.skipSync) {
+			this.skipSync = false;
+			return;
+		}
 		const source = this.editor.state.doc.toString();
 		const ref = findElementAtCursor(source, this.editor.state.selection.main.head);
 		const next = ref && ref.ordinal !== this.rootTag(source)?.ordinal ? ref.ordinal : null;
@@ -709,21 +875,298 @@ class slick {
 	}
 
 	private hoverAt(e: MouseEvent): void {
-		if (this.isPanning) return;
+		if (this.isPanning || this.gesture) return;
 		const pick = this.pickAt(e.target);
-		this.svgPreview.style.cursor = pick ? 'pointer' : '';
+		this.svgPreview.style.cursor = this.onSelection(e.target) ? 'move' : pick ? 'pointer' : '';
 		this.drawBox(this.hoverBox, pick && pick !== this.selectedElement() ? pick : null);
 	}
 
 	private refreshSelection(): void {
-		this.drawBox(this.selectBox, this.selectedElement());
+		this.placeHandles(this.drawBox(this.selectBox, this.selectedElement()));
 	}
 
 	/** Put a box over an element, or take it away. */
-	private drawBox(box: SVGPolygonElement, el: Element | null): void {
+	private drawBox(box: SVGPolygonElement, el: Element | null): Point[] | null {
 		const corners = el ? boxCorners(el, this.overlay) : null;
 		box.classList.toggle('hide', !corners);
 		if (corners) box.setAttribute('points', corners.map(p=>`${p.x},${p.y}`).join(' '));
+		return corners;
+	}
+
+	/** Eight resize handles on the box and a rotate handle above its top edge;
+	 * side handles only when there is room for them, so none sit on a corner. */
+	private placeHandles(corners: Point[] | null): void {
+		this.handles.classList.toggle('hide', !corners);
+		if (!corners) return;
+		const [nw, ne, se, sw] = corners;
+		const mid = (p: Point, q: Point): Point=>({x: (p.x + q.x) / 2, y: (p.y + q.y) / 2});
+		const centre = mid(nw, se);
+		const width = Math.hypot(ne.x - nw.x, ne.y - nw.y);
+		const height = Math.hypot(sw.x - nw.x, sw.y - nw.y);
+		const sides = width > HANDLE_SIZE * 3 && height > HANDLE_SIZE * 3;
+		const top = mid(nw, ne);
+		const up = height > 0 ? {x: (top.x - centre.x) / (height / 2), y: (top.y - centre.y) / (height / 2)} : {x: 0, y: -1};
+		const spin = {x: top.x + up.x * ROTATE_OFFSET, y: top.y + up.y * ROTATE_OFFSET};
+		const at: Record<string, Point | null> = {
+			nw, ne, se, sw, rotate: spin,
+			n: sides ? top : null, e: sides ? mid(ne, se) : null, s: sides ? mid(se, sw) : null, w: sides ? mid(sw, nw) : null,
+		};
+		for (const [name, handle] of this.handleEls) {
+			const p = at[name];
+			handle.classList.toggle('hide', !p);
+			if (!p) continue;
+			if (name === 'rotate') {
+				handle.setAttribute('cx', `${p.x}`);
+				handle.setAttribute('cy', `${p.y}`);
+			} else {
+				handle.setAttribute('x', `${p.x - HANDLE_SIZE / 2}`);
+				handle.setAttribute('y', `${p.y - HANDLE_SIZE / 2}`);
+				handle.style.cursor = cursorFor(centre, p);
+			}
+		}
+		this.rotateLink.setAttribute('x1', `${top.x}`);
+		this.rotateLink.setAttribute('y1', `${top.y}`);
+		this.rotateLink.setAttribute('x2', `${spin.x}`);
+		this.rotateLink.setAttribute('y2', `${spin.y}`);
+	}
+
+	// --- Gestures: dragging the selection and its handles, and the keyboard
+	/** A press on a resize or rotate handle starts that gesture on the selection. */
+	private onHandlePress(e: Event, x: number, y: number): void {
+		const handle = e.target instanceof Element ? e.target.closest('[data-handle]')?.getAttribute('data-handle') : null;
+		const current = this.selectedElement();
+		if (!handle || !current) return;
+		e.preventDefault();
+		e.stopPropagation();
+		const rotate = handle === 'rotate';
+		this.gesture = {mode: rotate ? 'rotate' : 'resize', handle: rotate ? null : handle as Handle, fromHandle: true, startX: x, startY: y, target: current, drag: null};
+	}
+
+	/** Keys on the canvas: arrows nudge the selection by a unit (ten with
+	 * Shift), Delete removes it, Escape clears it or cancels a drag. */
+	private onCanvasKey(e: KeyboardEvent): void {
+		const arrows: Record<string, [number, number] | undefined> = {ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1]};
+		const arrow = arrows[e.key];
+		if (arrow && this.selectedOrdinal !== null && !e.ctrlKey && !e.metaKey && !e.altKey) {
+			e.preventDefault();
+			const step = e.shiftKey ? 10 : 1;
+			this.nudge(arrow[0] * step, arrow[1] * step);
+		} else if (e.key === 'Escape') {
+			if (this.gesture?.drag) this.cancelGesture();
+			else this.clearSelection();
+		} else if (e.key === 'Delete' || e.key === 'Backspace') {
+			e.preventDefault();
+			this.deleteSelected();
+		}
+	}
+
+	/** The source behind a preview element, or null with a message when the
+	 * code does not parse or the element cannot be found in it. */
+	private sourceFor(el: Element): Found | null {
+		const sourceText = this.editor.state.doc.toString();
+		const parsed = parseSource(sourceText);
+		if (!parsed) {
+			this.announceError('The code has an error, so this element cannot be edited here. Fix the code first.');
+			return null;
+		}
+		const container = this.svgPreview.querySelector('.svg-container');
+		const ordinal = container ? ordinalOf(el, container, sourceText) : null;
+		const tag = ordinal === null ? undefined : startTags(sourceText).at(ordinal);
+		const source = ordinal === null ? undefined : parsed.elements.at(ordinal);
+		if (!tag || !source || source.tagName.toLowerCase() !== el.tagName.toLowerCase()) {
+			this.announceError('This element could not be found in the code, so it cannot be edited here.');
+			return null;
+		}
+		return {sourceText, tag, source};
+	}
+
+	/** Write planned attribute changes to the source, as one history step. */
+	private commitPlan(found: Found, attrs: Record<string, string | null>, userEvent: string, isolate = true): boolean {
+		if (this.editor.state.doc.toString() !== found.sourceText) {
+			this.announceError('The code changed meanwhile, so the edit was not applied.');
+			return false;
+		}
+		const changes = planAttributeEdits(found.sourceText, found.tag, Object.entries(attrs).map(([name, value])=>({name, value})));
+		return this.applyEdits(changes, userEvent, isolate);
+	}
+
+	/** The drag begins: find the element in the source and measure its frame. */
+	private beginDrag(g: Gesture): boolean {
+		const found = this.sourceFor(g.target);
+		const bbox = bboxOf(g.target);
+		if (!found || !bbox) return false;
+		// a blocked element is refused before anything moves on screen
+		const probe: EditPlan = g.mode === 'move' ? planMove(found.source, 0, 0)
+			: g.mode === 'resize' && g.handle ? planResize(found.source, {handle: g.handle, dx: 0, dy: 0, keepAspect: false, bbox, minSize: 0, decimals: 0})
+			: planRotate(found.source, 0, {x: 0, y: 0});
+		if (!probe.ok) {
+			this.announceError(probe.reason);
+			return false;
+		}
+		// screen pixels to the units the edit is made in: the parent's for a
+		// move or a turn, the element's own for a resize
+		const frame = g.mode === 'resize' ? g.target : g.target.parentElement;
+		const ctm = frame instanceof SVGGraphicsElement ? frame.getScreenCTM() : null;
+		const toUnits = ctm ? invert(toMatrix(ctm)) : null;
+		if (!ctm || !toUnits) return false;
+		const scale = pixelsPerUnit(toMatrix(ctm));
+		const own = g.target instanceof SVGGraphicsElement ? g.target.getScreenCTM() : null;
+		const onScreen = own ? new DOMPoint(bbox.x + bbox.width / 2, bbox.y + bbox.height / 2).matrixTransform(own) : null;
+		g.drag = {
+			found, live: new LiveEdit(g.target), attrs: {}, toUnits, decimals: decimalsFor(scale), bbox,
+			// two screen pixels: small enough to go unnoticed, large enough that
+			// the handles never sit on top of each other and become ungrabbable
+			minSize: 2 / scale,
+			center: parentCenter(found.source, bbox) ?? {x: 0, y: 0},
+			screenCenter: onScreen ? {x: onScreen.x, y: onScreen.y} : {x: g.startX, y: g.startY},
+		};
+		this.drawBox(this.hoverBox, null);
+		this.svgPreview.style.cursor = g.mode === 'move' ? 'move' : '';
+		return true;
+	}
+
+	private gestureMove(x: number, y: number, shift: boolean): void {
+		const g = this.gesture;
+		if (!g) return;
+		const sx = x - g.startX;
+		const sy = y - g.startY;
+		if (!g.drag) {
+			if (Math.hypot(sx, sy) < DRAG_THRESHOLD) return;
+			if (!this.beginDrag(g)) {
+				this.gesture = null;
+				this.tapTarget = null;
+				return;
+			}
+		}
+		const d = g.drag;
+		if (!d) return;
+		let plan: EditPlan;
+		if (g.mode === 'rotate') {
+			// the turn from where the handle was pressed to where it is now, measured in the parent's frame
+			const from = applyToVector(d.toUnits, g.startX - d.screenCenter.x, g.startY - d.screenCenter.y);
+			const to = applyToVector(d.toUnits, x - d.screenCenter.x, y - d.screenCenter.y);
+			const degrees = ((Math.atan2(to.y, to.x) - Math.atan2(from.y, from.x)) * 180) / Math.PI;
+			// whole degrees, which is finer than a hand on a mouse; fifteen with Shift
+			const snap = shift ? 15 : 1;
+			plan = planRotate(d.found.source, Math.round(degrees / snap) * snap, d.center);
+		} else {
+			const v = applyToVector(d.toUnits, sx, sy);
+			const dx = roundTo(v.x, d.decimals);
+			const dy = roundTo(v.y, d.decimals);
+			plan = g.mode === 'move' || !g.handle
+				? planMove(d.found.source, dx, dy)
+				: planResize(d.found.source, {handle: g.handle, dx, dy, keepAspect: shift, bbox: d.bbox, minSize: d.minSize, decimals: d.decimals});
+		}
+		if (!plan.ok) {
+			this.announceError(plan.reason);
+			this.cancelGesture();
+			return;
+		}
+		d.attrs = plan.attrs;
+		d.live.show(plan.attrs);
+		this.refreshSelection();
+	}
+
+	/** End the gesture: a drag is written to the code; a press that did not
+	 * travel was a click, which selects. */
+	private gestureEnd(): void {
+		const g = this.gesture;
+		this.gesture = null;
+		this.svgPreview.style.cursor = '';
+		if (!g) return;
+		if (!g.drag) {
+			if (!g.fromHandle) this.clickSelect(this.tapTarget);
+			return;
+		}
+		const d = g.drag;
+		// the preview re-renders from the new source, which replaces the live copy
+		if (Object.keys(d.attrs).length === 0 || !this.commitPlan(d.found, d.attrs, `slick.${g.mode}`)) {
+			d.live.revert();
+			this.refreshSelection();
+			return;
+		}
+		const verb = g.mode === 'move' ? 'moved' : g.mode === 'resize' ? 'resized' : 'rotated';
+		this.announceAction(`${g.target.tagName.toLowerCase()} ${verb}`);
+	}
+
+	private cancelGesture(): void {
+		const g = this.gesture;
+		this.gesture = null;
+		this.svgPreview.style.cursor = '';
+		if (!g?.drag) return;
+		g.drag.live.revert();
+		this.tapTarget = null;
+		this.refreshSelection();
+	}
+
+	/** Move the selection by whole units of its parent, from the keyboard.
+	 * Rapid presses join into one history step, as typing does. */
+	private nudge(dx: number, dy: number): void {
+		const current = this.selectedElement();
+		if (!current || this.gesture?.drag) return;
+		const found = this.sourceFor(current);
+		if (!found) return;
+		const plan = planMove(found.source, dx, dy);
+		if (!plan.ok) {
+			this.announceError(plan.reason);
+			return;
+		}
+		this.commitPlan(found, plan.attrs, 'slick.nudge', false);
+	}
+
+	/** Turn the selection by `degrees` about its centre. */
+	private turnSelected(current: Element, degrees: number): void {
+		const found = this.sourceFor(current);
+		const bbox = bboxOf(current);
+		if (!found || !bbox) return;
+		const center = parentCenter(found.source, bbox);
+		if (!center) {
+			this.announceError('This element\'s transform could not be read, so it cannot be rotated here.');
+			return;
+		}
+		const plan = planRotate(found.source, degrees, center);
+		if (!plan.ok) {
+			this.announceError(plan.reason);
+			return;
+		}
+		if (this.commitPlan(found, plan.attrs, 'slick.rotate')) this.announceAction(`${current.tagName.toLowerCase()} rotated ${degrees} degrees`);
+	}
+
+	/** Mirror the selection across the line through its centre. */
+	private flipSelected(current: Element, axis: 'x' | 'y'): void {
+		const found = this.sourceFor(current);
+		const bbox = bboxOf(current);
+		if (!found || !bbox) return;
+		const center = parentCenter(found.source, bbox);
+		if (!center) {
+			this.announceError('This element\'s transform could not be read, so it cannot be flipped here.');
+			return;
+		}
+		const plan = planFlip(found.source, axis, center);
+		if (!plan.ok) {
+			this.announceError(plan.reason);
+			return;
+		}
+		if (this.commitPlan(found, plan.attrs, 'slick.flip')) this.announceAction(`${current.tagName.toLowerCase()} flipped ${axis === 'x' ? 'horizontally' : 'vertically'}`);
+	}
+
+	/** Remove the selection from the code, with the line it sat on when it
+	 * had the line to itself. */
+	private deleteSelected(): void {
+		const current = this.selectedElement();
+		if (!current) return;
+		const found = this.sourceFor(current);
+		if (!found) return;
+		const range = removalRange(found.sourceText, found.tag.ordinal);
+		if (!range) {
+			this.announceError('This element\'s closing tag could not be found, so it was not removed.');
+			return;
+		}
+		const name = current.tagName.toLowerCase();
+		this.selectedOrdinal = null;
+		this.skipSync = true;
+		this.applyEdits([range], 'slick.delete');
+		this.announceAction(`${name} removed`);
 	}
 
 	// --- Transforms
@@ -757,9 +1200,9 @@ class slick {
 	}
 
 	/** Splice changes into the source as one undo step of its own. */
-	private applyEdits(changes: TextChange[], userEvent: string): boolean {
+	private applyEdits(changes: TextChange[], userEvent: string, isolate = true): boolean {
 		if (changes.length === 0) return false;
-		this.editor.dispatch({changes, annotations: isolateHistory.of('full'), userEvent});
+		this.editor.dispatch({changes, annotations: isolate ? isolateHistory.of('full') : [], userEvent});
 		return true;
 	}
 
@@ -779,12 +1222,27 @@ class slick {
 	}
 
 	private rotateSVG(): void {
+		const current = this.selectedElement();
+		if (current) {
+			this.turnSelected(current, 90);
+			return;
+		}
 		this.transformRoot(()=>{this.rotationDegrees = (this.rotationDegrees + 90) % 360;}, 'SVG rotated 90 degrees');
 	}
 	private flipSVGX(): void {
+		const current = this.selectedElement();
+		if (current) {
+			this.flipSelected(current, 'x');
+			return;
+		}
 		this.transformRoot(()=>{this.flipX = !this.flipX;}, 'SVG flipped horizontally');
 	}
 	private flipSVGY(): void {
+		const current = this.selectedElement();
+		if (current) {
+			this.flipSelected(current, 'y');
+			return;
+		}
 		this.transformRoot(()=>{this.flipY = !this.flipY;}, 'SVG flipped vertically');
 	}
 

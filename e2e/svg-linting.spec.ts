@@ -205,7 +205,7 @@ test.describe('SVG Editor Linting', () => {
 		await page.waitForTimeout(3000);
 
 		// Verify preview updates (core functionality still works)
-		await expect(page.locator('svg circle')).toHaveAttribute('fill', 'red');
+		await expect(page.locator('.svg-container circle')).toHaveAttribute('fill', 'red');
 
 		// Test editing still works
 		await editor.click();
@@ -216,7 +216,7 @@ test.describe('SVG Editor Linting', () => {
 		await page.waitForTimeout(3000);
 
 		// Verify preview updates
-		await expect(page.locator('svg circle')).toHaveAttribute('fill', 'blue');
+		await expect(page.locator('.svg-container circle')).toHaveAttribute('fill', 'blue');
 
 		// Verify linting doesn't interfere with basic editing functionality
 		await editor.click();
@@ -225,7 +225,7 @@ test.describe('SVG Editor Linting', () => {
 		await page.keyboard.press('Backspace'); // Remove the space
 
 		// Preview should still work correctly
-		await expect(page.locator('svg circle')).toHaveAttribute('fill', 'blue');
+		await expect(page.locator('.svg-container circle')).toHaveAttribute('fill', 'blue');
 
 		// Verify the content is still editable
 		await editor.click();
