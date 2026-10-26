@@ -8,6 +8,7 @@ import {tokyoNightStorm} from '@fsegurai/codemirror-theme-tokyo-night-storm';
 import {linter, lintGutter} from '@codemirror/lint';
 import {findElementAtCursor, type ElementRef} from './xray';
 import {startTags, readAttribute, planAttributeEdits, stampSource, SOURCE_ATTR, type StartTag, type TextChange} from './source-map';
+import {findSvgTarget, selectionChain, nextInChain, ordinalOf, boxCorners} from './select';
 import {undo, redo, undoDepth, redoDepth, isolateHistory} from '@codemirror/commands';
 
 // --- Constants
@@ -15,6 +16,9 @@ const DEFAULT_SVG_SIZE = 200;
 const RANDOM_FILENAME_LENGTH = 6;
 const ZOOM_MAX = 50;
 const ZOOM_MIN = 0.1;
+// how far a press may travel and still count as a click
+const DRAG_THRESHOLD = 3;
+const SVG_NS = 'http://www.w3.org/2000/svg';
 
 // Global variable to hold status bar update callback
 let statusBarUpdateCallback: ((message: string, isError: boolean) => void) | null = null;
@@ -182,6 +186,15 @@ class slick {
 	private initialPinchDistance = 0;
 	private initialZoomLevel = 1;
 	private isResizing = false;
+	// selection in the preview, by source ordinal so it survives re-renders
+	private selectedOrdinal: number | null = null;
+	private overlay!: SVGSVGElement;
+	private selectBox!: SVGPolygonElement;
+	private hoverBox!: SVGPolygonElement;
+	private pressX = 0;
+	private pressY = 0;
+	private pressMoved = false;
+	private tapTarget: EventTarget | null = null;
 
 	constructor() {
 		this.modal = this.getTyped('dialog');
@@ -238,6 +251,9 @@ class slick {
 							this.updateSVGPreview();
 							this.updateHistoryButtons();
 						}
+						if (update.selectionSet || update.docChanged) {
+							this.syncSelectionFromCursor();
+						}
 						if (this.xray && (update.selectionSet || update.docChanged)) {
 							this.updateElementHighlight();
 						}
@@ -252,7 +268,25 @@ class slick {
 		this.previewContainer = this.get('preview');
 		this.svgPreview = document.createElement('div');
 		this.svgPreview.className = 'svg-preview-wrapper';
+		this.svgPreview.tabIndex = 0;
+		this.svgPreview.setAttribute('aria-label', 'SVG preview canvas');
 		this.previewContainer.appendChild(this.svgPreview);
+		// the selection box lives beside the drawing, never inside it, so it is
+		// not part of the document and keeps its size at any zoom
+		this.overlay = document.createElementNS(SVG_NS, 'svg');
+		this.overlay.classList.add('select-overlay');
+		this.overlay.setAttribute('aria-hidden', 'true');
+		this.hoverBox = this.makeBox('hover-box');
+		this.selectBox = this.makeBox('select-box');
+		this.previewContainer.appendChild(this.overlay);
+		new ResizeObserver(()=>this.refreshSelection()).observe(this.svgPreview);
+	}
+
+	private makeBox(className: string): SVGPolygonElement {
+		const box = document.createElementNS(SVG_NS, 'polygon');
+		box.classList.add(className, 'hide');
+		this.overlay.appendChild(box);
+		return box;
 	}
 
 	private get eyes() {
@@ -360,22 +394,30 @@ class slick {
 		this.svgPreview.addEventListener('touchstart', (e)=>this.handleTouchStart(e), {passive: false});
 		this.svgPreview.addEventListener('touchmove', (e)=>this.handleTouchMove(e), {passive: false});
 		this.svgPreview.addEventListener('touchend', (e)=>this.handleTouchEnd(e), {passive: false});
+		this.svgPreview.addEventListener('mousemove', (e)=>this.hoverAt(e));
+		this.svgPreview.addEventListener('mouseleave', ()=>this.drawBox(this.hoverBox, null));
+		this.svgPreview.addEventListener('keydown', (e)=>{
+			if (e.key === 'Escape') this.clearSelection();
+		});
 		this.setupResizeDragbar();
 	}
 
 	private updateSVGPreview(): void {
 		const svgCode = this.editor.state.doc.toString();
 		try {
-			this.svgPreview.innerHTML = '';
 			const svgContainer = document.createElement('div');
 			svgContainer.className = 'svg-container';
 			// stamped with source ordinals when the source parses, so preview
 			// elements can be traced back to their tags
 			svgContainer.innerHTML = stampSource(svgCode) ?? svgCode;
-			this.svgPreview.appendChild(svgContainer);
+			svgContainer.addEventListener('transitionend', ()=>this.refreshSelection());
+			this.svgPreview.replaceChildren(svgContainer);
 			this.applySVGStyles();
 		} catch (error) {
-			this.svgPreview.innerHTML = `<div class="error">Invalid SVG: ${String(error)}</div>`;
+			const message = document.createElement('div');
+			message.className = 'error';
+			message.textContent = `Invalid SVG: ${String(error)}`;
+			this.svgPreview.replaceChildren(message);
 		}
 	}
 
@@ -393,6 +435,7 @@ class slick {
 				svgContainer.style.transition = 'transform 0.1s ease-out';
 			}
 		}
+		this.refreshSelection();
 	}
 
 	private updateElementHighlight(): void {
@@ -418,9 +461,7 @@ class slick {
 			const cssHlColor = getComputedStyle(document.body).getPropertyValue('--color-hl').trim() || '#0f0';
 			this.ensureHighlightFilter(svgElement, cssHlColor);
 
-			// by its source stamp when the source parsed, else by counting tag names
-			const target = svgContainer.querySelector(`[${SOURCE_ATTR}="${ref.ordinal}"]`)
-				?? Array.from(svgContainer.querySelectorAll(ref.tagName)).at(ref.index);
+			const target = this.elementForOrdinal(ref.ordinal);
 			if (!target) return;
 			// keep the element's own filter so clearHighlights can restore it
 			const ownFilter = target.getAttribute('filter');
@@ -512,12 +553,19 @@ class slick {
 
 	private startPan(e: MouseEvent): void {
 		this.isPanning = true;
-		this.lastPanX = e.clientX;
-		this.lastPanY = e.clientY;
+		this.pressMoved = false;
+		this.tapTarget = e.target;
+		this.pressX = this.lastPanX = e.clientX;
+		this.pressY = this.lastPanY = e.clientY;
 		e.preventDefault();
 	}
 	private doPan(e: MouseEvent): void {
 		if (!this.isPanning) return;
+		// a press that has not travelled is a click in the making, not a pan
+		if (!this.pressMoved && Math.hypot(e.clientX - this.pressX, e.clientY - this.pressY) < DRAG_THRESHOLD) return;
+		this.pressMoved = true;
+		this.svgPreview.style.cursor = '';
+		this.drawBox(this.hoverBox, null);
 		const deltaX = e.clientX - this.lastPanX;
 		const deltaY = e.clientY - this.lastPanY;
 		this.panX += deltaX;
@@ -528,6 +576,7 @@ class slick {
 		e.preventDefault();
 	}
 	private endPan(): void {
+		if (this.isPanning && !this.pressMoved) this.clickSelect(this.tapTarget);
 		this.isPanning = false;
 	}
 
@@ -536,12 +585,14 @@ class slick {
 			this.isMultiTouch = true;
 			this.initialPinchDistance = this.calculatePinchDistance(e.touches[0], e.touches[1]);
 			this.initialZoomLevel = this.zoomLevel;
+			this.tapTarget = null;
 			e.preventDefault();
 		} else if (e.touches.length === 1) {
 			this.isMultiTouch = false;
 			this.isPanning = true;
-			this.lastPanX = e.touches[0].clientX;
-			this.lastPanY = e.touches[0].clientY;
+			this.tapTarget = e.target;
+			this.pressX = this.lastPanX = e.touches[0].clientX;
+			this.pressY = this.lastPanY = e.touches[0].clientY;
 			e.preventDefault();
 		} else {
 			this.isMultiTouch = false;
@@ -557,6 +608,7 @@ class slick {
 			e.preventDefault();
 		} else if (!this.isMultiTouch && e.touches.length === 1 && this.isPanning) {
 			const touch = e.touches[0];
+			if (Math.hypot(touch.clientX - this.pressX, touch.clientY - this.pressY) >= DRAG_THRESHOLD) this.tapTarget = null;
 			const deltaX = touch.clientX - this.lastPanX;
 			const deltaY = touch.clientY - this.lastPanY;
 			this.panX += deltaX;
@@ -572,6 +624,7 @@ class slick {
 			this.isMultiTouch = false;
 		}
 		if (e.touches.length === 0) {
+			if (this.isPanning && this.tapTarget) this.clickSelect(this.tapTarget);
 			this.isPanning = false;
 		}
 	}
@@ -581,6 +634,99 @@ class slick {
 		return Math.sqrt(dx * dx + dy * dy);
 	}
 
+	// --- Selection
+	/** The preview element with this source ordinal: by its stamp when the
+	 * source parsed, else by counting same-named tags, as the tag scanner does. */
+	private elementForOrdinal(ordinal: number): Element | null {
+		const container = this.svgPreview.querySelector('.svg-container');
+		if (!container) return null;
+		try {
+			const stamped = container.querySelector(`[${SOURCE_ATTR}="${ordinal}"]`);
+			if (stamped) return stamped;
+			const tags = startTags(this.editor.state.doc.toString());
+			const tag = tags.at(ordinal);
+			if (!tag) return null;
+			const index = tags.slice(0, ordinal).filter(t=>t.name === tag.name).length;
+			return Array.from(container.querySelectorAll(tag.name)).at(index) ?? null;
+		} catch {
+			return null;
+		}
+	}
+
+	private selectedElement(): Element | null {
+		return this.selectedOrdinal === null ? null : this.elementForOrdinal(this.selectedOrdinal);
+	}
+
+	/** What a click on this target would select. */
+	private pickAt(target: EventTarget | null): Element | null {
+		const root = this.svgPreview.querySelector('.svg-container svg');
+		if (!(root instanceof SVGSVGElement)) return null;
+		const leaf = findSvgTarget(target, root);
+		return leaf ? nextInChain(selectionChain(leaf, root), this.selectedElement()) : null;
+	}
+
+	private clickSelect(target: EventTarget | null): void {
+		this.svgPreview.focus({preventScroll: true});
+		const pick = this.pickAt(target);
+		if (pick) {
+			this.selectElement(pick);
+		} else {
+			this.clearSelection();
+		}
+	}
+
+	/** Select a preview element and select its start tag in the editor. */
+	private selectElement(el: Element): void {
+		const source = this.editor.state.doc.toString();
+		const container = this.svgPreview.querySelector('.svg-container');
+		const ordinal = container ? ordinalOf(el, container, source) : null;
+		if (ordinal === null) return;
+		this.selectedOrdinal = ordinal;
+		this.refreshSelection();
+		this.drawBox(this.hoverBox, null);
+		const tag = startTags(source).at(ordinal);
+		if (tag && tag.name === el.tagName.toLowerCase()) {
+			this.editor.dispatch({selection: {anchor: tag.start, head: tag.end}, scrollIntoView: true});
+		}
+		this.announceAction(`Selected ${el.tagName.toLowerCase()}`);
+	}
+
+	private clearSelection(): void {
+		if (this.selectedOrdinal === null) return;
+		this.selectedOrdinal = null;
+		this.refreshSelection();
+	}
+
+	/** The selection follows the editor cursor, as the x-ray glow does. The
+	 * root <svg> is never selected: it is the canvas, not a thing on it. */
+	private syncSelectionFromCursor(): void {
+		const source = this.editor.state.doc.toString();
+		const ref = findElementAtCursor(source, this.editor.state.selection.main.head);
+		const next = ref && ref.ordinal !== this.rootTag(source)?.ordinal ? ref.ordinal : null;
+		if (next === this.selectedOrdinal) return;
+		this.selectedOrdinal = next;
+		this.refreshSelection();
+	}
+
+	private hoverAt(e: MouseEvent): void {
+		if (this.isPanning) return;
+		const pick = this.pickAt(e.target);
+		this.svgPreview.style.cursor = pick ? 'pointer' : '';
+		this.drawBox(this.hoverBox, pick && pick !== this.selectedElement() ? pick : null);
+	}
+
+	private refreshSelection(): void {
+		this.drawBox(this.selectBox, this.selectedElement());
+	}
+
+	/** Put a box over an element, or take it away. */
+	private drawBox(box: SVGPolygonElement, el: Element | null): void {
+		const corners = el ? boxCorners(el, this.overlay) : null;
+		box.classList.toggle('hide', !corners);
+		if (corners) box.setAttribute('points', corners.map(p=>`${p.x},${p.y}`).join(' '));
+	}
+
+	// --- Transforms
 	private parseCurrentTransforms(transformValue: string): void {
 		this.rotationDegrees = 0;
 		const rotateMatch = /rotate\((\d+)[^)]*\)/.exec(transformValue);

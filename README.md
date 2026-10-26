@@ -51,6 +51,7 @@ A **Node.js**-based, web SVG editor written in **TypeScript**, with no frontend 
 ### Interactive Preview
 - **Resizable Layout**: Drag the separator between editor and preview to customize panel sizes in both horizontal and vertical modes
 - **Pan & Zoom**: Click and drag to pan, use +/- buttons or pinch gestures to zoom
+- **Select**: Click an element in the preview to select it and its code; click again to walk into a group, Escape to clear
 - **Touch Support**: Full multi-touch support with pinch-to-zoom on mobile devices
 - **Responsive Design**: Adapts to different screen sizes and orientations
 - **Visual Feedback**: Real-time zoom level announcements for accessibility
@@ -229,7 +230,8 @@ tests/                       # Unit and integration tests (Vitest)
 ├── pinch-zoom.test.ts          # Pinch zoom calculations
 ├── tokyo-night-theme-integration.test.ts # Tokyo Night theme integration
 ├── svg-xray.test.ts            # X-ray cursor-to-element lookup
-└── source-map.test.ts          # Tag scanning, attribute edits, stamping
+├── source-map.test.ts          # Tag scanning, attribute edits, stamping
+└── select.test.ts              # Preview selection picking and group walking
 
 e2e/                         # End-to-end tests (Playwright)
 ├── svg-editor.spec.ts          # Core editor functionality
@@ -241,7 +243,8 @@ e2e/                         # End-to-end tests (Playwright)
 ├── svg-drag-drop-clear.spec.ts # Drag & drop and clear functionality
 ├── svg-mobile-performance.spec.ts # Mobile, performance, compatibility
 ├── svg-xray.spec.ts            # X-ray mode highlighting
-└── svg-history.spec.ts         # Undo, redo, and root-tag edits
+├── svg-history.spec.ts         # Undo, redo, and root-tag edits
+└── svg-select.spec.ts          # Click-to-select, group walking, editor sync
 ```
 
 > **Note**: Keep test files in their respective directories to avoid runner conflicts. Vitest excludes the `e2e/` directory, and Playwright only looks in the `e2e/` directory.
@@ -254,6 +257,7 @@ For comprehensive testing instructions, setup details, and CI configuration, see
 src/
 ├── app.ts           # Main TypeScript application
 ├── source-map.ts    # Source text scanning, attribute edits, preview stamping
+├── select.ts        # Preview selection picking and box geometry
 ├── xray.ts          # X-ray cursor-to-element lookup
 ├── theme.css        # CSS styles with Tailwind
 ├── index.html       # Main HTML file
@@ -275,7 +279,8 @@ tests/               # Unit and integration tests (Vitest)
 ├── pinch-zoom.test.ts          # Pinch zoom calculations
 ├── tokyo-night-theme-integration.test.ts # Tokyo Night theme integration
 ├── svg-xray.test.ts            # X-ray cursor-to-element lookup
-└── source-map.test.ts          # Tag scanning, attribute edits, stamping
+├── source-map.test.ts          # Tag scanning, attribute edits, stamping
+└── select.test.ts              # Preview selection picking and group walking
 
 e2e/                 # End-to-end tests (Playwright)
 ├── svg-editor.spec.ts          # Core editor functionality
@@ -287,7 +292,8 @@ e2e/                 # End-to-end tests (Playwright)
 ├── svg-drag-drop-clear.spec.ts # Drag & drop and clear functionality
 ├── svg-mobile-performance.spec.ts # Mobile, performance, compatibility
 ├── svg-xray.spec.ts            # X-ray mode highlighting
-└── svg-history.spec.ts         # Undo, redo, and root-tag edits
+├── svg-history.spec.ts         # Undo, redo, and root-tag edits
+└── svg-select.spec.ts          # Click-to-select, group walking, editor sync
 
 dist/                # Built assets (generated)
 ├── theme.css        # Compiled CSS
@@ -320,6 +326,7 @@ The application is built with modern web technologies:
 7. **Resize**: Click the Resize button to change SVG dimensions via modal dialog
 8. **Xray Mode**: Click the eye button to enable visual highlighting - move your cursor through different SVG elements in the code to see them highlighted in the preview
 9. **Pan & Zoom**: Click and drag to pan the SVG; use +/- buttons or pinch gestures to zoom in/out
+10. **Select**: Click an element in the preview to select it and jump to its code; repeated clicks walk from a group into its parts, and the box follows your cursor in the editor
 10. **Dark Mode**: Toggle between light and dark themes with the Dark Mode button
 11. **Layout Toggle**: Click "Flip Screen" to switch between horizontal and vertical layouts
 

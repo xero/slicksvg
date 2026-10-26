@@ -261,6 +261,22 @@
         cursor: grabbing;
       }
     }
+    /* selection and hover boxes, drawn over the drawing but never inside it */
+    .select-overlay {
+      @apply absolute inset-0 w-full h-full overflow-visible pointer-events-none z-[5];
+      polygon {
+        @apply fill-none stroke-header;
+      }
+      .select-box {
+        stroke-width: 1.5;
+        stroke-dasharray: 5 3;
+      }
+      .hover-box {
+        stroke-width: 1;
+        stroke-dasharray: 2 3;
+        opacity: 0.7;
+      }
+    }
     .svg-container {
 			color: var(--color-svg);
 			fill: var(--color-svg);
