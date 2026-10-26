@@ -6,6 +6,7 @@ import {basicSetup} from 'codemirror';
 import {tokyoNightDay} from '@fsegurai/codemirror-theme-tokyo-night-day';
 import {tokyoNightStorm} from '@fsegurai/codemirror-theme-tokyo-night-storm';
 import {linter, lintGutter} from '@codemirror/lint';
+import {findElementAtCursor} from './xray';
 
 // --- Constants
 const DEFAULT_SVG_SIZE = 200;
@@ -398,7 +399,7 @@ class slick {
 		try {
 			const cursorPos = this.editor.state.selection.main.head;
 			const svgCode = this.editor.state.doc.toString();
-			const elementInfo = this.findElementAtCursor(svgCode, cursorPos);
+			const elementInfo = findElementAtCursor(svgCode, cursorPos);
 			this.clearHighlights();
 			if (elementInfo) {
 				this.highlightElement(elementInfo.tagName, elementInfo.index);
@@ -406,59 +407,6 @@ class slick {
 		} catch (error) {
 			console.debug('Element highlighting failed:', error);
 		}
-	}
-
-	private findElementAtCursor(svgCode: string, cursorPos: number): { tagName: string; index: number } | null {
-		const tagRegex = /<(\/?)(\w+)(?:\s[^>]*)?(\/?)>/g;
-		type StackEl = { tagName: string, openPos: number, index: number };
-		const stack: StackEl[] = [];
-		let lastElementAtCursor: StackEl | null = null;
-		const tagCounts: Record<string, number> = {};
-		let match: RegExpExecArray | null;
-
-		while ((match = tagRegex.exec(svgCode)) !== null) {
-			const isClosing = !!match[1];
-			const tagName = match[2].toLowerCase();
-			const isSelfClosing = !!match[3];
-			const matchStart = match.index;
-			const matchEnd = tagRegex.lastIndex;
-
-			if (tagRegex.lastIndex >= cursorPos && matchStart <= cursorPos) {
-				if (stack.length > 0) {
-					lastElementAtCursor = stack[stack.length - 1];
-				}
-			}
-
-			if (!isClosing) {
-				tagCounts[tagName] = tagCounts[tagName] || 0;
-				const index = tagCounts[tagName];
-				tagCounts[tagName] += 1;
-
-				if (isSelfClosing) {
-					if (cursorPos >= matchStart && cursorPos <= matchEnd) {
-						lastElementAtCursor = {tagName, openPos: matchStart, index};
-					}
-				} else {
-					stack.push({tagName, openPos: matchStart, index});
-				}
-			} else {
-				for (let i = stack.length - 1; i >= 0; i--) {
-					if (stack[i].tagName === tagName) {
-						stack.splice(i, 1);
-						break;
-					}
-				}
-			}
-		}
-
-		if (cursorPos >= svgCode.length && stack.length > 0) {
-			lastElementAtCursor = stack[stack.length - 1];
-		}
-
-		if (lastElementAtCursor) {
-			return {tagName: lastElementAtCursor.tagName, index: lastElementAtCursor.index};
-		}
-		return null;
 	}
 
 	private highlightElement(tagName: string, index: number): void {
@@ -472,7 +420,11 @@ class slick {
 
 			const elements = svgContainer.querySelectorAll(tagName);
 			if (elements.length > index && index >= 0) {
-				elements[index].setAttribute('filter', 'url(#highlight-glow)');
+				const target = elements[index];
+				// keep the element's own filter so clearHighlights can restore it
+				const ownFilter = target.getAttribute('filter');
+				if (ownFilter !== null) target.setAttribute('data-xray-filter', ownFilter);
+				target.setAttribute('filter', 'url(#highlight-glow)');
 			}
 		} catch (error) {
 			console.debug('Failed to highlight element:', error);
@@ -485,7 +437,13 @@ class slick {
 			if (!svgContainer) return;
 			const filteredElements = svgContainer.querySelectorAll('[filter="url(#highlight-glow)"]');
 			filteredElements.forEach(element=>{
-				element.removeAttribute('filter');
+				const ownFilter = element.getAttribute('data-xray-filter');
+				if (ownFilter !== null) {
+					element.setAttribute('filter', ownFilter);
+					element.removeAttribute('data-xray-filter');
+				} else {
+					element.removeAttribute('filter');
+				}
 			});
 		} catch (error) {
 			console.debug('Failed to clear highlights:', error);
