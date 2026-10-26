@@ -87,6 +87,14 @@ test.describe('SVG Editor Preview Editing', () => {
     expect(await getSource(page)).toBe(FIXTURE.replace('x="20" y="20"', 'x="12" y="21"'));
   });
 
+  test('should join a run of nudges along one axis into one undo step', async ({ page }) => {
+    await page.locator('.svg-container rect').click();
+    for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowRight');
+    expect(await getSource(page)).toBe(FIXTURE.replace('x="20"', 'x="23"'));
+    await page.locator('#undo').click();
+    expect(await getSource(page)).toBe(FIXTURE);
+  });
+
   test('should resize from a corner handle, and keep the aspect ratio with Shift from a side', async ({ page }) => {
     await page.locator('.svg-container rect').click();
     await expect(page.locator('[data-handle="se"]')).toBeVisible();

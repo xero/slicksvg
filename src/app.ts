@@ -21,7 +21,7 @@ const ZOOM_MIN = 0.1;
 const DRAG_THRESHOLD = 3;
 // resize handles are this many screen pixels square; the rotate handle sits
 // this far above the top edge
-const HANDLE_SIZE = 8;
+const HANDLE_SIZE = window.matchMedia('(pointer: coarse)').matches ? 14 : 8;
 const ROTATE_OFFSET = 24;
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -981,7 +981,7 @@ class slick {
 	}
 
 	/** Write planned attribute changes to the source, as one history step. */
-	private commitPlan(found: Found, attrs: Record<string, string | null>, userEvent: string, isolate = true): boolean {
+	private commitPlan(found: Found, attrs: Record<string, string | null>, userEvent: string | undefined, isolate = true): boolean {
 		if (this.editor.state.doc.toString() !== found.sourceText) {
 			this.announceError('The code changed meanwhile, so the edit was not applied.');
 			return false;
@@ -1106,7 +1106,8 @@ class slick {
 	}
 
 	/** Move the selection by whole units of its parent, from the keyboard.
-	 * Rapid presses join into one history step, as typing does. */
+	 * Rapid presses join into one history step, as typing does: the history
+	 * only joins unlabelled or typing events, so these carry no label. */
 	private nudge(dx: number, dy: number): void {
 		const current = this.selectedElement();
 		if (!current || this.gesture?.drag) return;
@@ -1117,7 +1118,7 @@ class slick {
 			this.announceError(plan.reason);
 			return;
 		}
-		this.commitPlan(found, plan.attrs, 'slick.nudge', false);
+		this.commitPlan(found, plan.attrs, undefined, false);
 	}
 
 	/** Turn the selection by `degrees` about its centre. */
@@ -1206,7 +1207,7 @@ class slick {
 	}
 
 	/** Splice changes into the source as one undo step of its own. */
-	private applyEdits(changes: TextChange[], userEvent: string, isolate = true): boolean {
+	private applyEdits(changes: TextChange[], userEvent: string | undefined, isolate = true): boolean {
 		if (changes.length === 0) return false;
 		this.editor.dispatch({changes, annotations: isolate ? isolateHistory.of('full') : [], userEvent});
 		return true;
