@@ -233,4 +233,19 @@ test.describe('SVG Editor Linting', () => {
 		const finalContent = await editor.textContent();
 		expect(finalContent).toContain('fill="blue"');
 	});
+
+	test('should paint the parse error as a red span of bold white text', async ({ page }) => {
+		await expect(page.locator('#editor .cm-content')).toBeVisible();
+		await page.evaluate(() => {
+			const view = (window as any).svgEditor.editor;
+			view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: '<svg><rect width="100" height="100"></svg>' } });
+		});
+
+		// the whole offending tag is marked, not just the character the parser stopped at
+		const range = page.locator('#editor .cm-lintRange-error');
+		await expect.poll(async () => (await range.allTextContents()).join('')).toBe('</svg>');
+		await expect(range.first()).toHaveCSS('background-color', 'rgb(251, 44, 54)');
+		await expect(range.first()).toHaveCSS('color', 'rgb(255, 255, 255)');
+		await expect(range.first()).toHaveCSS('font-weight', '700');
+	});
 });

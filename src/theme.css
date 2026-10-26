@@ -228,6 +228,15 @@
 		.cm-tooltip-below {
 			@apply hidden! pointer-events-none!;
 		}
+		/* a parse error reads as a red span of bold white text, not an underline */
+		.cm-lintRange-error {
+			/* important: CodeMirror injects its token colors outside any cascade layer */
+			@apply bg-err! font-bold! rounded-xs;
+			background-image: none !important;
+			&, * {
+				@apply text-white!;
+			}
+		}
 		.cm-lint-marker,
 		.cm-lint-marker-error,
 		.cm-lint-marker-warning {

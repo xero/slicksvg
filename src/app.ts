@@ -20,11 +20,11 @@ const ZOOM_MIN = 0.1;
 let statusBarUpdateCallback: ((message: string, isError: boolean) => void) | null = null;
 
 const svgLinter = linter(view=>{
-	const text = view.state.doc.toString().trim();
+	const text = view.state.doc.toString();
 	const diagnostics = [];
 
 	try {
-		if (!text) {
+		if (!text.trim()) {
 			if (statusBarUpdateCallback) {
 				statusBarUpdateCallback('Buffer empty', false);
 			}
@@ -40,23 +40,22 @@ const svgLinter = linter(view=>{
 			const lineMatch = message.match(/line\s+(\d+)/i);
 			const columnMatch = message.match(/column\s+(\d+)/i);
 
+			// mark the tag around the reported column, back to its "<" and on to its
+			// ">", so the error reads as a highlighted tag rather than a one-character blip
 			let from = 0;
 			let to = text.length;
-
 			if (lineMatch) {
-				const lineNumber = parseInt(lineMatch[1], 10) - 1;
-				const lines = text.split('\n');
-				if (lineNumber >= 0 && lineNumber < lines.length) {
-					let lineStart = 0;
-					for (let i = 0; i < lineNumber; i++) {
-						lineStart += lines[i].length + 1;
-					}
-					from = lineStart;
-					to = lineStart + (lines[lineNumber]?.length || 0);
+				const lineNumber = parseInt(lineMatch[1], 10);
+				if (lineNumber >= 1 && lineNumber <= view.state.doc.lines) {
+					const line = view.state.doc.line(lineNumber);
+					from = line.from;
+					to = line.to;
 					if (columnMatch) {
-						const columnNumber = parseInt(columnMatch[1], 10) - 1;
-						from = lineStart + Math.min(columnNumber, lines[lineNumber]?.length || 0);
-						to = Math.min(from + 1, lineStart + (lines[lineNumber]?.length || 0));
+						const column = Math.min(Math.max(0, parseInt(columnMatch[1], 10) - 1), line.length);
+						const open = line.text.lastIndexOf('<', column);
+						const close = line.text.indexOf('>', column);
+						from = line.from + (open === -1 ? 0 : open);
+						to = close === -1 ? line.to : line.from + close + 1;
 					}
 				}
 			}
