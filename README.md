@@ -51,7 +51,7 @@ A **Node.js**-based, web SVG editor written in **TypeScript**, with no frontend 
 ### Interactive Preview
 - **Resizable Layout**: Drag the separator between editor and preview to customize panel sizes in both horizontal and vertical modes
 - **Pan & Zoom**: Click and drag to pan, use +/- buttons or pinch gestures to zoom
-- **Select**: Click an element in the preview to select it and its code; click again to walk into a group, Escape to clear
+- **Select**: Click an element in the preview to select it and its code; click again to walk into a group, Ctrl/Cmd+click to add or remove elements, Escape to clear
 - **Edit in the preview**: Drag the selection to move it, drag its handles to resize (Shift keeps the aspect ratio) or the top handle to rotate, nudge it with the arrow keys, Delete removes it, and the duplicate button (or Ctrl/Cmd+D) makes a shifted copy with its own id. Every edit is written into the code as a change to that element's own attributes, and undoes in one step
 - **Rotate and flip the selection**: With an element selected, the rotate and flip buttons act on it about its centre; with nothing selected they act on the whole drawing
 - **Touch Support**: Full multi-touch support with pinch-to-zoom on mobile devices
@@ -333,7 +333,7 @@ The application is built with modern web technologies:
 7. **Resize**: Click the Resize button to change SVG dimensions via modal dialog
 8. **Xray Mode**: Click the eye button to enable visual highlighting - move your cursor through different SVG elements in the code to see them highlighted in the preview
 9. **Pan & Zoom**: Click and drag to pan the SVG; use +/- buttons or pinch gestures to zoom in/out
-10. **Select**: Click an element in the preview to select it and jump to its code; repeated clicks walk from a group into its parts, and the box follows your cursor in the editor
+10. **Select**: Click an element in the preview to select it and jump to its code; repeated clicks walk from a group into its parts, Ctrl/Cmd+click builds a multiple selection, and the box follows your cursor in the editor
 11. **Edit in the preview**: Drag the selection to move it, drag a handle to resize or rotate it, use the arrow keys to nudge it, press Delete to remove it, or duplicate it with the toolbar button or Ctrl/Cmd+D. The rotate and flip buttons act on the selection when there is one
 10. **Dark Mode**: Toggle between light and dark themes with the Dark Mode button
 11. **Layout Toggle**: Click "Flip Screen" to switch between horizontal and vertical layouts

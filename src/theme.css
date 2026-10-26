@@ -267,7 +267,7 @@
       polygon {
         @apply fill-none stroke-header;
       }
-      .select-box {
+      .select-box, .select-more {
         stroke-width: 1.5;
         stroke-dasharray: 5 3;
       }

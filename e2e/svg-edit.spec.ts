@@ -186,4 +186,50 @@ test.describe('SVG Editor Preview Editing', () => {
     await page.locator('#undo').click();
     expect(await getSource(page)).toBe(FIXTURE);
   });
+
+  test('should add to the selection with Ctrl+click and take an element back out', async ({ page }) => {
+    const more = page.locator('.select-overlay .select-more');
+    await page.locator('.svg-container rect').click();
+    await expect(page.locator('[data-handle="se"]')).toBeVisible();
+
+    await page.locator('.svg-container circle').click({ modifiers: ['ControlOrMeta'] });
+    await expect(more).toHaveCount(1);
+    await expect(more).toBeVisible();
+    await expect(page.locator('[data-handle="se"]')).toBeHidden();
+    expect(await page.evaluate(() => {
+      const state = (window as any).svgEditor.editor.state;
+      return state.doc.sliceString(state.selection.main.from, state.selection.main.to) as string;
+    })).toMatch(/^<circle/);
+
+    await page.locator('.svg-container circle').click({ modifiers: ['ControlOrMeta'] });
+    await expect(more).toBeHidden();
+    await expect(page.locator('[data-handle="se"]')).toBeVisible();
+  });
+
+  test('should move, nudge, rotate, and delete a multiple selection together', async ({ page }) => {
+    const rect = page.locator('.svg-container rect');
+    await rect.click();
+    await page.locator('.svg-container circle').click({ modifiers: ['ControlOrMeta'] });
+
+    await drag(page, rect, 10, 20);
+    expect(await getSource(page)).toBe(FIXTURE.replace('x="20" y="20"', 'x="30" y="40"').replace('cx="150" cy="150"', 'cx="160" cy="170"'));
+    await page.locator('#undo').click();
+    expect(await getSource(page)).toBe(FIXTURE);
+
+    await page.locator('.svg-preview-wrapper').focus();
+    await page.keyboard.press('ArrowRight');
+    expect(await getSource(page)).toBe(FIXTURE.replace('x="20"', 'x="21"').replace('cx="150"', 'cx="151"'));
+    await page.locator('#undo').click();
+
+    await page.locator('#rotate').click();
+    expect(await getSource(page)).toContain('fill="#6291e0" transform="rotate(90 50 50)"');
+    expect(await getSource(page)).toContain('fill="#aa0000" transform="rotate(90 150 150)"');
+    await page.locator('#undo').click();
+
+    await page.locator('.svg-preview-wrapper').focus();
+    await page.keyboard.press('Delete');
+    expect(await getSource(page)).toBe('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">\n</svg>');
+    await page.locator('#undo').click();
+    expect(await getSource(page)).toBe(FIXTURE);
+  });
 });
