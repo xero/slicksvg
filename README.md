@@ -252,6 +252,7 @@ e2e/                         # End-to-end tests (Playwright)
 ├── svg-select.spec.ts          # Click-to-select, group walking, editor sync
 ├── svg-edit.spec.ts            # Drag, nudge, resize, rotate, flip, delete
 ├── svg-points.spec.ts          # Point editing mode
+├── svg-cursors.spec.ts         # Handle, drag, and pan cursors
 └── svg-zoom.spec.ts            # Wheel, trackpad, and touch pinch zoom
 ```
 
@@ -309,6 +310,7 @@ e2e/                 # End-to-end tests (Playwright)
 ├── svg-select.spec.ts          # Click-to-select, group walking, editor sync
 ├── svg-edit.spec.ts            # Drag, nudge, resize, rotate, flip, delete
 ├── svg-points.spec.ts          # Point editing mode
+├── svg-cursors.spec.ts         # Handle, drag, and pan cursors
 └── svg-zoom.spec.ts            # Wheel, trackpad, and touch pinch zoom
 
 dist/                # Built assets (generated)

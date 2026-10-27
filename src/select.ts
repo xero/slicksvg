@@ -84,3 +84,25 @@ export function boxCorners(el: Element, origin: Element): Point[] | null {
 		return {x: p.x - o.left, y: p.y - o.top};
 	});
 }
+
+/** The cursor for a resize handle: a two-headed arrow pointing the way the
+ * handle pulls on screen, taken along the element's own axes. A corner of a
+ * wide element still gets a diagonal, and the handles of a rotated element
+ * point the way they face rather than the way their names say. */
+export function handleCursor(handle: string, corners: Point[]): string {
+	const [nw, ne, , sw] = corners;
+	const unit = (p: Point, q: Point): Point=>{
+		const d = Math.hypot(q.x - p.x, q.y - p.y);
+		return d > 0 ? {x: (q.x - p.x) / d, y: (q.y - p.y) / d} : {x: 0, y: 0};
+	};
+	const across = unit(nw, ne);
+	const down = unit(nw, sw);
+	const x = (handle.includes('e') ? 1 : 0) - (handle.includes('w') ? 1 : 0);
+	const y = (handle.includes('s') ? 1 : 0) - (handle.includes('n') ? 1 : 0);
+	const dir = {x: across.x * x + down.x * y, y: across.y * x + down.y * y};
+	const deg = ((Math.atan2(dir.y, dir.x) * 180) / Math.PI + 360) % 180;
+	if (deg < 22.5 || deg >= 157.5) return 'ew-resize';
+	if (deg < 67.5) return 'nwse-resize';
+	if (deg < 112.5) return 'ns-resize';
+	return 'nesw-resize';
+}

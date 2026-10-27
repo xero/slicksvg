@@ -8,7 +8,7 @@ import {tokyoNightStorm} from '@fsegurai/codemirror-theme-tokyo-night-storm';
 import {linter, lintGutter, forceLinting} from '@codemirror/lint';
 import {findElementAtCursor, type ElementRef} from './xray';
 import {startTags, readAttribute, attributesOf, planAttributeEdits, applyChanges, stampSource, parseSource, elementExtent, removalRange, duplicateInsertion, SOURCE_ATTR, type StartTag, type TextChange} from './source-map';
-import {findSvgTarget, selectionChain, nextInChain, ordinalOf, boxCorners} from './select';
+import {findSvgTarget, selectionChain, nextInChain, ordinalOf, boxCorners, handleCursor} from './select';
 import {planMove, planResize, planRotate, planFlip, parentCenter, invert, applyToVector, applyToPoint, pixelsPerUnit, decimalsFor, roundTo, fmt, placesOf, type Matrix, type Point, type Rect, type Handle, type EditPlan} from './geometry';
 import {parsePathData, pathPoints, movePathPoint, insertPathPoint, removePathPoint, nearestPathSegment, polygonPoints, movePolygonPoint, insertPolygonPoint, removePolygonPoint, nearestPolygonEdge} from './path-data';
 import {undo, redo, undoDepth, redoDepth, isolateHistory} from '@codemirror/commands';
@@ -336,15 +336,7 @@ function bboxOf(el: Element): Rect | null {
 	}
 }
 
-/** The resize cursor pointing the way a handle actually faces on screen,
- * which for a rotated element is not the way its name says. */
-function cursorFor(centre: Point, at: Point): string {
-	const deg = ((Math.atan2(at.y - centre.y, at.x - centre.x) * 180) / Math.PI + 180) % 180;
-	if (deg < 22.5 || deg >= 157.5) return 'ew-resize';
-	if (deg < 67.5) return 'nwse-resize';
-	if (deg < 112.5) return 'ns-resize';
-	return 'nesw-resize';
-}
+
 
 class slick {
 	public editor!: EditorView;
@@ -883,6 +875,8 @@ class slick {
 		this.pressToggle = e.ctrlKey || e.metaKey;
 		this.pressX = this.lastPanX = e.clientX;
 		this.pressY = this.lastPanY = e.clientY;
+		// the open hand closes on the press, for the selection and the canvas alike
+		this.svgPreview.style.cursor = 'grabbing';
 		if (this.onSelection(e.target) && !this.pressToggle) {
 			this.gesture = {mode: 'move', handle: null, fromHandle: false, toggle: false, startX: e.clientX, startY: e.clientY, targets: this.selectedElements(), drags: [], point: null};
 			return;
@@ -900,7 +894,6 @@ class slick {
 		// a press that has not travelled is a click in the making, not a pan
 		if (!this.pressMoved && Math.hypot(e.clientX - this.pressX, e.clientY - this.pressY) < DRAG_THRESHOLD) return;
 		this.pressMoved = true;
-		this.svgPreview.style.cursor = '';
 		this.drawBox(this.hoverBox, null);
 		const deltaX = e.clientX - this.lastPanX;
 		const deltaY = e.clientY - this.lastPanY;
@@ -914,6 +907,7 @@ class slick {
 	private endPan(): void {
 		if (this.isPanning && !this.pressMoved) this.clickSelect(this.tapTarget, this.pressToggle);
 		this.isPanning = false;
+		this.svgPreview.style.cursor = '';
 	}
 
 	/** One finger on the canvas: on the selection it starts a move, anywhere
@@ -1120,7 +1114,8 @@ class slick {
 	private hoverAt(e: MouseEvent): void {
 		if (this.isPanning || this.gesture) return;
 		const pick = this.pickAt(e.target);
-		this.svgPreview.style.cursor = this.onSelection(e.target) ? 'move' : pick ? 'pointer' : '';
+		// a hand over the selection says it can be dragged, as over the canvas
+		this.svgPreview.style.cursor = this.onSelection(e.target) ? 'grab' : pick ? 'pointer' : '';
 		this.drawBox(this.hoverBox, pick && !this.selectedElements().includes(pick) ? pick : null);
 	}
 
@@ -1378,7 +1373,7 @@ class slick {
 			} else {
 				handle.setAttribute('x', `${p.x - HANDLE_SIZE / 2}`);
 				handle.setAttribute('y', `${p.y - HANDLE_SIZE / 2}`);
-				handle.style.cursor = cursorFor(centre, p);
+				handle.style.cursor = handleCursor(name, corners);
 			}
 		}
 		this.rotateLink.setAttribute('x1', `${top.x}`);
@@ -1542,7 +1537,10 @@ class slick {
 		if (drags.length === 0) return false;
 		g.drags = drags;
 		this.drawBox(this.hoverBox, null);
-		this.svgPreview.style.cursor = g.mode === 'move' ? 'move' : '';
+		// the cursor keeps the shape of the drag wherever the pointer strays:
+		// a closed hand for a move, and a handle's own arrow for its resize
+		const shapes: Record<GestureMode, string> = {move: 'grabbing', rotate: 'move', point: 'move', resize: this.handleEls.get(g.handle ?? '')?.style.cursor ?? ''};
+		this.svgPreview.style.cursor = shapes[g.mode];
 		return true;
 	}
 

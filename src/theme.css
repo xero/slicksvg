@@ -308,8 +308,9 @@
           stroke-width: 1.5;
           touch-action: none;
         }
+        /* the rotate handle; each resize handle is given the arrow for the way it faces */
         circle {
-          cursor: grab;
+          cursor: move;
         }
         line {
           @apply stroke-header;

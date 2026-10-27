@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { findSvgTarget, selectionChain, nextInChain, isGraphical, ordinalOf } from '../src/select';
+import { findSvgTarget, selectionChain, nextInChain, isGraphical, ordinalOf, handleCursor } from '../src/select';
 
 const markup = `<div class="svg-container"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">
   <defs><filter id="f"/></defs>
@@ -71,5 +71,44 @@ describe('Preview selection picking', () => {
     expect(ordinalOf(second, container, source)).toBe(7);
     expect(ordinalOf(first, container, source)).toBe(1);
     expect(ordinalOf(document.createElement('div'), container, source)).toBeNull();
+  });
+});
+
+describe('handleCursor', () => {
+  /** The screen corners of a w by h box turned by deg about its middle. */
+  const corners = (w: number, h: number, deg = 0) => {
+    const r = (deg * Math.PI) / 180;
+    return [[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2], [-w / 2, h / 2]].map(([x, y]) => ({
+      x: x * Math.cos(r) - y * Math.sin(r),
+      y: x * Math.sin(r) + y * Math.cos(r),
+    }));
+  };
+  const all = (box: { x: number; y: number }[]) =>
+    Object.fromEntries(['nw', 'ne', 'se', 'sw', 'n', 'e', 's', 'w'].map(h => [h, handleCursor(h, box)]));
+
+  it('gives a square its diagonals on the corners and straight arrows on the sides', () => {
+    expect(all(corners(100, 100))).toEqual({
+      nw: 'nwse-resize', ne: 'nesw-resize', se: 'nwse-resize', sw: 'nesw-resize',
+      n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize',
+    });
+  });
+
+  it('keeps the diagonals on the corners of a wide or tall box', () => {
+    expect(all(corners(400, 20))).toEqual(all(corners(100, 100)));
+    expect(all(corners(20, 400))).toEqual(all(corners(100, 100)));
+  });
+
+  it('points the way a handle faces once the box is turned', () => {
+    // a quarter turn puts the nw corner top right and the n side on the right
+    expect(all(corners(100, 50, 90))).toEqual({
+      nw: 'nesw-resize', ne: 'nwse-resize', se: 'nesw-resize', sw: 'nwse-resize',
+      n: 'ew-resize', s: 'ew-resize', e: 'ns-resize', w: 'ns-resize',
+    });
+    // an eighth turn stands the nw corner straight up and lays the n side on a diagonal
+    expect(all(corners(100, 100, 45))).toMatchObject({ nw: 'ns-resize', ne: 'ew-resize', n: 'nesw-resize', e: 'nwse-resize' });
+  });
+
+  it('settles on a sideways arrow for a box with no size', () => {
+    expect(handleCursor('nw', corners(0, 0))).toBe('ew-resize');
   });
 });
