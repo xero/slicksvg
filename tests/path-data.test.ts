@@ -51,6 +51,15 @@ describe('Path data geometry', () => {
     expect(walkPath(parsePathData('M0 0 L5 5 S 20 -10 20 0')!)[2].cp1).toEqual({ x: 5, y: 5 });
   });
 
+  it('should offer a closed subpath\'s first point once when its last segment ends on it', () => {
+    const slots = (d: string) => pathPoints(parsePathData(d)!).map(p => `${p.segment}:${p.slot}`);
+    expect(slots('M0 0 L20 0 C20 20 10 10 0 0 Z')).toEqual(['0:end', '1:end', '2:cp1', '2:cp2']);
+    expect(slots('m0 0 l.1 0 l.2 0 l-.3 0 z')).toEqual(['0:end', '1:end', '2:end']);
+    // a point one unit away is a point of its own
+    expect(slots('M0 0 L10 0 L0 1 Z')).toEqual(['0:end', '1:end', '2:end']);
+    expect(slots('M0 0 L10 0 L0 0')).toEqual(['0:end', '1:end', '2:end']);
+  });
+
   it('should offer every anchor and the handles a curve writes out', () => {
     const pts = pathPoints(parsePathData('M0 0 C0 10 10 10 10 0 S20 -10 20 0 Q25 5 30 0 Z')!);
     expect(pts.map(p => `${p.segment}:${p.slot}`)).toEqual(['0:end', '1:cp1', '1:cp2', '1:end', '2:cp2', '2:end', '3:cp1', '3:end']);
@@ -97,6 +106,28 @@ describe('Moving a path point', () => {
     expect(movePathPoint('M0 0 L10 0', { segment: 1, slot: 'end' }, { x: 12.25, y: 0 }, 2)).toBe('M0 0 L12.25 0');
   });
 
+  it('should keep numbers apart that a sign kept apart', () => {
+    expect(movePathPoint('M0 0L10-5', { segment: 1, slot: 'end' }, { x: 10, y: 3 }, 0)).toBe('M0 0L10 3');
+    expect(movePathPoint('M0 0c1-2,3-4,5-6', { segment: 1, slot: 'end' }, { x: 5, y: 6 }, 0)).toBe('M0 0c1-2,3 8,5 6');
+    expect(movePathPoint('M0 0L1-.5', { segment: 1, slot: 'end' }, { x: 1, y: 0.5 }, 0)).toBe('M0 0L1 0.5');
+    expect(movePathPoint('M0 0L1.5-.5', { segment: 1, slot: 'end' }, { x: 1.5, y: -0.25 }, 2)).toBe('M0 0L1.5-0.25');
+  });
+
+  it('should keep the numbers of a point whose letter changes around it', () => {
+    expect(movePathPoint('M0 0 H10.5 V10', { segment: 1, slot: 'end' }, { x: 11, y: 0 }, 0)).toBe('M0 0 H11 L10.5 10');
+    expect(movePathPoint('M0 0 L1 2.25 H10', { segment: 1, slot: 'end' }, { x: 1, y: 3 }, 0)).toBe('M0 0 L1 3 L10 2.25');
+  });
+
+  it('should give a group its letter back when the letter it borrowed changes', () => {
+    expect(movePathPoint('M0 0 H10 20 30', { segment: 1, slot: 'end' }, { x: 10, y: 5 }, 0)).toBe('M0 0 L10 5 L20 0 H30');
+    expect(movePathPoint('m0 0 h10 20 30', { segment: 1, slot: 'end' }, { x: 10, y: 5 }, 0)).toBe('m0 0 l10 5 l20 -5 h30');
+  });
+
+  it('should move a subpath\'s first point with the end that closes onto it', () => {
+    expect(movePathPoint('M0 0 L20 0 C20 20 10 10 0 0 Z', { segment: 0, slot: 'end' }, { x: 5, y: 5 }, 0)).toBe('M5 5 L20 0 C20 20 15 15 5 5 Z');
+    expect(movePathPoint('m0 0 l20 0 c0 20 -10 10 -20 0 z', { segment: 0, slot: 'end' }, { x: 5, y: 5 }, 0)).toBe('m5 5 l15 -5 c0 20 -5 15 -15 5 z');
+  });
+
   it('should refuse a Z, a handle a command does not have, or a path it cannot read', () => {
     expect(movePathPoint('M0 0 L1 1 Z', { segment: 2, slot: 'end' }, { x: 0, y: 0 }, 0)).toBeNull();
     expect(movePathPoint('M0 0 L1 1', { segment: 1, slot: 'cp1' }, { x: 0, y: 0 }, 0)).toBeNull();
@@ -122,6 +153,13 @@ describe('Adding a path point', () => {
       .toBe('M0 0 C0 5 2.5 7.5 5 7.5 C7.5 7.5 10 5 10 0 C10 -10 20 -10 20 0');
   });
 
+  it('should give the groups after a split the letter they borrowed', () => {
+    expect(insertPathPoint('M0 0 C0 10 10 10 10 0 S20 -10 20 0 30 10 30 0', 1, 0.5, 1))
+      .toBe('M0 0 C0 5 2.5 7.5 5 7.5 C7.5 7.5 10 5 10 0 C10 -10 20 -10 20 0 S30 10 30 0');
+    expect(insertPathPoint('M0 0 S20 -10 20 0 30 10 30 0', 1, 0.5, 1))
+      .toBe('M0 0 C0 0 5 -2.5 10 -3.8 C15 -5 20 -5 20 0 C20 10 30 10 30 0');
+  });
+
   it('should put a point on the closing line of a Z', () => {
     expect(insertPathPoint('M0 0 L10 0 L10 10 Z', 3, 0.5, 0)).toBe('M0 0 L10 0 L10 10 L5 5 Z');
   });
@@ -141,14 +179,25 @@ describe('Removing a path point', () => {
   });
 
   it('should keep a letter that the next group still needs', () => {
-    expect(removePathPoint('M0 0 L1 1 2 2 3 3', 1, 0)).toBe('M0 0 L 2 2 3 3');
+    expect(removePathPoint('M0 0 L1 1 2 2 3 3', 1, 0)).toBe('M0 0 L2 2 3 3');
     expect(removePathPoint('M0 0 L1 1 2 2 3 3', 2, 0)).toBe('M0 0 L1 1 3 3');
+  });
+
+  it('should write out a group that leaned on the point that went', () => {
+    expect(removePathPoint('M0 0 C0 10 10 10 10 0 S20 -10 20 0 30 10 30 0', 2, 0)).toBe('M0 0 C0 10 10 10 10 0 C20 10 30 10 30 0');
+    expect(removePathPoint('M0 0 L10 0 S20 -10 20 0 30 10 30 0', 2, 0)).toBe('M0 0 L10 0 C20 10 30 10 30 0');
+  });
+
+  it('should keep every digit of a relative command whose start moved', () => {
+    expect(removePathPoint('m0 0 l1.25 0 l1 1 m3 0', 2, 0)).toBe('m0 0 l1.25 0 m4 1');
+    expect(removePathPoint('m0 0 c1 1 2 2 3.125 0 m1 0', 1, 0)).toBe('m0 0 m4.125 0');
   });
 
   it('should make the next point the start when the first point goes', () => {
     expect(removePathPoint('M0 0 L10 0 L20 0', 0, 0)).toBe('M10 0 L20 0');
     expect(removePathPoint('M0 0 C1 1 2 2 10 0 L20 0', 0, 0)).toBe('M10 0 L20 0');
-    expect(removePathPoint('M0 0 L1 1 2 2', 0, 0)).toBe('M1 1 2 2');
+    expect(removePathPoint('M0 0 L1 1 2 2', 0, 0)).toBe('M1 1 L2 2');
+    expect(removePathPoint('M0 0 1 1 2 2', 0, 0)).toBe('M1 1 2 2');
     // a bare group after the new M reads by the M's case, so a relative one keeps its letter
     expect(removePathPoint('M0 0 l10 10 20 20', 0, 0)).toBe('M10 10 l20 20');
     expect(removePathPoint('m0 0 L10 10 20 20', 0, 0)).toBe('m10 10 L20 20');
@@ -159,6 +208,14 @@ describe('Removing a path point', () => {
     expect(removePathPoint('M0 0 Z', 0, 0)).toBe('');
     expect(removePathPoint('M0 0 L5 5 Z M10 10 Z', 3, 0)).toBe('M0 0 L5 5 Z');
     expect(removePathPoint('M0 0 L1 1 Z', 2, 0)).toBeNull();
+    expect(removePathPoint('M0 0 C10 -10 10 10 0 0 Z M30 0 L40 0', 0, 0)).toBe('M30 0 L40 0');
+  });
+
+  it('should join the neighbours of a closed subpath\'s first point when it goes', () => {
+    const d = 'M0 0 L20 0 L20 20 L0 20 C-5 15 -5 5 0 0 Z';
+    expect(removePathPoint(d, 0, 0)).toBe('M0 20 L20 0 L20 20 L0 20 Z');
+    expect(pathPoints(parsePathData(removePathPoint(d, 0, 0)!)!).map(p => `${p.segment}:${p.slot}`)).toEqual(['0:end', '1:end', '2:end']);
+    expect(removePathPoint('m0 0 l20 0 l0 20 l-20 0 l0 -20 z', 0, 0)).toBe('m0 20 l20 -20 l0 20 l-20 0 z');
   });
 });
 
