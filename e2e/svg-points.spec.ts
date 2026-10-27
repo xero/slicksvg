@@ -461,6 +461,36 @@ test.describe('SVG Editor Point Editing', () => {
     await expect(page.locator('.points rect.selected')).toHaveCount(1);
   });
 
+  test('should take in both handles of a curve together, when the first leaves it straight', async ({ page }) => {
+    // the first handle lies on the chord, so taking in the second straightens the curve
+    await setContent(page, FIXTURE.replace('M20 20 L100 20 L100 100 Z', 'M20 100 C40 100 100 60 100 100 L100 140 Z'));
+    await page.locator('.svg-container path').click();
+    await page.keyboard.press('Enter');
+    await page.locator('#point-several').click();
+    await page.locator('.points [data-point="2"]').click();
+    await page.locator('.points [data-point="1"]').click();
+    await expect(page.locator('.points circle.selected')).toHaveCount(2);
+    await page.keyboard.press('Delete');
+    expect(await getSource(page)).toContain('d="M20 100 L100 100 L100 140 Z"');
+  });
+
+  test('should let a drag across the drawing go with Escape, still editing points', async ({ page }) => {
+    await page.locator('.svg-container polygon').click();
+    await page.keyboard.press('Enter');
+    await page.locator('#point-several').click();
+    const from = await at(page, 110, 110);
+    const to = await at(page, 190, 190);
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(to.x, to.y, { steps: 4 });
+    await expect(page.locator('.marquee')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.marquee')).toBeHidden();
+    await page.mouse.up();
+    await expect(page.locator('#point-tools')).toBeVisible();
+    await expect(page.locator('.points rect.selected')).toHaveCount(0);
+  });
+
   test('should keep a line end\'s written precision when nudged', async ({ page }) => {
     await setContent(page, FIXTURE.replace('<path id="p" d="M20 20 L100 20 L100 100 Z" fill="#6291e0"/>', '<line id="ln" x1="10.5" y1="40" x2="100" y2="40" stroke="#6291e0" stroke-width="8"/>'));
     // a line has no area, so Playwright will not click it by locator; aim at its stroke
