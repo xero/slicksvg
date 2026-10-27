@@ -168,6 +168,76 @@ test.describe('SVG Editor Point Editing', () => {
     await expect(page.locator('.points rect')).toHaveCount(4);
   });
 
+  test('should put the point tools in the preview bar while editing', async ({ page }) => {
+    const tools = page.locator('#point-tools');
+    await expect(tools).toBeHidden();
+    await page.locator('.svg-container path').click();
+    await page.locator('#points').click();
+    await expect(tools).toBeVisible();
+    await expect(page.locator('#dark')).toBeHidden();
+    await expect(page.locator('#flip')).toBeHidden();
+    await expect(page.locator('#zoomin')).toBeVisible();
+
+    const remove = page.locator('#point-delete');
+    await expect(remove).toBeDisabled();
+    await page.locator('.points [data-point="1"]').click();
+    await expect(remove).toBeEnabled();
+    await remove.click();
+    expect(await getSource(page)).toBe(FIXTURE.replace('L100 20 L100 100', 'L100 100'));
+    await expect(page.locator('.points rect')).toHaveCount(2);
+    await expect(remove).toBeDisabled();
+
+    await page.locator('#point-done').click();
+    await expect(tools).toBeHidden();
+    await expect(page.locator('#dark')).toBeVisible();
+    await expect(page.locator('#points')).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.locator('[data-handle="se"]')).toBeVisible();
+  });
+
+  test('should take hold of a point pressed near its marker', async ({ page }) => {
+    await page.locator('.svg-container path').click();
+    await page.keyboard.press('Enter');
+    // a few pixels off the marker of the point at 100,20
+    const near = await at(page, 106, 25);
+    await page.mouse.move(near.x, near.y);
+    await page.mouse.down();
+    await page.mouse.move(near.x + 10, near.y + 5, { steps: 4 });
+    await page.mouse.move(near.x + 20, near.y + 10, { steps: 4 });
+    await page.mouse.up();
+    expect(await getSource(page)).toBe(FIXTURE.replace('L100 20', 'L120 30'));
+  });
+
+  test('should put a handle back into its anchor with Delete, and select the anchor', async ({ page }) => {
+    await setContent(page, FIXTURE.replace('M20 20 L100 20 L100 100 Z', 'M20 100 C20 20 100 20 100 100 L180 100'));
+    const inside = await at(page, 60, 70);
+    await page.mouse.click(inside.x, inside.y);
+    await page.keyboard.press('Enter');
+    await expect(page.locator('.points circle')).toHaveCount(2);
+    await page.locator('.points [data-point="2"]').click();
+    await expect(page.locator('#point-delete')).toHaveAttribute('aria-label', 'delete handle');
+    await page.keyboard.press('Delete');
+    expect(await getSource(page)).toContain('d="M20 100 C20 20 100 100 100 100 L180 100"');
+    // a handle on its anchor is hidden, and the anchor it went into is selected
+    await expect(page.locator('.points circle')).toHaveCount(1);
+    await expect(page.locator('.points rect.selected')).toHaveCount(1);
+    expect(await editorSelection(page)).toBe('100 100');
+
+    // with both handles in, the curve is a line and is written as one
+    await page.locator('.points [data-point="1"]').click();
+    await page.locator('#point-delete').click();
+    expect(await getSource(page)).toContain('d="M20 100 L100 100 L180 100"');
+    await expect(page.locator('.points circle')).toHaveCount(0);
+  });
+
+  test('should offer a closed path\'s first point once when its last curve ends on it', async ({ page }) => {
+    await setContent(page, FIXTURE.replace('M20 20 L100 20 L100 100 Z', 'M20 20 L100 20 L100 100 C60 100 20 60 20 20 Z'));
+    await page.locator('.svg-container path').click();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('.points rect')).toHaveCount(3);
+    await dragPoint(page, 0, 10, 0);
+    expect(await getSource(page)).toContain('d="M30 20 L100 20 L100 100 C60 100 30 60 30 20 Z"');
+  });
+
   test('should keep a line end\'s written precision when nudged', async ({ page }) => {
     await setContent(page, FIXTURE.replace('<path id="p" d="M20 20 L100 20 L100 100 Z" fill="#6291e0"/>', '<line id="ln" x1="10.5" y1="40" x2="100" y2="40" stroke="#6291e0" stroke-width="8"/>'));
     // a line has no area, so Playwright will not click it by locator; aim at its stroke
@@ -177,5 +247,46 @@ test.describe('SVG Editor Point Editing', () => {
     await page.locator('.points [data-point="0"]').click();
     await page.keyboard.press('ArrowRight');
     expect(await getSource(page)).toContain('<line id="ln" x1="11.5" y1="40"');
+  });
+});
+
+test.describe('SVG Editor Point Editing on a touch screen', () => {
+  test.use({ viewport: { width: 820, height: 1180 }, hasTouch: true, isMobile: true });
+
+  test('should make every button a fingertip wide, and scroll a bar too narrow for them', async ({ page }) => {
+    await page.goto('/index.html');
+    await expect(page.locator('.svg-container svg')).toBeVisible();
+    for (const id of ['upload', 'zoomin', 'dark']) {
+      const box = (await page.locator(`#${id}`).boundingBox())!;
+      expect(box.width).toBeGreaterThanOrEqual(44);
+      expect(box.height).toBeGreaterThanOrEqual(44);
+    }
+    // side by side on a portrait tablet, the code's bar is narrower than its buttons
+    const bar = page.locator('#editor nav');
+    const [scroll, width] = await bar.evaluate((nav) => [nav.scrollWidth, nav.clientWidth]);
+    expect(scroll).toBeGreaterThan(width);
+    await page.locator('#xray').scrollIntoViewIfNeeded();
+    await expect(page.locator('#xray')).toBeInViewport();
+  });
+
+  test('should take hold of a point a fingertip away from its marker', async ({ page }) => {
+    await page.goto('/index.html');
+    await expect(page.locator('.svg-container svg')).toBeVisible();
+    await setContent(page, FIXTURE);
+    await page.locator('.svg-container path').tap();
+    await page.locator('#points').tap();
+    await expect(page.locator('.points rect')).toHaveCount(3);
+    // fifteen pixels off the marker of the point at 100,20, a touch's slip
+    const marker = (await page.locator('.points [data-point="1"]').boundingBox())!;
+    const x = marker.x + marker.width / 2 + 12;
+    const y = marker.y + marker.height / 2 + 9;
+    const cdp = await page.context().newCDPSession(page);
+    const touch = (px: number, py: number) => [{ x: px, y: py, id: 1 }];
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: touch(x, y) });
+    for (const step of [5, 10, 15, 20]) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: touch(x + step, y) });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await expect(page.locator('#point-delete')).toBeEnabled();
+    expect(await getSource(page)).toMatch(/d="M20 20 L\d+(\.\d+)? 20 L100 100 Z"/);
+    expect(await getSource(page)).not.toContain('L100 20 ');
   });
 });

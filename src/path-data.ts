@@ -182,21 +182,21 @@ export function walkPath(segments: Segment[]): Walked[] {
 	return out;
 }
 
-/** The finest precision a path's numbers are written to. */
-function placesIn(segments: Segment[]): number {
+/** Half a unit of the last place a path's numbers are written to: two
+ * points nearer than that are as one as its numbers can say. */
+function reachOf(segments: Segment[]): number {
 	let places = 0;
 	for (const seg of segments) for (const a of seg.args) places = Math.max(places, placesOf(a.value));
-	return places;
+	return 0.5 * 10 ** -places;
 }
 
 /**
  * The segments that end a subpath back on its first point just before its
  * Z, each with the M it meets. That is one anchor, the M's, so it is offered
- * once and moves as one. "Back on" allows half a unit of the path's last
- * place, as near as its numbers can say two points are one.
+ * once and moves as one.
  */
 function closingEnds(segments: Segment[], walked: Walked[]): Map<number, number> {
-	const reach = 0.5 * 10 ** -placesIn(segments);
+	const reach = reachOf(segments);
 	const ends = new Map<number, number>();
 	let m = 0;
 	segments.forEach((seg, i)=>{
@@ -211,18 +211,21 @@ function closingEnds(segments: Segment[], walked: Walked[]): Map<number, number>
 }
 
 /** The points a person can take hold of: every anchor, and the control
- * points a curve writes out. */
+ * points a curve writes out, but for one that sits on its anchor, which
+ * would only cover the anchor up. */
 export function pathPoints(segments: Segment[]): PathPoint[] {
 	const walked = walkPath(segments);
 	const closing = closingEnds(segments, walked);
+	const reach = reachOf(segments);
+	const apart = (p: Point, q: Point): boolean=>Math.hypot(p.x - q.x, p.y - q.y) > reach;
 	const points: PathPoint[] = [];
 	segments.forEach((seg, i)=>{
 		const w = walked[i];
 		const kind = lower(seg.letter);
 		if (kind === 'z') return;
-		if (kind === 'c' && w.cp1) points.push({segment: i, slot: 'cp1', x: w.cp1.x, y: w.cp1.y, anchors: [w.start]});
-		if ((kind === 'c' || kind === 's') && w.cp2) points.push({segment: i, slot: 'cp2', x: w.cp2.x, y: w.cp2.y, anchors: [w.end]});
-		if (kind === 'q' && w.cp1) points.push({segment: i, slot: 'cp1', x: w.cp1.x, y: w.cp1.y, anchors: [w.start, w.end]});
+		if (kind === 'c' && w.cp1 && apart(w.cp1, w.start)) points.push({segment: i, slot: 'cp1', x: w.cp1.x, y: w.cp1.y, anchors: [w.start]});
+		if ((kind === 'c' || kind === 's') && w.cp2 && apart(w.cp2, w.end)) points.push({segment: i, slot: 'cp2', x: w.cp2.x, y: w.cp2.y, anchors: [w.end]});
+		if (kind === 'q' && w.cp1 && apart(w.cp1, w.start) && apart(w.cp1, w.end)) points.push({segment: i, slot: 'cp1', x: w.cp1.x, y: w.cp1.y, anchors: [w.start, w.end]});
 		if (!closing.has(i)) points.push({segment: i, slot: 'end', x: w.end.x, y: w.end.y, anchors: []});
 	});
 	return points;
@@ -565,6 +568,41 @@ export function removePathPoint(d: string, segment: number, decimals: number): s
 		plan[segment][0].end = walked[segment + 1].end;
 		plan[segment + 1] = [];
 	}
+	return write(d, e, decimals);
+}
+
+/** Whether a cubic's handles both lie on the line from its start to its end,
+ * so that it draws that line. */
+function straightCubic(start: Point, cp1: Point, cp2: Point, end: Point, reach: number): boolean {
+	const chord = {x: end.x - start.x, y: end.y - start.y};
+	const length = Math.hypot(chord.x, chord.y);
+	const on = (p: Point): boolean=>{
+		const v = {x: p.x - start.x, y: p.y - start.y};
+		if (length <= reach) return Math.hypot(v.x, v.y) <= reach;
+		const along = (v.x * chord.x + v.y * chord.y) / length;
+		return Math.abs(v.x * chord.y - v.y * chord.x) / length <= reach && along >= -reach && along <= length + reach;
+	};
+	return on(cp1) && on(cp2);
+}
+
+/**
+ * Put a curve's handle back into its anchor. A quadratic's one handle shapes
+ * both its ends, so it becomes the line between them; a cubic left with both
+ * handles on its chord draws a line, and is written as one.
+ */
+export function retractPathHandle(d: string, point: {segment: number; slot: 'cp1' | 'cp2'}, decimals: number): string | null {
+	const e = begin(d);
+	const seg = e?.segments.at(point.segment);
+	if (!e || !seg) return null;
+	const w = e.walked[point.segment];
+	const t = e.plan[point.segment][0];
+	const kind = lower(seg.letter);
+	const line = {letter: isRelative(seg.letter) ? 'l' : 'L', cp1: null, cp2: null, end: w.end};
+	if (kind === 'q' && point.slot === 'cp1') t.cp1 = w.start;
+	else if (kind === 'c' && point.slot === 'cp1') t.cp1 = w.start;
+	else if ((kind === 'c' || kind === 's') && point.slot === 'cp2') t.cp2 = w.end;
+	else return null;
+	if (kind === 'q' || (t.cp1 && t.cp2 && straightCubic(w.start, t.cp1, t.cp2, w.end, reachOf(e.segments)))) e.plan[point.segment] = [line];
 	return write(d, e, decimals);
 }
 

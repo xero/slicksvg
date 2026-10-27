@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  parsePathData, walkPath, pathPoints, movePathPoint, insertPathPoint, removePathPoint, nearestPathSegment,
+  parsePathData, walkPath, pathPoints, movePathPoint, insertPathPoint, removePathPoint, retractPathHandle, nearestPathSegment,
   parsePoints, polygonPoints, movePolygonPoint, insertPolygonPoint, removePolygonPoint, nearestPolygonEdge,
 } from '../src/path-data';
 
@@ -216,6 +216,31 @@ describe('Removing a path point', () => {
     expect(removePathPoint(d, 0, 0)).toBe('M0 20 L20 0 L20 20 L0 20 Z');
     expect(pathPoints(parsePathData(removePathPoint(d, 0, 0)!)!).map(p => `${p.segment}:${p.slot}`)).toEqual(['0:end', '1:end', '2:end']);
     expect(removePathPoint('m0 0 l20 0 l0 20 l-20 0 l0 -20 z', 0, 0)).toBe('m0 20 l20 -20 l0 20 l-20 0 z');
+  });
+});
+
+describe('Retracting a handle', () => {
+  it('should put a cubic\'s handle on its anchor, and write a straight cubic as a line', () => {
+    expect(retractPathHandle('M0 0 C0 10 10 10 10 0', { segment: 1, slot: 'cp2' }, 0)).toBe('M0 0 C0 10 10 0 10 0');
+    expect(retractPathHandle('M0 0 C0 10 10 0 10 0', { segment: 1, slot: 'cp1' }, 0)).toBe('M0 0 L10 0');
+    expect(retractPathHandle('m0 0 c0 0 5 0 10 0', { segment: 1, slot: 'cp2' }, 0)).toBe('m0 0 l10 0');
+    expect(retractPathHandle('M0 0 C0 10 10 10 10 0 S20 -10 20 0', { segment: 2, slot: 'cp2' }, 0)).toBe('M0 0 C0 10 10 10 10 0 S20 0 20 0');
+  });
+
+  it('should make a quadratic a line, writing out a T that leaned on it', () => {
+    expect(retractPathHandle('M0 0 Q5 10 10 0', { segment: 1, slot: 'cp1' }, 0)).toBe('M0 0 L10 0');
+    expect(retractPathHandle('M0 0 Q5 10 10 0 T20 0', { segment: 1, slot: 'cp1' }, 0)).toBe('M0 0 L10 0 Q15 -10 20 0');
+  });
+
+  it('should refuse a segment with no such handle', () => {
+    expect(retractPathHandle('M0 0 L10 0', { segment: 1, slot: 'cp1' }, 0)).toBeNull();
+    expect(retractPathHandle('M0 0 C0 10 10 10 10 0 S20 -10 20 0', { segment: 2, slot: 'cp1' }, 0)).toBeNull();
+  });
+
+  it('should not offer a handle that sits on its anchor', () => {
+    const slots = (d: string) => pathPoints(parsePathData(d)!).map(p => `${p.segment}:${p.slot}`);
+    expect(slots('M0 0 C0 0 10 10 10 0')).toEqual(['0:end', '1:cp2', '1:end']);
+    expect(slots('M0 0 Q0 0 10 0')).toEqual(['0:end', '1:end']);
   });
 });
 

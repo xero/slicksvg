@@ -121,8 +121,9 @@
     #preview {
       @apply w-1/2 z-10;
     }
+		/* the end, unless the buttons outgrow the bar: then they scroll from the start */
 		#preview nav {
-			@apply justify-end;
+			justify-content: safe flex-end;
 		}
     &.vertical {
       @apply flex-col;
@@ -131,7 +132,7 @@
         @apply w-full;
       }
 			#preview nav {
-				@apply justify-start;
+				justify-content: flex-start;
 			}
     }
 		.cm-editor {
@@ -163,7 +164,11 @@
 		}
 	}
   button {
-    @apply flex cursor-pointer items-center text-face bg-btn mr-2;
+    @apply flex shrink-0 cursor-pointer items-center justify-center text-face bg-btn mr-2;
+    /* on a touch screen a button is as wide as a fingertip */
+    @media (pointer: coarse) {
+      @apply min-w-11 min-h-11;
+    }
     &:hover,
     &:active,
     &:focus,
@@ -204,6 +209,17 @@
 			box-shadow:
 				0 0 0 2px var(--color-menu-outside),
 				0 0 0 3px var(--color-bounds);
+		}
+		/* a bar too narrow for its buttons scrolls rather than hiding them */
+		nav {
+			@apply overflow-x-auto;
+			scrollbar-width: none;
+			&::-webkit-scrollbar {
+				@apply hidden;
+			}
+		}
+		#point-tools {
+			@apply flex flex-row items-center;
 		}
   }
   #editor {

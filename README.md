@@ -53,9 +53,9 @@ A **Node.js**-based, web SVG editor written in **TypeScript**, with no frontend 
 - **Pan & Zoom**: Click and drag or scroll to pan; zoom with the +/- buttons, Ctrl/Cmd+wheel, a trackpad pinch, or two fingers, about the spot under the pointer
 - **Select**: Click an element in the preview to select it and its code; click again to walk into a group, Ctrl/Cmd+click to add or remove elements, Escape to clear
 - **Edit in the preview**: Drag the selection to move it, drag a corner handle to resize it in proportion or a side handle to stretch one axis (Shift swaps the two) or the top handle to rotate, nudge it with the arrow keys, Delete removes it, and the duplicate button (or Ctrl/Cmd+D) makes a shifted copy with its own id. Every edit is written into the code as a change to that element's own attributes, and undoes in one step
-- **Edit points**: With a path, polygon, polyline, or line selected, press Enter, double-click it, or use the points button to edit its points. Drag anchors and curve handles, double-click the outline to add a point, Delete removes one, and the arrow keys nudge it. The code changes only the numbers that moved, and keeps absolute and relative commands as they were
+- **Edit points**: With a path, polygon, polyline, or line selected, press Enter, double-click it, or use the points button to edit its points. Drag anchors and curve handles (a press near a point takes hold of it, a fingertip's width on a touch screen), double-click the outline to add a point, and nudge one with the arrow keys. While you edit, the preview bar holds the point tools: Delete removes the selected point, or puts a handle back into its anchor, and Done finishes. The code changes only the numbers that moved, and keeps absolute and relative commands as they were
 - **Rotate and flip the selection**: With an element selected, the rotate and flip buttons act on it about its centre; with nothing selected they act on the whole drawing
-- **Touch Support**: Full multi-touch support: two fingers pinch-zoom the drawing (never the page) about the spot between them, one finger pans or drags
+- **Touch Support**: Full multi-touch support: two fingers pinch-zoom the drawing (never the page) about the spot between them, one finger pans or drags; on a touch screen every button is a fingertip wide, and a toolbar too narrow for its buttons scrolls
 - **Responsive Design**: Adapts to different screen sizes and orientations
 - **Visual Feedback**: Real-time zoom level announcements for accessibility
 
@@ -345,7 +345,7 @@ The application is built with modern web technologies:
 8. **Xray Mode**: Click the eye button to enable visual highlighting - move your cursor through different SVG elements in the code to see them highlighted in the preview
 9. **Pan & Zoom**: Click and drag or scroll to pan the SVG; use the +/- buttons, Ctrl/Cmd+wheel, or a pinch to zoom in/out about the pointer
 10. **Select**: Click an element in the preview to select it and jump to its code; repeated clicks walk from a group into its parts, Ctrl/Cmd+click builds a multiple selection, and the box follows your cursor in the editor
-11. **Edit points**: Select a path, polygon, polyline, or line and press Enter (or double-click it) to edit its points: drag them, double-click the outline to add one, Delete to remove one, Escape to finish
+11. **Edit points**: Select a path, polygon, polyline, or line and press Enter (or double-click it) to edit its points: drag them, double-click the outline to add one, Delete (or the delete button in the preview bar) to remove one or retract a handle, Escape or Done to finish
 12. **Edit in the preview**: Drag the selection to move it, drag a handle to resize or rotate it, use the arrow keys to nudge it, press Delete to remove it, or duplicate it with the toolbar button or Ctrl/Cmd+D. The rotate and flip buttons act on the selection when there is one
 10. **Dark Mode**: Toggle between light and dark themes with the Dark Mode button
 11. **Layout Toggle**: Click "Flip Screen" to switch between horizontal and vertical layouts

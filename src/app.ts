@@ -10,7 +10,7 @@ import {findElementAtCursor, type ElementRef} from './xray';
 import {startTags, readAttribute, attributesOf, planAttributeEdits, applyChanges, stampSource, parseSource, elementExtent, removalRange, duplicateInsertion, SOURCE_ATTR, type StartTag, type TextChange} from './source-map';
 import {findSvgTarget, selectionChain, nextInChain, ordinalOf, boxCorners, handleCursor} from './select';
 import {planMove, planResize, planRotate, planFlip, parentCenter, invert, applyToVector, applyToPoint, pixelsPerUnit, decimalsFor, roundTo, fmt, placesOf, type Matrix, type Point, type Rect, type Handle, type EditPlan} from './geometry';
-import {parsePathData, pathPoints, movePathPoint, insertPathPoint, removePathPoint, nearestPathSegment, polygonPoints, movePolygonPoint, insertPolygonPoint, removePolygonPoint, nearestPolygonEdge} from './path-data';
+import {parsePathData, pathPoints, movePathPoint, insertPathPoint, removePathPoint, retractPathHandle, nearestPathSegment, polygonPoints, movePolygonPoint, insertPolygonPoint, removePolygonPoint, nearestPolygonEdge} from './path-data';
 import {undo, redo, undoDepth, redoDepth, isolateHistory} from '@codemirror/commands';
 import {ZOOM_STEP, zoomAbout, pinchView, wheelZoomFactor, wheelPan, type View, type Pinch} from './view';
 
@@ -198,6 +198,9 @@ interface PointMode {
 
 /** How far, in screen pixels, a double-click may be from the outline to add a point there. */
 const ADD_POINT_REACH = 12;
+/** How far, in screen pixels, a press may land from a point and still take
+ * hold of it: a marker is small, and a fingertip is not. */
+const POINT_REACH = window.matchMedia('(pointer: coarse)').matches ? 22 : 10;
 const POINT_ELEMENTS = /^(path|polygon|polyline|line)$/;
 
 /** The source behind a preview element: the text, the start tag, and the
@@ -596,7 +599,12 @@ class slick {
 			['undo', ()=>this.undoEdit()],
 			['redo', ()=>this.redoEdit()],
 			['duplicate', ()=>this.duplicateSelected()],
-			['points', ()=>this.togglePointMode()]
+			['points', ()=>this.togglePointMode()],
+			['point-delete', ()=>{
+				this.deletePoint();
+				this.svgPreview.focus({preventScroll: true});
+			}],
+			['point-done', ()=>this.togglePointMode()]
 		]);
 		document.addEventListener('keydown', this.handleHistoryKeys);
 		this.updateHistoryButtons();
@@ -870,6 +878,7 @@ class slick {
 	private onPress(e: MouseEvent): void {
 		if (e.button !== 0) return;
 		e.preventDefault();
+		if (this.pressPoint(e, e.clientX, e.clientY)) return;
 		this.pressMoved = false;
 		this.tapTarget = e.target;
 		this.pressToggle = e.ctrlKey || e.metaKey;
@@ -914,6 +923,7 @@ class slick {
 	 * else a pan, and a finger that does not travel is a tap. */
 	private handleTouchStart(e: TouchEvent): void {
 		if (e.touches.length !== 1) return;
+		if (this.pressPoint(e, e.touches[0].clientX, e.touches[0].clientY)) return;
 		this.tapTarget = e.target;
 		this.pressToggle = false;
 		this.pressX = this.lastPanX = e.touches[0].clientX;
@@ -1136,6 +1146,18 @@ class slick {
 		const pointsButton = this.get('points');
 		pointsButton.toggleAttribute('disabled', !(els.length === 1 && primary && POINT_ELEMENTS.test(primary.tagName.toLowerCase())));
 		pointsButton.setAttribute('aria-pressed', editing ? 'true' : 'false');
+		this.refreshPointTools(editing !== null);
+	}
+
+	/** While points are being edited, their tools take the place of the
+	 * preview's own buttons, but for the zoom, which editing needs too. */
+	private refreshPointTools(editing: boolean): void {
+		this.get('point-tools').classList.toggle('hide', !editing);
+		for (const id of ['dark', 'flip']) this.get(id).classList.toggle('hide', editing);
+		const chosen = editing ? this.selectedPoint() : null;
+		const remove = this.get('point-delete');
+		remove.toggleAttribute('disabled', !chosen || chosen.point.ref.type === 'line');
+		remove.setAttribute('aria-label', chosen?.point.kind === 'control' ? 'delete handle' : 'delete point');
 	}
 
 	// --- Point editing
@@ -1319,22 +1341,35 @@ class slick {
 		this.selectPointInEditor();
 	}
 
-	/** Take the selected point out of the element. */
+	/** Take the selected point out of the element. A handle goes back into
+	 * its anchor, which is selected in its place. */
 	private deletePoint(): void {
 		const chosen = this.selectedPoint();
 		if (!chosen) return;
 		const found = this.sourceFor(chosen.el);
 		if (!found) return;
 		const ref = chosen.point.ref;
+		const handle = chosen.point.kind === 'control';
+		const d = found.source.getAttribute('d') ?? '';
 		let attrs: Record<string, string | null> | null = null;
-		if (ref.type === 'path' && ref.slot === 'end') attrs = ((d)=>d === null ? null : {d})(removePathPoint(found.source.getAttribute('d') ?? '', ref.segment, 0));
+		if (ref.type === 'path' && ref.slot !== 'end') attrs = ((next)=>next === null ? null : {d: next})(retractPathHandle(d, {segment: ref.segment, slot: ref.slot}, 0));
+		else if (ref.type === 'path') attrs = ((next)=>next === null ? null : {d: next})(removePathPoint(d, ref.segment, 0));
 		else if (ref.type === 'poly') attrs = ((p)=>p === null ? null : {points: p})(removePolygonPoint(found.source.getAttribute('points') ?? '', ref.index));
 		if (!attrs) {
-			this.announceError(ref.type === 'line' ? 'A line keeps both its ends.' : ref.type === 'path' && ref.slot !== 'end' ? 'A handle goes with its anchor.' : 'This point could not be removed.');
+			this.announceError(ref.type === 'line' ? 'A line keeps both its ends.' : handle ? 'This handle could not be removed.' : 'This point could not be removed.');
 			return;
 		}
 		if (this.pointMode) this.pointMode.selected = null;
-		if (this.commitChanges(found.sourceText, [{tag: found.tag, attrs}], 'slick.point')) this.announceAction('Point removed');
+		if (!this.commitChanges(found.sourceText, [{tag: found.tag, attrs}], 'slick.point')) return;
+		const anchor = chosen.point.anchors.at(0);
+		if (handle && anchor && this.pointMode) {
+			const made = this.elementForOrdinal(found.tag.ordinal);
+			const index = (made ? pointsOf(made) : null)?.findIndex(p=>p.kind === 'anchor' && Math.hypot(p.x - anchor.x, p.y - anchor.y) < 1e-6) ?? -1;
+			this.pointMode.selected = index < 0 ? null : index;
+			this.refreshSelection();
+			this.selectPointInEditor();
+		}
+		this.announceAction(handle ? 'Handle removed' : 'Point removed');
 	}
 
 	/** Put a box over an element, or take it away. */
@@ -1383,19 +1418,47 @@ class slick {
 	}
 
 	// --- Gestures: dragging the selection and its handles, and the keyboard
-	/** A press on a resize or rotate handle starts that gesture on the selection. */
+	/** The point of the element being edited nearest a press, if one is
+	 * within reach of it. */
+	private pointNear(clientX: number, clientY: number): number | null {
+		const el = this.pointMode ? this.selectedElement() : null;
+		const points = el ? pointsOf(el) : null;
+		const ctm = el instanceof SVGGraphicsElement ? el.getScreenCTM() : null;
+		if (!points || !ctm) return null;
+		let best: number | null = null;
+		let bestDistance = POINT_REACH;
+		points.forEach((p, i)=>{
+			const q = new DOMPoint(p.x, p.y).matrixTransform(ctm);
+			const distance = Math.hypot(q.x - clientX, q.y - clientY);
+			// the later of two at one spot is the one drawn on top
+			if (distance <= bestDistance) {
+				best = i;
+				bestDistance = distance;
+			}
+		});
+		return best;
+	}
+
+	/** A press within reach of a point, while points are being edited,
+	 * selects it and takes hold of it, wherever on the preview it lands. */
+	private pressPoint(e: Event, x: number, y: number): boolean {
+		const current = this.selectedElement();
+		const index = this.pointNear(x, y);
+		if (!this.pointMode || !current || index === null) return false;
+		e.preventDefault();
+		e.stopPropagation();
+		this.pointMode.selected = index;
+		this.refreshSelection();
+		this.selectPointInEditor();
+		this.gesture = {mode: 'point', handle: null, fromHandle: true, toggle: false, startX: x, startY: y, targets: [current], drags: [], point: index};
+		return true;
+	}
+
+	/** A press on a point, or a resize or rotate handle, starts that gesture
+	 * on the selection. */
 	private onHandlePress(e: Event, x: number, y: number): void {
 		const current = this.selectedElement();
-		const marker = e.target instanceof Element ? e.target.closest('[data-point]')?.getAttribute('data-point') : null;
-		if (marker !== null && marker !== undefined && current && this.pointMode) {
-			e.preventDefault();
-			e.stopPropagation();
-			this.pointMode.selected = Number(marker);
-			this.refreshSelection();
-			this.selectPointInEditor();
-			this.gesture = {mode: 'point', handle: null, fromHandle: true, toggle: false, startX: x, startY: y, targets: [current], drags: [], point: Number(marker)};
-			return;
-		}
+		if (this.pressPoint(e, x, y)) return;
 		const handle = e.target instanceof Element ? e.target.closest('[data-handle]')?.getAttribute('data-handle') : null;
 		if (!handle || !current || this.selected.length !== 1) return;
 		e.preventDefault();
