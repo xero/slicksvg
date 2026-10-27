@@ -488,6 +488,49 @@ export function movePathPoint(d: string, point: {segment: number; slot: Slot}, a
 	return write(d, e, decimals);
 }
 
+/**
+ * Move several points of a path by one step together, as one shape: each
+ * anchor takes the handles at it, as it does alone, and a handle chosen with
+ * its anchor moves once, with it. A quadratic's handle moves when the anchor
+ * it ends on does. A subpath's first point brings the end that closes onto it.
+ */
+export function movePathPoints(d: string, points: {segment: number; slot: Slot}[], by: Point, decimals: number): string | null {
+	const e = begin(d);
+	if (!e) return null;
+	const {segments, walked, plan} = e;
+	const delta = {x: roundTo(by.x, decimals), y: roundTo(by.y, decimals)};
+	const moving = new Set<string>();
+	const anchor = (i: number): void=>{
+		const kind = lower(segments[i].letter);
+		moving.add(`${i}:end`);
+		if (kind === 'c' || kind === 's') moving.add(`${i}:cp2`);
+		if (kind === 'q') moving.add(`${i}:cp1`);
+	};
+	const closing = closingEnds(segments, walked);
+	for (const p of points) {
+		const kind = lower(segments.at(p.segment)?.letter ?? 'z');
+		if (kind === 'z') return null;
+		if (p.slot === 'end') {
+			anchor(p.segment);
+			for (const [end, m] of closing) if (m === p.segment) anchor(end);
+			// the handle leaving it, written or implied
+			if (/^[cst]$/i.test(segments.at(p.segment + 1)?.letter ?? '')) moving.add(`${p.segment + 1}:cp1`);
+		} else if ((p.slot === 'cp1' && (kind === 'c' || kind === 'q')) || (p.slot === 'cp2' && (kind === 'c' || kind === 's'))) {
+			moving.add(`${p.segment}:${p.slot}`);
+		} else {
+			return null;
+		}
+	}
+	for (const key of moving) {
+		const [at, slot] = key.split(':');
+		const t = plan[Number(at)][0];
+		if (slot === 'end') t.end = add(t.end, delta);
+		else if (slot === 'cp1' && t.cp1) t.cp1 = add(t.cp1, delta);
+		else if (slot === 'cp2' && t.cp2) t.cp2 = add(t.cp2, delta);
+	}
+	return write(d, e, decimals);
+}
+
 const lerp = (a: Point, b: Point, t: number): Point=>({x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t});
 
 /** The segments a split at `t` turns one segment into, in absolute terms, or
@@ -1143,6 +1186,23 @@ export function movePolygonPoint(value: string, index: number, to: Point, decima
 		{start: x.start, end: x.end, text: num(to.x, x, decimals)},
 		{start: y.start, end: y.end, text: num(to.y, y, decimals)},
 	]);
+}
+
+/** Move several points of a polygon or polyline by one step together. */
+export function movePolygonPoints(value: string, indices: number[], by: Point, decimals: number): string | null {
+	const tokens = parsePoints(value);
+	if (!tokens) return null;
+	source = value;
+	const dx = roundTo(by.x, decimals);
+	const dy = roundTo(by.y, decimals);
+	const splices: Splice[] = [];
+	for (const index of new Set(indices)) {
+		const x = tokens.at(2 * index);
+		const y = tokens.at(2 * index + 1);
+		if (index < 0 || !x || !y) return null;
+		splices.push({start: x.start, end: x.end, text: num(x.value + dx, x, decimals)}, {start: y.start, end: y.end, text: num(y.value + dy, y, decimals)});
+	}
+	return splice(value, splices);
 }
 
 /** Add a point after point `index`, written the way the others are. */

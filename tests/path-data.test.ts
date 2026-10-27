@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   parsePathData, walkPath, pathPoints, movePathPoint, insertPathPoint, removePathPoint, retractPathHandle, nearestPathSegment,
-  smoothPathPoint, cornerPathPoint, anchorKind, curvePathSegment, straightenPathSegment, segmentCurved, handleMode, moveHandle, pointsAsPathData, pullHandles, bendPathSegment, symmetricPathPoint,
-  parsePoints, polygonPoints, movePolygonPoint, insertPolygonPoint, removePolygonPoint, nearestPolygonEdge,
+  smoothPathPoint, cornerPathPoint, anchorKind, curvePathSegment, straightenPathSegment, segmentCurved, handleMode, moveHandle, pointsAsPathData, pullHandles, bendPathSegment, symmetricPathPoint, movePathPoints,
+  parsePoints, polygonPoints, movePolygonPoint, movePolygonPoints, insertPolygonPoint, removePolygonPoint, nearestPolygonEdge,
 } from '../src/path-data';
 
 const letters = (d: string) => parsePathData(d)!.map(s => s.letter + (s.letterAt === null ? '*' : ''));
@@ -465,5 +465,40 @@ describe('Symmetric anchors', () => {
 
   it('should go round a closed subpath', () => {
     expect(symmetricPathPoint('M0 0 L10 0 L10 10 Z', 0, 0)).toBe('M0 0 C2 -4 7 0 10 0 L10 10 C7 7 -2 4 0 0 Z');
+  });
+});
+
+describe('Moving several points together', () => {
+  it('should move anchors with their handles, each once', () => {
+    const d = 'M0 0 C0 10 10 10 10 0 C10 -10 20 -10 20 0';
+    // the middle anchor takes both its handles; the end anchor its own
+    expect(movePathPoints(d, [{ segment: 1, slot: 'end' }, { segment: 2, slot: 'end' }], { x: 1, y: 2 }, 0)).toBe('M0 0 C0 10 11 12 11 2 C11 -8 21 -8 21 2');
+    // a handle chosen with its anchor moves once
+    expect(movePathPoints(d, [{ segment: 1, slot: 'end' }, { segment: 1, slot: 'cp2' }], { x: 1, y: 0 }, 0)).toBe('M0 0 C0 10 11 10 11 0 C11 -10 20 -10 20 0');
+    // a handle alone moves alone
+    expect(movePathPoints(d, [{ segment: 1, slot: 'cp1' }, { segment: 2, slot: 'cp2' }], { x: 1, y: 0 }, 0)).toBe('M0 0 C1 10 10 10 10 0 C10 -10 21 -10 20 0');
+  });
+
+  it('should keep relative numbers between points that moved together', () => {
+    expect(movePathPoints('m0 0 l10 0 l0 10 l10 0', [{ segment: 1, slot: 'end' }, { segment: 2, slot: 'end' }], { x: 5, y: 5 }, 0)).toBe('m0 0 l15 5 l0 10 l5 -5');
+  });
+
+  it('should move a quadratic\'s handle with both its anchors, once', () => {
+    expect(movePathPoints('M0 0 Q5 10 10 0', [{ segment: 0, slot: 'end' }, { segment: 1, slot: 'end' }], { x: 1, y: 1 }, 0)).toBe('M1 1 Q6 11 11 1');
+  });
+
+  it('should bring the end that closes a subpath onto its first point, and keep an S', () => {
+    expect(movePathPoints('M0 0 L20 0 C20 20 10 10 0 0 Z', [{ segment: 0, slot: 'end' }, { segment: 1, slot: 'end' }], { x: 1, y: 1 }, 0)).toBe('M1 1 L21 1 C21 21 11 11 1 1 Z');
+    expect(movePathPoints('M0 0 C0 10 10 10 10 0 S20 -10 20 0', [{ segment: 1, slot: 'end' }], { x: 0, y: 2 }, 0)).toBe('M0 0 C0 10 10 12 10 2 S20 -10 20 0');
+  });
+
+  it('should refuse a Z or a handle a segment does not have', () => {
+    expect(movePathPoints('M0 0 L1 1 Z', [{ segment: 2, slot: 'end' }], { x: 1, y: 1 }, 0)).toBeNull();
+    expect(movePathPoints('M0 0 L1 1', [{ segment: 1, slot: 'cp1' }], { x: 1, y: 1 }, 0)).toBeNull();
+  });
+
+  it('should move several polygon points in the attribute\'s own style', () => {
+    expect(movePolygonPoints('0,0 10,0 10.5,10', [0, 2, 2], { x: 1, y: -1 }, 0)).toBe('1,-1 10,0 11.5,9');
+    expect(movePolygonPoints('0,0 10,0', [3], { x: 1, y: 1 }, 0)).toBeNull();
   });
 });

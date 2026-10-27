@@ -321,6 +321,12 @@
           stroke-dasharray: 2 2;
         }
       }
+      /* the box a drag across the drawing covers, taking in the points inside */
+      .marquee {
+        @apply fill-header/10 stroke-header;
+        stroke-width: 1;
+        stroke-dasharray: 4 3;
+      }
       /* the segment picked for the point tools, and the spot on it */
       .spot {
         path {

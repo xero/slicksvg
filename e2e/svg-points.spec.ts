@@ -367,6 +367,100 @@ test.describe('SVG Editor Point Editing', () => {
     expect(await getSource(page)).toContain('d="M20 100 C20 60 60 60 60 100 C60 140 100 140 100 100"');
   });
 
+  test('should pick several points with the toggle, and drag them together', async ({ page }) => {
+    await page.locator('.svg-container path').click();
+    await page.keyboard.press('Enter');
+    const several = page.locator('#point-several');
+    await expect(several).toHaveAttribute('aria-pressed', 'false');
+    await several.click();
+    await expect(several).toHaveAttribute('aria-pressed', 'true');
+    await page.locator('.points [data-point="1"]').click();
+    await page.locator('.points [data-point="2"]').click();
+    await expect(page.locator('.points rect.selected')).toHaveCount(2);
+    await expect(page.locator('#test-announcements')).toHaveText('2 points selected');
+    // the editor selects each one's numbers
+    expect(await page.evaluate(() => {
+      const state = (window as any).svgEditor.editor.state;
+      return state.selection.ranges.map((r: any) => state.doc.sliceString(r.from, r.to));
+    })).toEqual(['100 20', '100 100']);
+
+    await dragPoint(page, 1, 10, 10);
+    expect(await getSource(page)).toBe(FIXTURE.replace('L100 20 L100 100', 'L110 30 L110 110'));
+    await expect(page.locator('.points rect.selected')).toHaveCount(2);
+    await page.keyboard.press('ArrowLeft');
+    expect(await getSource(page)).toBe(FIXTURE.replace('L100 20 L100 100', 'L109 30 L109 110'));
+    await page.locator('#undo').click();
+    await page.locator('#undo').click();
+    expect(await getSource(page)).toBe(FIXTURE);
+  });
+
+  test('should take a picked point out with a tap, and let them all go with a tap elsewhere', async ({ page }) => {
+    await page.locator('.svg-container path').click();
+    await page.keyboard.press('Enter');
+    await page.locator('#point-several').click();
+    for (const i of [0, 1, 2]) await page.locator(`.points [data-point="${i}"]`).click();
+    await expect(page.locator('.points rect.selected')).toHaveCount(3);
+    await page.locator('.points [data-point="1"]').click();
+    await expect(page.locator('.points rect.selected')).toHaveCount(2);
+    await expect(page.locator('.points [data-point="1"]')).not.toHaveClass(/selected/);
+
+    const empty = await at(page, 180, 30);
+    await page.mouse.click(empty.x, empty.y);
+    await expect(page.locator('.points rect.selected')).toHaveCount(0);
+    // still editing the same element's points
+    await expect(page.locator('#point-tools')).toBeVisible();
+    await expect(page.locator('.points rect')).toHaveCount(3);
+  });
+
+  test('should take in the points a drag across the drawing covers, and smooth them all at once', async ({ page }) => {
+    await page.locator('.svg-container polygon').click();
+    await page.keyboard.press('Enter');
+    await page.locator('#point-several').click();
+    const from = await at(page, 110, 110);
+    const to = await at(page, 190, 190);
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move((from.x + to.x) / 2, (from.y + to.y) / 2, { steps: 4 });
+    await expect(page.locator('.marquee')).toBeVisible();
+    await page.mouse.move(to.x, to.y, { steps: 4 });
+    await page.mouse.up();
+    await expect(page.locator('.marquee')).toBeHidden();
+    await expect(page.locator('.points rect.selected')).toHaveCount(3);
+    await expect(page.locator('#test-announcements')).toHaveText('3 points selected');
+
+    const smooth = page.locator('#point-smooth');
+    await expect(smooth).toHaveAttribute('aria-pressed', 'false');
+    await smooth.click();
+    expect(await getSource(page)).toMatch(/<path id="g" d="M120,120 C[^"]* Z" fill="#aa0000"\/>/);
+    await expect(page.locator('#test-announcements')).toHaveText('3 points made smooth');
+    await expect(page.locator('.points rect.selected')).toHaveCount(3);
+    await expect(smooth).toHaveAttribute('aria-pressed', 'true');
+    await smooth.click();
+    await expect(page.locator('#test-announcements')).toHaveText('3 points made corners');
+    await expect(page.locator('.points circle')).toHaveCount(0);
+    // one step each
+    await page.locator('#undo').click();
+    await page.locator('#undo').click();
+    expect(await getSource(page)).toBe(FIXTURE);
+  });
+
+  test('should delete several points at once, and add one with Ctrl or Cmd held', async ({ page }) => {
+    await setContent(page, FIXTURE.replace('M20 20 L100 20 L100 100 Z', 'M20 20 L60 20 L100 20 L100 60 L100 100 Z'));
+    await page.locator('.svg-container path').click();
+    await page.keyboard.press('Enter');
+    await page.locator('.points [data-point="1"]').click();
+    await page.locator('.points [data-point="3"]').click({ modifiers: ['ControlOrMeta'] });
+    await expect(page.locator('.points rect.selected')).toHaveCount(2);
+    await expect(page.locator('#point-delete')).toHaveAttribute('aria-label', 'delete points');
+    await page.keyboard.press('Delete');
+    expect(await getSource(page)).toContain('d="M20 20 L100 20 L100 100 Z"');
+    await expect(page.locator('#test-announcements')).toHaveText('2 points removed');
+    // a plain click picks one point again
+    await page.locator('.points [data-point="1"]').click();
+    await page.locator('.points [data-point="2"]').click();
+    await expect(page.locator('.points rect.selected')).toHaveCount(1);
+  });
+
   test('should keep a line end\'s written precision when nudged', async ({ page }) => {
     await setContent(page, FIXTURE.replace('<path id="p" d="M20 20 L100 20 L100 100 Z" fill="#6291e0"/>', '<line id="ln" x1="10.5" y1="40" x2="100" y2="40" stroke="#6291e0" stroke-width="8"/>'));
     // a line has no area, so Playwright will not click it by locator; aim at its stroke
@@ -471,6 +565,29 @@ test.describe('SVG Editor pulling handles out of a point', () => {
     for (const dy of [-3, -6, -9, -12]) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: touch(x, y + dy) });
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     expect(await getSource(page)).toContain('<path id="g" d="M120,120 C140 104 160 104 180 120 L150,180Z" fill="#aa0000"/>');
+  });
+
+  test('should pick several points with taps and a finger drawn across them', async ({ page }) => {
+    await editPoints(page, '#p');
+    await page.locator('#point-several').tap();
+    const marker = async (i: number) => {
+      const box = (await page.locator(`.points [data-point="${i}"]`).boundingBox())!;
+      return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    };
+    const first = await marker(0);
+    await page.touchscreen.tap(first.x, first.y);
+    await expect(page.locator('.points rect.selected')).toHaveCount(1);
+    // a finger drawn round the other two takes them in as well
+    const a = await marker(1);
+    const b = await marker(2);
+    const cdp = await page.context().newCDPSession(page);
+    const touch = (px: number, py: number) => [{ x: px, y: py, id: 1 }];
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: touch(a.x + 30, a.y - 30) });
+    for (const k of [0.25, 0.5, 0.75, 1]) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: touch(a.x + 30 - 50 * k, a.y - 30 + (b.y - a.y + 60) * k) });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await expect(page.locator('.points rect.selected')).toHaveCount(3);
+    // nothing was panned or moved
+    expect(await getSource(page)).toBe(FIXTURE);
   });
 
   test('should make a polygon a path when handles are pulled out of its corner', async ({ page }) => {

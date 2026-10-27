@@ -1,5 +1,5 @@
 import {EditorView} from '@codemirror/view';
-import {EditorState, Compartment} from '@codemirror/state';
+import {EditorState, EditorSelection, Compartment} from '@codemirror/state';
 import {keymap} from '@codemirror/view';
 import {xml} from '@codemirror/lang-xml';
 import {basicSetup} from 'codemirror';
@@ -12,9 +12,9 @@ import {GEOMETRY, SHAPES, plainLength, shapePathData, asPathChanges, conversionB
 import {findSvgTarget, selectionChain, nextInChain, ordinalOf, boxCorners, handleCursor} from './select';
 import {planMove, planResize, planRotate, planFlip, parentCenter, invert, applyToVector, applyToPoint, pixelsPerUnit, decimalsFor, roundTo, fmt, placesOf, type Matrix, type Point, type Rect, type Handle, type EditPlan} from './geometry';
 import {
-	parsePathData, walkPath, pathPoints, pointOnSegment, movePathPoint, insertPathPoint, removePathPoint, retractPathHandle, nearestPathSegment,
+	parsePathData, walkPath, pathPoints, pointOnSegment, movePathPoint, movePathPoints, insertPathPoint, removePathPoint, retractPathHandle, nearestPathSegment,
 	smoothPathPoint, cornerPathPoint, symmetricPathPoint, anchorKind, curvePathSegment, straightenPathSegment, segmentCurved, handleMode, moveHandle, pullHandles, bendPathSegment, type HandleMode,
-	polygonPoints, movePolygonPoint, insertPolygonPoint, removePolygonPoint, nearestPolygonEdge,
+	polygonPoints, movePolygonPoint, movePolygonPoints, insertPolygonPoint, removePolygonPoint, nearestPolygonEdge,
 } from './path-data';
 import {undo, redo, undoDepth, redoDepth, isolateHistory} from '@codemirror/commands';
 import {ZOOM_STEP, zoomAbout, pinchView, wheelZoomFactor, wheelPan, type View, type Pinch} from './view';
@@ -182,7 +182,7 @@ function resetElementStyles(...elements: HTMLElement[]) {
 }
 
 // --- SVGEditor Class
-type GestureMode = 'move' | 'resize' | 'rotate' | 'point' | 'bend';
+type GestureMode = 'move' | 'resize' | 'rotate' | 'point' | 'bend' | 'marquee';
 
 /** A point of a path, polygon, polyline, or line, as the edit functions address it. */
 type PointRef =
@@ -199,12 +199,17 @@ interface EditPoint {
 	ref: PointRef;
 }
 
-/** Point editing on one element: which, which of its points is selected,
+/** Point editing on one element: which, which of its points are selected,
  * and the spot on its outline that was tapped, if that was what was. */
 interface PointMode {
 	ordinal: number;
-	selected: number | null;
+	/** By their places in the element's point list; the last is the one the
+	 * code editor shows first. */
+	selected: number[];
 	spot: Spot | null;
+	/** Whether a tap adds a point to the selection or takes it out, and a
+	 * drag across the drawing takes in the points it covers. */
+	several: boolean;
 }
 
 /** A spot on an outline: a path's segment, or a polygon's edge from point
@@ -253,9 +258,17 @@ interface Drag {
 	/** For a point drag: the point, where it started, and, for a handle, how
 	 * the handle across its anchor follows it; for handles pulled out of an
 	 * anchor, the path data they are pulled from. */
-	point: {ref: PointRef; from: Point; mode: HandleMode; pull: Pull | null} | null;
+	point: {ref: PointRef; from: Point; mode: HandleMode; pull: Pull | null; group: Group | null} | null;
 	/** For a bend: the path data, the spot held, and where on screen it was. */
 	bend?: Pull & {t: number; from: Point};
+}
+
+/** Several points dragged together: each one, and where it started. */
+interface Group {
+	refs: PointRef[];
+	froms: {x: number; y: number; kind: EditPoint['kind']}[];
+	/** How far they have gone, as written. */
+	by: Point;
 }
 
 /** Handles being pulled out of an anchor: the path data, a polygon's or
@@ -292,6 +305,11 @@ interface Gesture {
 	/** Set when the press on an anchor pulls handles out of it: after a hold
 	 * on a touch screen, or with Alt held. */
 	pull?: boolean;
+	/** The point a press landed on, and whether it was selected already, which
+	 * decides what a tap that does not travel does. */
+	tapped?: {index: number; had: boolean};
+	/** Where a drag across the drawing has got to. */
+	to?: Point;
 }
 
 /** What a gesture shows on screen until it is written or taken back. */
@@ -384,6 +402,30 @@ function pointsOf(el: Element): EditPoint[] | null {
 	return null;
 }
 
+/** The attribute changes that move several points of an element by one step. */
+function movePoints(refs: PointRef[], source: Element, by: Point, decimals: number): Record<string, string | null> | null {
+	const paths = refs.flatMap(ref=>ref.type === 'path' ? [{segment: ref.segment, slot: ref.slot}] : []);
+	if (paths.length > 0) {
+		const d = movePathPoints(source.getAttribute('d') ?? '', paths, by, decimals);
+		return d === null ? null : {d};
+	}
+	const polys = refs.flatMap(ref=>ref.type === 'poly' ? [ref.index] : []);
+	if (polys.length > 0) {
+		const points = movePolygonPoints(source.getAttribute('points') ?? '', polys, by, decimals);
+		return points === null ? null : {points};
+	}
+	const attrs: Record<string, string | null> = {};
+	for (const ref of refs) {
+		if (ref.type !== 'line') continue;
+		const [nx, ny] = ref.index === 0 ? ['x1', 'y1'] : ['x2', 'y2'];
+		const at = (name: string): number=>parseFloat(source.getAttribute(name) ?? '0') || 0;
+		const write = (name: string, value: number): string=>fmt(value, Math.max(decimals, placesOf(at(name))));
+		attrs[nx] = write(nx, at(nx) + roundTo(by.x, decimals));
+		attrs[ny] = write(ny, at(ny) + roundTo(by.y, decimals));
+	}
+	return attrs;
+}
+
 /** The attribute a point lives in, and the attribute changes that move it.
  * A handle takes the one across its anchor along as `mode` says, or as the
  * two lie when no mode is given. */
@@ -445,6 +487,9 @@ function resolvedLength(el: Element, name: string): number | null {
 /** The segment an anchor ends, in its element's path data. */
 const anchorSegment = (ref: PointRef): number | null=>ref.type === 'path' && ref.slot === 'end' ? ref.segment : ref.type === 'poly' ? ref.index : null;
 
+/** The segments the chosen anchors end; their handles have none. */
+const chosenAnchors = (chosen: {point: EditPoint}[]): number[]=>chosen.flatMap(c=>((s)=>c.point.kind === 'anchor' && s !== null ? [s] : [])(anchorSegment(c.point.ref)));
+
 function bboxOf(el: Element): Rect | null {
 	if (!(el instanceof SVGGraphicsElement)) return null;
 	try {
@@ -493,6 +538,7 @@ class slick {
 	private pointMode: PointMode | null = null;
 	private pointsGroup!: SVGGElement;
 	private spotGroup!: SVGGElement;
+	private marquee!: SVGRectElement;
 	private overlay!: SVGSVGElement;
 	private selectBox!: SVGPolygonElement;
 	private hoverBox!: SVGPolygonElement;
@@ -614,6 +660,9 @@ class slick {
 		this.pointsGroup = document.createElementNS(SVG_NS, 'g');
 		this.pointsGroup.classList.add('points');
 		this.overlay.appendChild(this.pointsGroup);
+		this.marquee = document.createElementNS(SVG_NS, 'rect');
+		this.marquee.classList.add('marquee', 'hide');
+		this.overlay.appendChild(this.marquee);
 		this.previewContainer.appendChild(this.overlay);
 		new ResizeObserver(()=>this.refreshSelection()).observe(this.svgPreview);
 	}
@@ -724,6 +773,7 @@ class slick {
 			['duplicate', ()=>this.duplicateSelected()],
 			['points', ()=>this.togglePointMode()],
 			['topath', ()=>this.pointTool(()=>this.convertToPaths())],
+			['point-several', ()=>this.pointTool(()=>this.toggleSeveral())],
 			['point-add', ()=>this.pointTool(()=>this.addPointAtSpot())],
 			['point-smooth', ()=>this.pointTool(()=>this.toggleSmooth())],
 			['point-symmetric', ()=>this.pointTool(()=>this.makeSymmetric())],
@@ -1011,6 +1061,7 @@ class slick {
 		this.pressY = this.lastPanY = e.clientY;
 		// the open hand closes on the press, for the selection and the canvas alike
 		this.svgPreview.style.cursor = 'grabbing';
+		if (this.pressMarquee(e.clientX, e.clientY)) return;
 		if (!this.pressToggle && this.pressOutline(e.clientX, e.clientY)) return;
 		if (this.onSelection(e.target) && !this.pressToggle) {
 			this.gesture = {mode: 'move', handle: null, fromHandle: false, toggle: false, startX: e.clientX, startY: e.clientY, targets: this.selectedElements(), drags: [], point: null};
@@ -1055,7 +1106,7 @@ class slick {
 		this.pressX = this.lastPanX = e.touches[0].clientX;
 		this.pressY = this.lastPanY = e.touches[0].clientY;
 		const current = this.onSelection(e.target);
-		if (this.pressOutline(this.pressX, this.pressY)) {
+		if (this.pressMarquee(this.pressX, this.pressY) || this.pressOutline(this.pressX, this.pressY)) {
 			this.isPanning = false;
 		} else if (current) {
 			this.gesture = {mode: 'move', handle: null, fromHandle: false, toggle: false, startX: this.pressX, startY: this.pressY, targets: this.selectedElements(), drags: [], point: null};
@@ -1179,10 +1230,11 @@ class slick {
 	private clickSelect(target: EventTarget | null, toggle = false): void {
 		this.svgPreview.focus({preventScroll: true});
 		// while its points are being edited, a click near its outline picks that
-		// spot, and one on the element keeps it rather than walking its group
+		// spot, and one on the element keeps it rather than walking its group;
+		// while several are being picked, one anywhere else only lets them go
 		if (this.pointMode && !toggle && this.pickSpot(this.pressX, this.pressY)) return;
-		if (this.pointMode && !toggle && this.onSelection(target)) {
-			this.pointMode.selected = null;
+		if (this.pointMode && !toggle && (this.pointMode.several || this.onSelection(target))) {
+			this.pointMode.selected = [];
 			this.pointMode.spot = null;
 			this.refreshSelection();
 			return;
@@ -1293,20 +1345,24 @@ class slick {
 	private refreshPointTools(editing: boolean): void {
 		this.get('point-tools').classList.toggle('hide', !editing);
 		for (const id of ['dark', 'flip']) this.get(id).classList.toggle('hide', editing);
-		const chosen = editing ? this.selectedPoint() : null;
+		this.get('point-several').setAttribute('aria-pressed', this.pointMode?.several ? 'true' : 'false');
+		// the tools wait for a drag to end before they look again
+		if (this.gesture?.drags.length) return;
+		const chosen = editing ? this.selectedPoints()?.chosen ?? [] : [];
 		const remove = this.get('point-delete');
-		remove.toggleAttribute('disabled', !chosen || chosen.point.ref.type === 'line');
-		remove.setAttribute('aria-label', chosen?.point.kind === 'control' ? 'delete handle' : 'delete point');
+		remove.toggleAttribute('disabled', chosen.length === 0 || chosen.every(c=>c.point.ref.type === 'line'));
+		remove.setAttribute('aria-label', chosen.length > 1 ? 'delete points' : chosen.at(0)?.point.kind === 'control' ? 'delete handle' : 'delete point');
 		const el = editing ? this.selectedElement() : null;
 		const data = el ? pathDataOf(el) : null;
-		const anchor = chosen?.point.kind === 'anchor' ? anchorSegment(chosen.point.ref) : null;
-		const kind = data && anchor !== null ? anchorKind(data.d, anchor) : null;
+		const anchors = chosenAnchors(chosen);
+		const kinds = data ? anchors.map(s=>anchorKind(data.d, s)).filter(k=>k !== null) : [];
 		const smooth = this.get('point-smooth');
-		smooth.toggleAttribute('disabled', kind === null);
-		smooth.setAttribute('aria-pressed', kind === 'smooth' ? 'true' : 'false');
+		smooth.toggleAttribute('disabled', kinds.length === 0);
+		smooth.setAttribute('aria-pressed', kinds.length > 0 && kinds.every(k=>k === 'smooth') ? 'true' : 'false');
 		// there to be pressed only when it would change something
-		const symmetric = data && anchor !== null && el ? symmetricPathPoint(data.d, anchor, this.decimalsAt(el)) : null;
-		this.get('point-symmetric').toggleAttribute('disabled', symmetric === null || symmetric === data?.d);
+		const decimals = el ? this.decimalsAt(el) : 0;
+		const changes = (s: number): boolean=>((next)=>next !== null && next !== data?.d)(data ? symmetricPathPoint(data.d, s, decimals) : null);
+		this.get('point-symmetric').toggleAttribute('disabled', !anchors.some(changes));
 		const segment = data ? this.spotSegment(data) : null;
 		const segments = data && segment !== null ? parsePathData(data.d) : null;
 		const curved = data && segment !== null ? segmentCurved(data.d, segment) : false;
@@ -1364,7 +1420,7 @@ class slick {
 					const a = onScreen(anchor);
 					shapes.push({tag: 'line', attrs: {x1: `${at.x}`, y1: `${at.y}`, x2: `${a.x}`, y2: `${a.y}`}, selected: false, pulling: false});
 				}
-				const selected = from ? held(point, i) : this.pointMode?.selected === i;
+				const selected = from ? held(point, i) : this.pointMode?.selected.includes(i) === true;
 				// an anchor a finger is holding shows that handles will come out of it
 				const pulling = pull !== null && held(point, i);
 				shapes.push(point.kind === 'anchor'
@@ -1441,7 +1497,7 @@ class slick {
 			this.announceError('This element\'s points could not be read, so they cannot be edited here.');
 			return;
 		}
-		this.pointMode = {ordinal, selected: null, spot: null};
+		this.pointMode = {ordinal, selected: [], spot: null, several: false};
 		this.refreshSelection();
 		this.svgPreview.focus({preventScroll: true});
 		this.announceAction(`Editing the points of ${current.tagName.toLowerCase()}: drag a point, tap the outline to pick a segment, double-click it to add a point, Delete removes one`);
@@ -1502,7 +1558,7 @@ class slick {
 		const spot = el && this.pointMode ? this.outlineNear(el, clientX, clientY) : null;
 		if (!this.pointMode || !spot) return false;
 		this.pointMode.spot = spot;
-		this.pointMode.selected = null;
+		this.pointMode.selected = [];
 		this.refreshSelection();
 		this.announceAction('Segment picked: add a point to it, or curve or straighten it');
 		return true;
@@ -1568,7 +1624,7 @@ class slick {
 		}
 		// a spot or point picked on a polygon is numbered apart from the path it becomes
 		if (this.pointMode) {
-			this.pointMode.selected = null;
+			this.pointMode.selected = [];
 			this.pointMode.spot = null;
 		}
 		if (!this.applyEdits(changes.sort((a, b)=>a.from - b.from), 'slick.topath')) return;
@@ -1578,11 +1634,34 @@ class slick {
 	/** Select the anchor at a place, after an edit that may have moved the
 	 * point list around it. */
 	private selectAnchorAt(ordinal: number, at: Point): void {
+		this.selectPointsAt(ordinal, [{x: at.x, y: at.y, kind: 'anchor'}]);
+	}
+
+	/** Select the points of these kinds at these places, after an edit that
+	 * may have moved the point list around them; any not found go. */
+	private selectPointsAt(ordinal: number, wanted: {x: number; y: number; kind: EditPoint['kind']}[]): void {
 		const made = this.elementForOrdinal(ordinal);
-		const index = (made ? pointsOf(made) : null)?.findIndex(p=>p.kind === 'anchor' && Math.hypot(p.x - at.x, p.y - at.y) < 1e-6) ?? -1;
-		if (this.pointMode) this.pointMode.selected = index < 0 ? null : index;
+		const points = made ? pointsOf(made) ?? [] : [];
+		const found = wanted.map(w=>points.findIndex(p=>p.kind === w.kind && Math.hypot(p.x - w.x, p.y - w.y) < 1e-6)).filter(i=>i >= 0);
+		if (this.pointMode) this.pointMode.selected = [...new Set(found)];
 		this.refreshSelection();
 		this.selectPointInEditor();
+	}
+
+	/** Pick several points one tap at a time, or one at a time again. */
+	private toggleSeveral(): void {
+		if (!this.pointMode) return;
+		this.pointMode.several = !this.pointMode.several;
+		this.refreshSelection();
+		this.announceAction(this.pointMode.several
+			? 'Selecting several points: tap points to add them or take them out, or drag across the drawing to take in the points inside'
+			: 'Selecting one point at a time');
+	}
+
+	/** Say how many points are selected, when more than one is. */
+	private announceSelected(): void {
+		const count = this.pointMode?.selected.length ?? 0;
+		this.announceAction(count === 1 ? '1 point selected' : `${count} points selected`);
 	}
 
 	/** Add a point on the picked spot. */
@@ -1592,40 +1671,62 @@ class slick {
 		if (el && spot) this.addPointOn(el, spot);
 	}
 
-	/** Make the selected anchor smooth, or a smooth one a corner. */
-	private toggleSmooth(): void {
-		const chosen = this.selectedPoint();
-		const segment = chosen?.point.kind === 'anchor' ? anchorSegment(chosen.point.ref) : null;
-		const found = chosen ? this.sourceFor(chosen.el) : null;
+	/**
+	 * Rewrite the path data at each selected anchor, last segment first, so an
+	 * edit that puts a curve before a Z does not move the anchors still to
+	 * come, and write it all as one step. The anchors stay selected.
+	 */
+	private editAnchors(edit: (d: string, segment: number, decimals: number) => string | null): {changed: number; tried: number} | null {
+		const sel = this.selectedPoints();
+		const found = sel ? this.sourceFor(sel.el) : null;
 		const data = found ? pathDataOf(found.source) : null;
-		if (!chosen || segment === null || !found || !data) return;
-		const smooth = anchorKind(data.d, segment) === 'smooth';
-		const decimals = this.decimalsAt(chosen.el);
-		const next = smooth ? cornerPathPoint(data.d, segment, decimals) : smoothPathPoint(data.d, segment, decimals);
-		if (next === null) {
-			this.announceError(smooth ? 'This point has no handles to take in.' : 'This point cannot be made smooth.');
-			return;
+		if (!sel || !found || !data) return null;
+		const decimals = this.decimalsAt(sel.el);
+		const anchors = chosenAnchors(sel.chosen).sort((a, b)=>b - a);
+		let d = data.d;
+		let changed = 0;
+		for (const segment of anchors) {
+			const next = edit(d, segment, decimals);
+			if (next === null || next === d) continue;
+			d = next;
+			changed += 1;
 		}
-		if (!this.commitPathData(found, next, data.converted)) return;
-		this.selectAnchorAt(found.tag.ordinal, chosen.point);
-		this.announceAction(smooth ? 'Point made a corner' : 'Point made smooth');
+		if (changed === 0) return {changed, tried: anchors.length};
+		if (!this.commitPathData(found, d, data.converted)) return null;
+		this.selectPointsAt(found.tag.ordinal, sel.chosen.filter(c=>c.point.kind === 'anchor').map(c=>({x: c.point.x, y: c.point.y, kind: 'anchor'})));
+		return {changed, tried: anchors.length};
 	}
 
-	/** Make the selected anchor symmetric: smooth, its handles one length. */
-	private makeSymmetric(): void {
-		const chosen = this.selectedPoint();
-		const segment = chosen?.point.kind === 'anchor' ? anchorSegment(chosen.point.ref) : null;
-		const found = chosen ? this.sourceFor(chosen.el) : null;
-		const data = found ? pathDataOf(found.source) : null;
-		if (!chosen || segment === null || !found || !data) return;
-		const next = symmetricPathPoint(data.d, segment, this.decimalsAt(chosen.el));
-		if (next === null || next === data.d) {
-			this.announceError(next === null ? 'This point cannot be made symmetric: it needs a curve or line on both sides, and no arc.' : 'This point is already symmetric.');
+	/** Make the selected anchors smooth, or, when every one is, corners. */
+	private toggleSmooth(): void {
+		const sel = this.selectedPoints();
+		const data = sel ? pathDataOf(sel.el) : null;
+		if (!sel || !data) return;
+		const kinds = chosenAnchors(sel.chosen).map(s=>anchorKind(data.d, s)).filter(k=>k !== null);
+		const corner = kinds.length > 0 && kinds.every(k=>k === 'smooth');
+		const done = this.editAnchors((d, segment, decimals)=>{
+			const kind = anchorKind(d, segment);
+			if (corner) return kind === 'smooth' ? cornerPathPoint(d, segment, decimals) : null;
+			return kind === 'corner' ? smoothPathPoint(d, segment, decimals) : null;
+		});
+		if (!done) return;
+		if (done.changed === 0) {
+			this.announceError(corner ? 'These points have no handles to take in.' : 'These points cannot be made smooth.');
 			return;
 		}
-		if (!this.commitPathData(found, next, data.converted)) return;
-		this.selectAnchorAt(found.tag.ordinal, chosen.point);
-		this.announceAction('Point made symmetric');
+		const what = done.changed === 1 ? 'Point' : `${done.changed} points`;
+		this.announceAction(corner ? `${what} made ${done.changed === 1 ? 'a corner' : 'corners'}` : `${what} made smooth`);
+	}
+
+	/** Make the selected anchors symmetric: smooth, their handles one length. */
+	private makeSymmetric(): void {
+		const done = this.editAnchors(symmetricPathPoint);
+		if (!done) return;
+		if (done.changed === 0) {
+			this.announceError('These points are symmetric already, or cannot be: each needs a curve or line on both sides, and no arc.');
+			return;
+		}
+		this.announceAction(done.changed === 1 ? 'Point made symmetric' : `${done.changed} points made symmetric`);
 	}
 
 	/** Make the picked segment a curve, or a curved one straight. */
@@ -1649,44 +1750,48 @@ class slick {
 		this.announceAction(curved ? 'Segment made straight' : 'Segment made a curve: drag its handles to shape it');
 	}
 
-	/** The point of the element being edited that is selected, with its ref. */
-	private selectedPoint(): {el: Element; points: EditPoint[]; index: number; point: EditPoint} | null {
-		const el = this.selectedElement();
-		const index = this.pointMode?.selected ?? null;
+	/** The selected points of the element being edited, the last the one the
+	 * code editor shows first. */
+	private selectedPoints(): {el: Element; points: EditPoint[]; chosen: {index: number; point: EditPoint}[]} | null {
+		const el = this.pointMode ? this.selectedElement() : null;
 		const points = el ? pointsOf(el) : null;
-		const point = index === null ? undefined : points?.at(index);
-		if (!el || index === null || !points || !point) return null;
-		return {el, points, index, point};
+		if (!el || !points || !this.pointMode) return null;
+		const chosen = this.pointMode.selected.flatMap(index=>((point)=>point ? [{index, point}] : [])(points.at(index)));
+		return {el, points, chosen};
 	}
 
-	/** Select the numbers of the selected point in the editor. */
+	/** Select the numbers of the selected points in the editor, a range for
+	 * each, the last selected the main one. */
 	private selectPointInEditor(): void {
-		const chosen = this.selectedPoint();
-		if (!chosen) return;
-		const found = this.sourceFor(chosen.el);
-		if (!found) return;
-		const attr = attributesOf(found.sourceText, found.tag).find(a=>a.name === pointAttr(chosen.point.ref));
-		if (!attr) return;
-		const value = attr.value;
-		const at = found.tag.start + attr.valueStart;
-		const ref = chosen.point.ref;
-		let span: [number, number] | null = null;
-		if (ref.type === 'path') {
-			const seg = parsePathData(value)?.at(ref.segment);
-			// an S writes only its second handle, so that is its first pair
-			const k = seg ? (ref.slot === 'cp1' ? 0 : ref.slot === 'cp2' ? (/^s$/i.test(seg.letter) ? 0 : 2) : seg.args.length - 2) : -1;
-			const x = seg?.args.at(k);
-			const y = seg?.args.at(k + 1);
-			if (x && y) span = [at + x.start, at + y.end];
-		} else if (ref.type === 'poly') {
-			const tokens = parsePathData(`M${value}`);
-			const x = tokens?.at(ref.index)?.args.at(0);
-			const y = tokens?.at(ref.index)?.args.at(1);
-			if (x && y) span = [at + x.start - 1, at + y.end - 1];
-		} else {
-			span = [at, at + value.length];
-		}
-		if (span) this.editor.dispatch({selection: {anchor: span[0], head: span[1]}, scrollIntoView: true});
+		const sel = this.selectedPoints();
+		const found = sel && sel.chosen.length > 0 ? this.sourceFor(sel.el) : null;
+		if (!sel || !found) return;
+		const attrs = attributesOf(found.sourceText, found.tag);
+		const spanOf = (ref: PointRef): [number, number] | null=>{
+			const attr = attrs.find(a=>a.name === pointAttr(ref));
+			if (!attr) return null;
+			const value = attr.value;
+			const at = found.tag.start + attr.valueStart;
+			if (ref.type === 'path') {
+				const seg = parsePathData(value)?.at(ref.segment);
+				// an S writes only its second handle, so that is its first pair
+				const k = seg ? (ref.slot === 'cp1' ? 0 : ref.slot === 'cp2' ? (/^s$/i.test(seg.letter) ? 0 : 2) : seg.args.length - 2) : -1;
+				const x = seg?.args.at(k);
+				const y = seg?.args.at(k + 1);
+				return x && y ? [at + x.start, at + y.end] : null;
+			}
+			if (ref.type === 'poly') {
+				const tokens = parsePathData(`M${value}`);
+				const x = tokens?.at(ref.index)?.args.at(0);
+				const y = tokens?.at(ref.index)?.args.at(1);
+				return x && y ? [at + x.start - 1, at + y.end - 1] : null;
+			}
+			return [at, at + value.length];
+		};
+		const spans = sel.chosen.map(c=>spanOf(c.point.ref)).filter((s): s is [number, number]=>s !== null);
+		if (spans.length === 0) return;
+		const ranges = spans.map(([from, to])=>EditorSelection.range(from, to));
+		this.editor.dispatch({selection: EditorSelection.create(ranges, ranges.length - 1), scrollIntoView: true});
 	}
 
 	/** Add a point to the element at a spot on its outline. */
@@ -1731,7 +1836,8 @@ class slick {
 		const made = this.elementForOrdinal(found.tag.ordinal);
 		const points = made ? pointsOf(made) : null;
 		if (this.pointMode && points) {
-			this.pointMode.selected = select(points);
+			const index = select(points);
+			this.pointMode.selected = index < 0 ? [] : [index];
 			this.pointMode.spot = null;
 		}
 		this.refreshSelection();
@@ -1739,41 +1845,57 @@ class slick {
 		this.announceAction('Point added');
 	}
 
-	/** Move the selected point by whole units of the element, from the keyboard. */
+	/** Move the selected points by whole units of the element, from the
+	 * keyboard. One handle alone takes the one across its anchor along, as a
+	 * drag of it does; several points move as one shape. */
 	private nudgePoint(dx: number, dy: number): void {
-		const chosen = this.selectedPoint();
-		if (!chosen || this.gesture?.drags.length) return;
-		const found = this.sourceFor(chosen.el);
-		if (!found) return;
-		const attrs = movePoint(chosen.point.ref, found.source, {x: chosen.point.x + dx, y: chosen.point.y + dy}, 0);
+		const sel = this.selectedPoints();
+		const found = sel && sel.chosen.length > 0 && !this.gesture?.drags.length ? this.sourceFor(sel.el) : null;
+		if (!sel || !found) return;
+		const [only] = sel.chosen;
+		const attrs = sel.chosen.length === 1
+			? movePoint(only.point.ref, found.source, {x: only.point.x + dx, y: only.point.y + dy}, 0)
+			: movePoints(sel.chosen.map(c=>c.point.ref), found.source, {x: dx, y: dy}, 0);
 		if (!attrs) return;
 		this.commitChanges(found.sourceText, [{tag: found.tag, attrs}], undefined, false);
-		this.selectPointInEditor();
+		if (sel.chosen.length > 1) this.selectPointsAt(found.tag.ordinal, sel.chosen.map(c=>({x: c.point.x + dx, y: c.point.y + dy, kind: c.point.kind})));
+		else this.selectPointInEditor();
 	}
 
-	/** Take the selected point out of the element. A handle goes back into
-	 * its anchor, which is selected in its place. */
+	/** Take the selected points out of the element. A handle goes back into
+	 * its anchor; one handle alone has its anchor selected in its place. Each
+	 * goes from the end of the path back, so the places of those still to go
+	 * hold, and all of it is one step. */
 	private deletePoint(): void {
-		const chosen = this.selectedPoint();
-		if (!chosen) return;
-		const found = this.sourceFor(chosen.el);
-		if (!found) return;
-		const ref = chosen.point.ref;
-		const handle = chosen.point.kind === 'control';
-		const d = found.source.getAttribute('d') ?? '';
+		const sel = this.selectedPoints();
+		const found = sel && sel.chosen.length > 0 ? this.sourceFor(sel.el) : null;
+		if (!sel || !found) return;
+		const refs = sel.chosen.map(c=>c.point.ref);
+		const last = (a: number, b: number): number=>b - a;
 		let attrs: Record<string, string | null> | null = null;
-		if (ref.type === 'path' && ref.slot !== 'end') attrs = ((next)=>next === null ? null : {d: next})(retractPathHandle(d, {segment: ref.segment, slot: ref.slot}, 0));
-		else if (ref.type === 'path') attrs = ((next)=>next === null ? null : {d: next})(removePathPoint(d, ref.segment, 0));
-		else if (ref.type === 'poly') attrs = ((p)=>p === null ? null : {points: p})(removePolygonPoint(found.source.getAttribute('points') ?? '', ref.index));
+		if (refs.every(ref=>ref.type === 'path')) {
+			let d: string | null = found.source.getAttribute('d') ?? '';
+			const handles = refs.flatMap(ref=>ref.slot !== 'end' ? [{segment: ref.segment, slot: ref.slot}] : []).sort((a, b)=>last(a.segment, b.segment));
+			const anchors = refs.flatMap(ref=>ref.slot === 'end' ? [ref.segment] : []).sort(last);
+			for (const h of handles) d = d === null ? null : retractPathHandle(d, h, 0);
+			for (const segment of anchors) d = d === null ? null : removePathPoint(d, segment, 0);
+			attrs = d === null ? null : {d};
+		} else if (refs.every(ref=>ref.type === 'poly')) {
+			let points: string | null = found.source.getAttribute('points') ?? '';
+			for (const index of refs.map(ref=>ref.index).sort(last)) points = points === null ? null : removePolygonPoint(points, index);
+			attrs = points === null ? null : {points};
+		}
+		const [only] = sel.chosen;
+		const handle = sel.chosen.length === 1 && only.point.kind === 'control';
 		if (!attrs) {
-			this.announceError(ref.type === 'line' ? 'A line keeps both its ends.' : handle ? 'This handle could not be removed.' : 'This point could not be removed.');
+			this.announceError(refs.some(ref=>ref.type === 'line') ? 'A line keeps both its ends.' : handle ? 'This handle could not be removed.' : 'These points could not be removed.');
 			return;
 		}
-		if (this.pointMode) this.pointMode.selected = null;
+		if (this.pointMode) this.pointMode.selected = [];
 		if (!this.commitChanges(found.sourceText, [{tag: found.tag, attrs}], 'slick.point')) return;
-		const anchor = chosen.point.anchors.at(0);
+		const anchor = only.point.anchors.at(0);
 		if (handle && anchor) this.selectAnchorAt(found.tag.ordinal, anchor);
-		this.announceAction(handle ? 'Handle removed' : 'Point removed');
+		this.announceAction(handle ? 'Handle removed' : sel.chosen.length === 1 ? 'Point removed' : `${sel.chosen.length} points removed`);
 	}
 
 	/** Put a box over an element, or take it away. */
@@ -1844,18 +1966,24 @@ class slick {
 	}
 
 	/** A press within reach of a point, while points are being edited,
-	 * selects it and takes hold of it, wherever on the preview it lands. */
+	 * selects it and takes hold of it, wherever on the preview it lands. One
+	 * already among several selected keeps them, so a drag moves them all;
+	 * while several are being picked, or with Ctrl or Cmd, one that was not
+	 * selected joins them. */
 	private pressPoint(e: Event, x: number, y: number): boolean {
 		const current = this.selectedElement();
 		const index = this.pointNear(x, y);
 		if (!this.pointMode || !current || index === null) return false;
 		e.preventDefault();
 		e.stopPropagation();
-		this.pointMode.selected = index;
+		const adding = this.pointMode.several || (e instanceof MouseEvent && (e.ctrlKey || e.metaKey));
+		const had = this.pointMode.selected.includes(index);
+		if (!had) this.pointMode.selected = adding ? [...this.pointMode.selected, index] : [index];
 		this.pointMode.spot = null;
 		this.refreshSelection();
 		this.selectPointInEditor();
-		const g: Gesture = {mode: 'point', handle: null, fromHandle: true, toggle: false, startX: x, startY: y, targets: [current], drags: [], point: index};
+		if (adding && !had) this.announceSelected();
+		const g: Gesture = {mode: 'point', handle: null, fromHandle: true, toggle: adding, startX: x, startY: y, targets: [current], drags: [], point: index, tapped: {index, had}};
 		this.gesture = g;
 		if ('touches' in e && e.target instanceof Element && this.pointsGroup.contains(e.target)) this.touchedMarker = e.target;
 		// an anchor gives out handles: at once with Alt, or to a finger held still
@@ -1871,6 +1999,48 @@ class slick {
 			this.startPull(g);
 		}
 		return true;
+	}
+
+	/** While several points are being picked, a press anywhere but on a point
+	 * starts a drag across the drawing that takes in the points it covers;
+	 * one that does not travel is a tap. */
+	private pressMarquee(x: number, y: number): boolean {
+		const el = this.pointMode?.several ? this.selectedElement() : null;
+		if (!el) return false;
+		this.gesture = {mode: 'marquee', handle: null, fromHandle: false, toggle: false, startX: x, startY: y, targets: [el], drags: [], point: null};
+		return true;
+	}
+
+	/** Draw the box a drag across the drawing covers, or take it away. */
+	private placeMarquee(g: Gesture | null): void {
+		const origin = this.overlay.getBoundingClientRect();
+		this.marquee.classList.toggle('hide', !g?.to);
+		if (!g?.to) return;
+		this.marquee.setAttribute('x', `${Math.min(g.startX, g.to.x) - origin.left}`);
+		this.marquee.setAttribute('y', `${Math.min(g.startY, g.to.y) - origin.top}`);
+		this.marquee.setAttribute('width', `${Math.abs(g.to.x - g.startX)}`);
+		this.marquee.setAttribute('height', `${Math.abs(g.to.y - g.startY)}`);
+	}
+
+	/** The anchors a drag across the drawing covered join the selection. Their
+	 * handles come along with them anyway, and a handle of an anchor outside
+	 * the box is left out, so a Delete does not take it in unasked. */
+	private takeInMarquee(g: Gesture): void {
+		const el = g.targets[0];
+		const points = pointsOf(el);
+		const ctm = el instanceof SVGGraphicsElement ? el.getScreenCTM() : null;
+		if (!this.pointMode || !points || !ctm || !g.to) return;
+		const [left, right] = [Math.min(g.startX, g.to.x), Math.max(g.startX, g.to.x)];
+		const [top, bottom] = [Math.min(g.startY, g.to.y), Math.max(g.startY, g.to.y)];
+		const inside = points.flatMap((p, i)=>{
+			const q = new DOMPoint(p.x, p.y).matrixTransform(ctm);
+			return p.kind === 'anchor' && q.x >= left && q.x <= right && q.y >= top && q.y <= bottom ? [i] : [];
+		});
+		this.pointMode.selected = [...new Set([...this.pointMode.selected, ...inside])];
+		this.pointMode.spot = null;
+		this.refreshSelection();
+		this.selectPointInEditor();
+		this.announceSelected();
 	}
 
 	/** A press on the outline of the element being edited, away from its
@@ -2008,10 +2178,14 @@ class slick {
 			const segment = anchorSegment(ref);
 			const pull = data && segment !== null ? {...data, segment} : null;
 			if (g.pull && !pull) return false;
+			// a point among several selected takes them all along
+			const sel = g.pull ? null : this.selectedPoints();
+			const chosen = sel && sel.chosen.length > 1 && sel.chosen.some(c=>c.index === g.point) ? sel.chosen : null;
+			const group = chosen ? {refs: chosen.map(c=>c.point.ref), froms: chosen.map(c=>({x: c.point.x, y: c.point.y, kind: c.point.kind})), by: {x: 0, y: 0}} : null;
 			g.drags = [{
 				target, found, live: pull?.converted && target instanceof SVGElement ? new LivePath(target) : new LiveEdit(target), attrs: {}, toUnits, decimals: decimalsFor(scale),
 				bbox: {x: 0, y: 0, width: 0, height: 0}, minSize: 0, center: {x: 0, y: 0}, screenCenter: {x: 0, y: 0},
-				point: {ref, from: {x: point.x, y: point.y}, mode, pull},
+				point: {ref, from: {x: point.x, y: point.y}, mode, pull, group},
 			}];
 			this.drawBox(this.hoverBox, null);
 			return true;
@@ -2054,7 +2228,7 @@ class slick {
 		this.drawBox(this.hoverBox, null);
 		// the cursor keeps the shape of the drag wherever the pointer strays:
 		// a closed hand for a move, and a handle's own arrow for its resize
-		const shapes: Record<GestureMode, string> = {move: 'grabbing', rotate: 'move', point: 'move', bend: 'grabbing', resize: this.handleEls.get(g.handle ?? '')?.style.cursor ?? ''};
+		const shapes: Record<GestureMode, string> = {move: 'grabbing', rotate: 'move', point: 'move', bend: 'grabbing', marquee: 'crosshair', resize: this.handleEls.get(g.handle ?? '')?.style.cursor ?? ''};
 		this.svgPreview.style.cursor = shapes[g.mode];
 		return true;
 	}
@@ -2095,6 +2269,12 @@ class slick {
 		if (!g) return;
 		const sx = x - g.startX;
 		const sy = y - g.startY;
+		if (g.mode === 'marquee') {
+			if (!g.to && Math.hypot(sx, sy) < DRAG_THRESHOLD) return;
+			g.to = {x, y};
+			this.placeMarquee(g);
+			return;
+		}
 		if (g.drags.length === 0) {
 			if (Math.hypot(sx, sy) < (g.slop ?? DRAG_THRESHOLD)) return;
 			this.clearHold();
@@ -2115,7 +2295,10 @@ class slick {
 				const to = {x: roundTo(d.point.from.x + v.x, d.decimals), y: roundTo(d.point.from.y + v.y, d.decimals)};
 				const pull = d.point.pull;
 				const pulled = pull ? pullHandles(pull.d, pull.segment, to, d.decimals) : null;
-				const attrs = pull ? (pulled === null ? null : {d: pulled}) : movePoint(d.point.ref, d.found.source, to, d.decimals, alt ? 'independent' : d.point.mode);
+				if (d.point.group) d.point.group.by = {x: roundTo(v.x, d.decimals), y: roundTo(v.y, d.decimals)};
+				const attrs = pull ? (pulled === null ? null : {d: pulled})
+					: d.point.group ? movePoints(d.point.group.refs, d.found.source, v, d.decimals)
+					: movePoint(d.point.ref, d.found.source, to, d.decimals, alt ? 'independent' : d.point.mode);
 				plan = attrs ? {ok: true, attrs} : {ok: false, reason: 'This point could not be moved.'};
 			} else if (g.mode === 'rotate') {
 				// the turn from where the handle was pressed to where it is now, measured in the parent's frame
@@ -2148,7 +2331,10 @@ class slick {
 		const first = g.drags[0];
 		if (first.point) {
 			const v = applyToVector(first.toUnits, sx, sy);
-			this.updateStatusBar(`point ${fmt(first.point.from.x + v.x, first.decimals)}, ${fmt(first.point.from.y + v.y, first.decimals)}`, false);
+			const count = first.point.group?.refs.length ?? 1;
+			this.updateStatusBar(count > 1
+				? `${count} points moved ${fmt(v.x, first.decimals)}, ${fmt(v.y, first.decimals)}`
+				: `point ${fmt(first.point.from.x + v.x, first.decimals)}, ${fmt(first.point.from.y + v.y, first.decimals)}`, false);
 			return;
 		}
 		const readout = Object.entries(first.attrs).map(([name, value])=>value === null ? `no ${name}` : `${name}="${value}"`).join(' ');
@@ -2164,8 +2350,15 @@ class slick {
 		this.svgPreview.style.cursor = '';
 		if (!g) return;
 		if (g.pull && g.drags.length === 0) this.refreshSelection();
+		if (g.mode === 'marquee') {
+			this.placeMarquee(null);
+			if (g.to) this.takeInMarquee(g);
+			else this.clickSelect(this.tapTarget);
+			return;
+		}
 		if (g.drags.length === 0) {
 			if (!g.fromHandle) this.clickSelect(this.tapTarget, g.toggle);
+			else if (g.tapped && !g.pull) this.tapPoint(g.tapped, g.toggle);
 			return;
 		}
 		const moved = g.drags.filter(d=>Object.keys(d.attrs).length > 0);
@@ -2188,9 +2381,16 @@ class slick {
 			this.announceAction('Handles pulled out');
 			return;
 		}
+		const group = first.point?.group;
+		if (group) {
+			// the points are found again where they went
+			this.selectPointsAt(first.found.tag.ordinal, group.froms.map(f=>({x: f.x + group.by.x, y: f.y + group.by.y, kind: f.kind})));
+			this.announceAction(`${group.refs.length} points moved`);
+			return;
+		}
 		if (first.bend && this.pointMode) {
 			// the bent segment stays picked, for the tools that work on it
-			this.pointMode.selected = null;
+			this.pointMode.selected = [];
 			this.pointMode.spot = {edge: first.bend.segment, t: first.bend.t};
 			this.refreshSelection();
 			this.announceAction('Segment bent');
@@ -2201,10 +2401,23 @@ class slick {
 		this.announceAction(moved.length > 1 ? `${moved.length} elements ${verb}` : `${moved[0].target.tagName.toLowerCase()} ${verb}`);
 	}
 
+	/** A tap on a point that was selected already: while several are being
+	 * picked it takes the point out, and otherwise it leaves that one alone
+	 * selected. */
+	private tapPoint(tapped: {index: number; had: boolean}, adding: boolean): void {
+		if (!this.pointMode || !tapped.had) return;
+		const rest = this.pointMode.selected.filter(i=>i !== tapped.index);
+		this.pointMode.selected = adding ? rest : [tapped.index];
+		this.refreshSelection();
+		this.selectPointInEditor();
+		if (adding) this.announceSelected();
+	}
+
 	private cancelGesture(): void {
 		const g = this.gesture;
 		this.gesture = null;
 		this.clearHold();
+		this.placeMarquee(null);
 		this.svgPreview.style.cursor = '';
 		if (!g || g.drags.length === 0) return;
 		for (const d of g.drags) d.live.revert();
