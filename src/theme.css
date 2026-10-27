@@ -165,9 +165,9 @@
 	}
   button {
     @apply flex shrink-0 cursor-pointer items-center justify-center text-face bg-btn mr-2;
-    /* on a touch screen a button is as wide as a fingertip */
+    /* on a touch screen a button is as wide as a fingertip, set closer to its neighbours */
     @media (pointer: coarse) {
-      @apply min-w-11 min-h-11;
+      @apply min-w-11 min-h-11 mr-1;
     }
     &:hover,
     &:active,

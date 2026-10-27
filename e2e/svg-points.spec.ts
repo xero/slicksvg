@@ -343,6 +343,30 @@ test.describe('SVG Editor Point Editing', () => {
     expect(await getSource(page)).toBe(FIXTURE);
   });
 
+  test('should make a smooth point symmetric, its handles sharing one length', async ({ page }) => {
+    await setContent(page, FIXTURE.replace('M20 20 L100 20 L100 100 Z', 'M20 100 C20 60 60 80 60 100 C60 140 100 140 100 100').replace('fill="#6291e0"', 'fill="none" stroke="#6291e0" stroke-width="6"'));
+    const stroke = await at(page, 20, 90);
+    await page.mouse.click(stroke.x, stroke.y);
+    await page.keyboard.press('Enter');
+    const symmetric = page.locator('#point-symmetric');
+    await expect(symmetric).toBeDisabled();
+    // an open end has one side, so there is nothing to match
+    await page.locator('.points [data-point="0"]').click();
+    await expect(symmetric).toBeDisabled();
+
+    await page.locator('.points [data-point="3"]').click();
+    await expect(symmetric).toBeEnabled();
+    await symmetric.click();
+    expect(await getSource(page)).toContain('d="M20 100 C20 60 60 70 60 100 C60 130 100 140 100 100"');
+    await expect(page.locator('.points rect.selected')).toHaveCount(1);
+    await expect(symmetric).toBeDisabled();
+    await expect(page.locator('#point-smooth')).toHaveAttribute('aria-pressed', 'true');
+
+    // and its handles go on mirroring each other
+    await dragPoint(page, 2, 0, -10);
+    expect(await getSource(page)).toContain('d="M20 100 C20 60 60 60 60 100 C60 140 100 140 100 100"');
+  });
+
   test('should keep a line end\'s written precision when nudged', async ({ page }) => {
     await setContent(page, FIXTURE.replace('<path id="p" d="M20 20 L100 20 L100 100 Z" fill="#6291e0"/>', '<line id="ln" x1="10.5" y1="40" x2="100" y2="40" stroke="#6291e0" stroke-width="8"/>'));
     // a line has no area, so Playwright will not click it by locator; aim at its stroke

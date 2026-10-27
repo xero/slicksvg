@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   parsePathData, walkPath, pathPoints, movePathPoint, insertPathPoint, removePathPoint, retractPathHandle, nearestPathSegment,
-  smoothPathPoint, cornerPathPoint, anchorKind, curvePathSegment, straightenPathSegment, segmentCurved, handleMode, moveHandle, pointsAsPathData, pullHandles, bendPathSegment,
+  smoothPathPoint, cornerPathPoint, anchorKind, curvePathSegment, straightenPathSegment, segmentCurved, handleMode, moveHandle, pointsAsPathData, pullHandles, bendPathSegment, symmetricPathPoint,
   parsePoints, polygonPoints, movePolygonPoint, insertPolygonPoint, removePolygonPoint, nearestPolygonEdge,
 } from '../src/path-data';
 
@@ -437,5 +437,33 @@ describe('Bending a segment', () => {
   it('should refuse an arc and an M', () => {
     expect(bendPathSegment('M0 0 A5 5 0 0 1 10 0', 1, 0.5, { x: 5, y: 5 }, 0)).toBeNull();
     expect(bendPathSegment('M0 0 L10 0', 0, 0.5, { x: 5, y: 5 }, 0)).toBeNull();
+  });
+});
+
+describe('Symmetric anchors', () => {
+  it('should give a smooth point two handles of one length, on the line it had', () => {
+    // handles of 10 and 20 along the x axis share 15 between them
+    expect(symmetricPathPoint('M0 0 C0 10 0 0 10 0 C30 0 20 10 20 20', 1, 0)).toBe('M0 0 C0 10 -5 0 10 0 C25 0 20 10 20 20');
+    expect(handleMode(symmetricPathPoint('M0 0 C0 10 0 0 10 0 C30 0 20 10 20 20', 1, 0)!, { segment: 1, slot: 'cp2' })).toBe('mirrored');
+  });
+
+  it('should smooth a corner first, its lines becoming curves', () => {
+    expect(symmetricPathPoint('M0 0 L30 0 L30 30', 1, 0)).toBe('M0 0 C10 0 23 -7 30 0 C37 7 30 20 30 30');
+    expect(symmetricPathPoint('M0 0 L30 0 L30 60', 1, 0)).toBe('M0 0 C10 0 19 -11 30 0 C41 11 30 40 30 60');
+  });
+
+  it('should keep an S that its handle now mirrors', () => {
+    expect(symmetricPathPoint('M0 0 C0 10 5 10 10 0 S20 -10 20 0', 1, 0)).toBe('M0 0 C0 10 5 10 10 0 S20 -10 20 0');
+    expect(symmetricPathPoint('M0 0 C0 10 5 5 10 0 C20 -20 20 -10 20 0', 1, 1)).toBe('M0 0 C0 10 1.4 11.9 10 0 C18.6 -11.9 20 -10 20 0');
+  });
+
+  it('should change nothing on a point already symmetric, and refuse an open end or an arc', () => {
+    expect(symmetricPathPoint('M0 0 C0 10 10 10 10 0 C10 -10 20 -10 20 0', 1, 0)).toBe('M0 0 C0 10 10 10 10 0 C10 -10 20 -10 20 0');
+    expect(symmetricPathPoint('M0 0 L10 0', 1, 0)).toBeNull();
+    expect(symmetricPathPoint('M0 0 L10 0 A5 5 0 0 1 20 0', 1, 0)).toBeNull();
+  });
+
+  it('should go round a closed subpath', () => {
+    expect(symmetricPathPoint('M0 0 L10 0 L10 10 Z', 0, 0)).toBe('M0 0 C2 -4 7 0 10 0 L10 10 C7 7 -2 4 0 0 Z');
   });
 });

@@ -856,6 +856,43 @@ export function smoothPathPoint(d: string, segment: number, decimals: number): s
 }
 
 /**
+ * Make the anchor at the end of `segment` symmetric: smooth, with its two
+ * handles the same length, which is what an S says. They keep the line a
+ * smooth point has, or take the one smoothing would give a corner, and share
+ * the length they had between them; a side with no handle yet counts a third
+ * of its segment. The handle leaving the anchor is rounded as it will be
+ * written, and the other mirrors it exactly, so the two read as one length.
+ * An arc beside the anchor has no handle to match.
+ */
+export function symmetricPathPoint(d: string, segment: number, decimals: number): string | null {
+	const e = begin(d);
+	if (!e) return null;
+	const {segments, walked} = e;
+	const {into, out} = anchorSides(segments, walked, segment);
+	if (into === null || out === null || lower(segments[into].letter) === 'a' || lower(segments[out].letter) === 'a') return null;
+	const P = walked[segment].end;
+	const dIn = heading(segments[into], walked[into], true)?.dir;
+	const dOut = heading(segments[out], walked[out], false)?.dir;
+	if (!dIn || !dOut) return null;
+	const tangent = unit(add(dIn, dOut)) ?? {x: -dIn.y, y: dIn.x};
+	const reach = reachOf(segments);
+	const arriving = cubicIn(e, into);
+	const leaving = cubicIn(e, out);
+	if (!arriving || !leaving) return null;
+	const reachOfHandle = (c: Target, i: number, slot: 'cp1' | 'cp2'): number=>{
+		const h = c[slot];
+		return h && size(sub(h, P)) > reach ? size(sub(h, P)) : size(sub(c.end, walked[i].start)) / 3;
+	};
+	const length = (reachOfHandle(arriving, into, 'cp2') + reachOfHandle(leaving, out, 'cp1')) / 2;
+	const places = Math.max(decimals, sourcePlaces());
+	const h = add(P, times(tangent, length));
+	const out1 = {x: roundTo(h.x, places), y: roundTo(h.y, places)};
+	leaving.cp1 = out1;
+	arriving.cp2 = reflect(out1, P);
+	return write(d, e, decimals);
+}
+
+/**
  * Make the anchor at the end of `segment` a corner: its handles go back into
  * it. A curve beside it left drawing a straight line is written as a line.
  */

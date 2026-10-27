@@ -12,7 +12,7 @@ import {findSvgTarget, selectionChain, nextInChain, ordinalOf, boxCorners, handl
 import {planMove, planResize, planRotate, planFlip, parentCenter, invert, applyToVector, applyToPoint, pixelsPerUnit, decimalsFor, roundTo, fmt, placesOf, type Matrix, type Point, type Rect, type Handle, type EditPlan} from './geometry';
 import {
 	parsePathData, walkPath, pathPoints, pointOnSegment, movePathPoint, insertPathPoint, removePathPoint, retractPathHandle, nearestPathSegment,
-	smoothPathPoint, cornerPathPoint, anchorKind, curvePathSegment, straightenPathSegment, segmentCurved, handleMode, moveHandle, pullHandles, bendPathSegment, type HandleMode,
+	smoothPathPoint, cornerPathPoint, symmetricPathPoint, anchorKind, curvePathSegment, straightenPathSegment, segmentCurved, handleMode, moveHandle, pullHandles, bendPathSegment, type HandleMode,
 	polygonPoints, movePolygonPoint, insertPolygonPoint, removePolygonPoint, nearestPolygonEdge, pointsAsPathData,
 } from './path-data';
 import {undo, redo, undoDepth, redoDepth, isolateHistory} from '@codemirror/commands';
@@ -700,6 +700,7 @@ class slick {
 			['points', ()=>this.togglePointMode()],
 			['point-add', ()=>this.pointTool(()=>this.addPointAtSpot())],
 			['point-smooth', ()=>this.pointTool(()=>this.toggleSmooth())],
+			['point-symmetric', ()=>this.pointTool(()=>this.makeSymmetric())],
 			['point-curve', ()=>this.pointTool(()=>this.toggleCurve())],
 			['point-delete', ()=>this.pointTool(()=>this.deletePoint())],
 			['point-done', ()=>this.togglePointMode()]
@@ -1275,6 +1276,9 @@ class slick {
 		const smooth = this.get('point-smooth');
 		smooth.toggleAttribute('disabled', kind === null);
 		smooth.setAttribute('aria-pressed', kind === 'smooth' ? 'true' : 'false');
+		// there to be pressed only when it would change something
+		const symmetric = data && anchor !== null && el ? symmetricPathPoint(data.d, anchor, this.decimalsAt(el)) : null;
+		this.get('point-symmetric').toggleAttribute('disabled', symmetric === null || symmetric === data?.d);
 		const segment = data ? this.spotSegment(data) : null;
 		const segments = data && segment !== null ? parsePathData(data.d) : null;
 		const curved = data && segment !== null ? segmentCurved(data.d, segment) : false;
@@ -1521,6 +1525,23 @@ class slick {
 		if (!this.commitPathData(found, next, data.converted)) return;
 		this.selectAnchorAt(found.tag.ordinal, chosen.point);
 		this.announceAction(smooth ? 'Point made a corner' : 'Point made smooth');
+	}
+
+	/** Make the selected anchor symmetric: smooth, its handles one length. */
+	private makeSymmetric(): void {
+		const chosen = this.selectedPoint();
+		const segment = chosen?.point.kind === 'anchor' ? anchorSegment(chosen.point.ref) : null;
+		const found = chosen ? this.sourceFor(chosen.el) : null;
+		const data = found ? pathDataOf(found.source) : null;
+		if (!chosen || segment === null || !found || !data) return;
+		const next = symmetricPathPoint(data.d, segment, this.decimalsAt(chosen.el));
+		if (next === null || next === data.d) {
+			this.announceError(next === null ? 'This point cannot be made symmetric: it needs a curve or line on both sides, and no arc.' : 'This point is already symmetric.');
+			return;
+		}
+		if (!this.commitPathData(found, next, data.converted)) return;
+		this.selectAnchorAt(found.tag.ordinal, chosen.point);
+		this.announceAction('Point made symmetric');
 	}
 
 	/** Make the picked segment a curve, or a curved one straight. */
