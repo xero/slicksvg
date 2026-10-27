@@ -339,6 +339,30 @@ test.describe('SVG Editor Preview Editing', () => {
     expect(turned.y).toBeCloseTo(centre.y + (start.x - centre.x), 1);
   });
 
+  test('should turn the selection as the screen shows it in a drawing stretched along one axis', async ({ page }) => {
+    // the drawing is twice as tall on screen as in its units, where a quarter turn is no turn at all
+    const stretched = FIXTURE.replace('viewBox="0 0 200 200"', 'viewBox="0 0 200 100" preserveAspectRatio="none"');
+    await setContent(page, stretched);
+    await page.locator('.svg-container rect').click();
+    const [nw, se, centre] = [await onPage(page, '#box', 20, 20), await onPage(page, '#box', 80, 80), await onPage(page, '#box', 50, 50)];
+    await page.locator('#rotate').click();
+    expect(await getSource(page)).toMatch(/fill="#6291e0" transform="matrix\([^)]*\)"\/>/);
+    for (const [from, at] of [[nw, await onPage(page, '#box', 20, 20)], [se, await onPage(page, '#box', 80, 80)]]) {
+      expect(at.x).toBeCloseTo(centre.x - (from.y - centre.y), 0);
+      expect(at.y).toBeCloseTo(centre.y + (from.x - centre.x), 0);
+    }
+    // a second turn is taken into the first: one matrix, half way round
+    await page.locator('#rotate').click();
+    expect(await getSource(page)).toMatch(/fill="#6291e0" transform="matrix\([^)]*\)"\/>/);
+    const half = await onPage(page, '#box', 20, 20);
+    expect(half.x).toBeCloseTo(2 * centre.x - nw.x, 0);
+    expect(half.y).toBeCloseTo(2 * centre.y - nw.y, 0);
+    // and four come round to none
+    await page.locator('#rotate').click();
+    await page.locator('#rotate').click();
+    expect(await getSource(page)).toBe(stretched);
+  });
+
   test('should move a group once when one of its children is selected with it', async ({ page }) => {
     await setContent(page, `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
   <g id="grp">

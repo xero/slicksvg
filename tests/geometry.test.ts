@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   parseTransform, listMatrix, multiply, invert, applyToPoint, decimalsFor, fmt, shifted,
-  planMove, planResize, planScaleAbout, axisMaps, resizedBox, planRotate, planFlip, planMirror, parentCenter,
+  planMove, planResize, planScaleAbout, axisMaps, resizedBox, planRotate, planFlip, planMatrix, parentCenter,
   type ResizeRequest, type Rect,
 } from '../src/geometry';
 
@@ -326,17 +326,38 @@ describe('planFlip', () => {
   it('should take a mirror back off when flipped across the same line again', () => {
     expect(planFlip(el('<rect transform="matrix(-1 0 0 1 100 0)"/>'), 'x', c)).toEqual({ ok: true, attrs: { transform: null } });
     expect(planFlip(el('<rect transform="matrix(-1 0 0 1 100 0) scale(2)"/>'), 'x', c)).toEqual({ ok: true, attrs: { transform: 'scale(2)' } });
+    // a flip across the other line takes the first in: the two are a half turn
     expect(planFlip(el('<rect transform="matrix(-1 0 0 1 100 0)"/>'), 'y', c))
-      .toEqual({ ok: true, attrs: { transform: 'matrix(1 0 0 -1 0 100) matrix(-1 0 0 1 100 0)' } });
+      .toEqual({ ok: true, attrs: { transform: 'matrix(-1 0 0 -1 100 100)' } });
   });
 
   it('should mirror across a slanted line, and take that mirror back off', () => {
     // across the line at 30 degrees through 10, 0, as a flip on screen is seen in a parent turned 30 degrees
     const [cos, sin] = [Math.cos(Math.PI / 3), Math.sin(Math.PI / 3)];
     const m = { a: cos, b: sin, c: sin, d: -cos, e: 10 - cos * 10, f: -sin * 10 };
-    expect(planMirror(el('<rect/>'), m)).toEqual({ ok: true, attrs: { transform: 'matrix(0.5 0.866025 0.866025 -0.5 5 -8.66)' } });
-    expect(planMirror(el('<rect transform="matrix(0.5 0.866025 0.866025 -0.5 5 -8.66) scale(2)"/>'), m)).toEqual({ ok: true, attrs: { transform: 'scale(2)' } });
-    expect(planMirror(el('<rect style="transform: scale(2)"/>'), m).ok).toBe(false);
+    expect(planMatrix(el('<rect/>'), m)).toEqual({ ok: true, attrs: { transform: 'matrix(0.5 0.866025 0.866025 -0.5 5 -8.66)' } });
+    expect(planMatrix(el('<rect transform="matrix(0.5 0.866025 0.866025 -0.5 5 -8.66) scale(2)"/>'), m)).toEqual({ ok: true, attrs: { transform: 'scale(2)' } });
+    expect(planMatrix(el('<rect style="transform: scale(2)"/>'), m).ok).toBe(false);
+  });
+
+  it('should take a turn into the matrix in front, so turns add up and four quarters come to none', () => {
+    // a quarter turn about 50,50 as a parent stretched twice as wide sees it
+    const quarter = { a: 0, b: 2, c: -0.5, d: 0, e: 75, f: -50 };
+    const once = planMatrix(el('<rect/>'), quarter);
+    expect(once).toEqual({ ok: true, attrs: { transform: 'matrix(0 2 -0.5 0 75 -50)' } });
+    let transform = once.ok ? once.attrs.transform! : '';
+    const turns = [transform];
+    for (let i = 0; i < 3; i++) {
+      const next = planMatrix(el(`<rect transform="${transform}"/>`), quarter);
+      transform = next.ok ? next.attrs.transform ?? '' : 'refused';
+      turns.push(transform);
+    }
+    expect(turns).toEqual(['matrix(0 2 -0.5 0 75 -50)', 'matrix(-1 0 0 -1 100 100)', 'matrix(0 -2 0.5 0 25 150)', '']);
+  });
+
+  it('should keep the places a matrix in front was written to when taking a new one in', () => {
+    expect(planMatrix(el('<rect transform="matrix(0.70710678 0.70710678 -0.70710678 0.70710678 0.125 0)"/>'), { a: -1, b: 0, c: 0, d: 1, e: 100, f: 0 }))
+      .toEqual({ ok: true, attrs: { transform: 'matrix(-0.70710678 0.70710678 0.70710678 0.70710678 99.875 0)' } });
   });
 
   it('should keep the mirror a true mirror: the centre stays put', () => {

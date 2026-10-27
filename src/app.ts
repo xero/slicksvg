@@ -10,7 +10,7 @@ import {findElementAtCursor, type ElementRef} from './xray';
 import {startTags, readAttribute, attributesOf, planAttributeEdits, applyChanges, stampSource, parseSource, elementExtent, removalRange, duplicateInsertion, SOURCE_ATTR, type StartTag, type TextChange} from './source-map';
 import {GEOMETRY, SHAPES, plainLength, shapePathData, asPathChanges, conversionBlocked, type Length, type ShapePath} from './shapes';
 import {findSvgTarget, selectionChain, nextInChain, ordinalOf, boxCorners, handleCursor} from './select';
-import {planMove, planResize, planScaleAbout, planRotate, planMirror, parentCenter, axisMaps, scaleMatrix, multiply, invert, applyToVector, applyToPoint, pixelsPerUnit, decimalsFor, roundTo, fmt, placesOf, IDENTITY, type Matrix, type Point, type Rect, type Handle, type EditPlan} from './geometry';
+import {planMove, planResize, planScaleAbout, planRotate, planMatrix, mirrorAbout, parentCenter, axisMaps, scaleMatrix, multiply, invert, applyToVector, applyToPoint, pixelsPerUnit, decimalsFor, roundTo, fmt, placesOf, IDENTITY, type Matrix, type Point, type Rect, type Handle, type EditPlan} from './geometry';
 import {
 	parsePathData, walkPath, pathPoints, pointOnSegment, movePathPoint, transformPathPoints, insertPathPoint, removePathPoint, retractPathHandle, nearestPathSegment,
 	smoothPathPoint, cornerPathPoint, symmetricPathPoint, anchorKind, curvePathSegment, straightenPathSegment, segmentCurved, handleMode, moveHandle, pullHandles, bendPathSegment, type HandleMode,
@@ -461,9 +461,9 @@ function turnAbout(degrees: number, c: Point): Matrix {
 	return {a: cos, b: sin, c: -sin, d: cos, e: c.x - cos * c.x + sin * c.y, f: c.y - sin * c.x - cos * c.y};
 }
 
-/** A mirror across the vertical (axis "x") or horizontal (axis "y") line through a point on screen. */
-function mirrorAbout(axis: 'x' | 'y', c: Point): Matrix {
-	return axis === 'x' ? {a: -1, b: 0, c: 0, d: 1, e: 2 * c.x, f: 0} : {a: 1, b: 0, c: 0, d: -1, e: 0, f: 2 * c.y};
+/** Whether a transform's slant is a turn alone, with no stretch, slant, or mirror. */
+function isTurn(m: Matrix): boolean {
+	return Math.abs(m.a - m.d) < 1e-9 && Math.abs(m.b + m.c) < 1e-9 && Math.abs(Math.hypot(m.a, m.b) - 1) < 1e-9;
 }
 
 /** A transform's slant, less the float noise that took it off whole
@@ -2654,8 +2654,12 @@ class slick {
 		const turn = (middle: Point): Matrix=>turnAbout(degrees, middle);
 		if (this.transformSelectedPoints(turn, `turned ${degrees} degrees`)) return;
 		const els = this.selectedElements();
-		// the turn as it runs in each one's parent, which a flip there runs the other way round
-		const made = this.plansAbout(els, turn, (source, m, center)=>planRotate(source, (Math.atan2(m.b, m.a) * 180) / Math.PI, center));
+		// the turn as it runs in each one's parent, which a flip there runs the
+		// other way round; a parent stretched or slanted against the screen sees
+		// it as no turn at all, so it goes in front as the matrix it is there
+		const made = this.plansAbout(els, turn, (source, m, center)=>isTurn(m)
+			? planRotate(source, (Math.atan2(m.b, m.a) * 180) / Math.PI, center)
+			: planMatrix(source, m));
 		if (made && this.commitChanges(made.sourceText, made.plans, 'slick.rotate')) {
 			this.announceAction(els.length > 1 ? `${els.length} elements rotated ${degrees} degrees` : `${els[0].tagName.toLowerCase()} rotated ${degrees} degrees`);
 		}
@@ -2669,7 +2673,7 @@ class slick {
 		const mirror = (middle: Point): Matrix=>mirrorAbout(axis, middle);
 		if (this.transformSelectedPoints(mirror, `flipped ${way}`)) return;
 		const els = this.selectedElements();
-		const made = this.plansAbout(els, mirror, (source, m)=>planMirror(source, m));
+		const made = this.plansAbout(els, mirror, (source, m)=>planMatrix(source, m));
 		if (made && this.commitChanges(made.sourceText, made.plans, 'slick.flip')) {
 			this.announceAction(els.length > 1 ? `${els.length} elements flipped ${way}` : `${els[0].tagName.toLowerCase()} flipped ${way}`);
 		}
@@ -2683,7 +2687,10 @@ class slick {
 	 */
 	private plansAbout(els: Element[], onScreen: (middle: Point) => Matrix, plan: (source: Element, m: Matrix, center: Point) => EditPlan): {sourceText: string; plans: Planned[]} | null {
 		const corners = els.flatMap(el=>boxCorners(el, this.overlay) ?? []);
-		if (corners.length === 0) return null;
+		if (corners.length === 0) {
+			this.announceError('The selection has no box to turn or flip it about.');
+			return null;
+		}
 		const origin = this.overlay.getBoundingClientRect();
 		const box = boundsOf(corners);
 		const middle = {x: origin.left + box.x + box.width / 2, y: origin.top + box.y + box.height / 2};
@@ -2692,8 +2699,10 @@ class slick {
 			const ctm = el.parentElement instanceof SVGGraphicsElement ? el.parentElement.getScreenCTM() : null;
 			const toUnits = ctm ? invert(toMatrix(ctm)) : null;
 			const center = one ? parentCenter(source, bbox) : toUnits && applyToPoint(toUnits, middle.x, middle.y);
-			if (!ctm || !toUnits || !center) return {ok: false, reason: 'This element\'s transform could not be read, so it cannot be turned or flipped here.'};
-			return plan(source, holding(multiply(toUnits, multiply(onScreen(middle), toMatrix(ctm))), center), center);
+			if (!center || (!one && !toUnits)) return {ok: false, reason: 'This element\'s transform could not be read, so it cannot be turned or flipped here.'};
+			// a parent with no place on screen is taken as upright, as it was before there was a screen to go by
+			const m = ctm && toUnits ? multiply(toUnits, multiply(onScreen(middle), toMatrix(ctm))) : onScreen(center);
+			return plan(source, holding(m, center), center);
 		});
 	}
 
@@ -2702,10 +2711,15 @@ class slick {
 	 * False when there are not several to transform. */
 	private transformSelectedPoints(onScreen: (middle: Point) => Matrix, done: string): boolean {
 		const sel = this.selectedPoints();
+		if (!sel || sel.chosen.length < 2) return false;
 		const box = this.pointBox();
-		const ctm = sel?.el instanceof SVGGraphicsElement ? sel.el.getScreenCTM() : null;
+		const ctm = sel.el instanceof SVGGraphicsElement ? sel.el.getScreenCTM() : null;
 		const toUnits = ctm ? invert(toMatrix(ctm)) : null;
-		if (!sel || sel.chosen.length < 2 || !box || !ctm || !toUnits) return false;
+		// the picked points, not the whole shape, are what was asked for
+		if (!box || !ctm || !toUnits) {
+			this.announceError('These points could not be moved.');
+			return true;
+		}
 		const found = this.sourceFor(sel.el);
 		if (!found) return true;
 		const center = {x: box.local.x + box.local.width / 2, y: box.local.y + box.local.height / 2};

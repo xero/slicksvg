@@ -657,32 +657,47 @@ export function planRotate(el: Element, degrees: number, center: Point, decimals
  * its transform. Mirroring across the same line again takes it back off.
  */
 export function planFlip(el: Element, axis: 'x' | 'y', center: Point, decimals = 2): EditPlan {
-	return planMirror(el, axis === 'x'
-		? {a: -1, b: 0, c: 0, d: 1, e: 2 * center.x, f: 0}
-		: {a: 1, b: 0, c: 0, d: -1, e: 0, f: 2 * center.y}, decimals);
+	return planMatrix(el, mirrorAbout(axis, center), decimals);
+}
+
+/** A mirror across the vertical (axis "x") or horizontal (axis "y") line through a point. */
+export function mirrorAbout(axis: 'x' | 'y', c: Point): Matrix {
+	return axis === 'x' ? {a: -1, b: 0, c: 0, d: 1, e: 2 * c.x, f: 0} : {a: 1, b: 0, c: 0, d: -1, e: 0, f: 2 * c.y};
 }
 
 /**
- * Mirror an element by `m`, a reflection in its parent's units, which may be
- * across a slanted line where the parent is turned against the screen: a
- * matrix in front of its transform, its slant to six places and its shift to
- * `decimals`. Mirroring by the same matrix again takes it back off.
+ * Put `m`, a transform in the element's parent's units, in front of its
+ * transform as a matrix, its slant to six places and its shift to
+ * `decimals`. This is how a mirror is written, and a turn where the parent
+ * is stretched or slanted against the screen, so that it is no rotate
+ * there. A matrix already in front takes the new one in rather than
+ * stacking under it, keeping the places it was written to, and two that
+ * come to nothing leave nothing: the same mirror again takes the first
+ * back off, and four quarter turns come round to none.
  */
-export function planMirror(el: Element, m: Matrix, decimals = 2): EditPlan {
+export function planMatrix(el: Element, m: Matrix, decimals = 2): EditPlan {
 	const blocked = originBlockedReason(el);
 	if (blocked) return {ok: false, reason: blocked};
 	const list = readTransform(el);
 	if (!list) return {ok: false, reason: UNREADABLE_TRANSFORM};
 	const value = el.getAttribute('transform') ?? '';
-	const written = [...[m.a, m.b, m.c, m.d].map(n=>roundTo(n, 6)), roundTo(m.e, decimals), roundTo(m.f, decimals)];
+	const round = (n: Matrix, slant: number, shift: number): Matrix=>({
+		a: roundTo(n.a, slant), b: roundTo(n.b, slant), c: roundTo(n.c, slant), d: roundTo(n.d, slant), e: roundTo(n.e, shift), f: roundTo(n.f, shift),
+	});
+	// the new matrix as it would be written on its own
+	const written = round(m, 6, decimals);
 	const first = list.at(0);
-	if (first?.name === 'matrix') {
-		const at = fnMatrix(first);
-		if ([at.a, at.b, at.c, at.d, at.e, at.f].every((n, i)=>same(n, written[i]))) {
-			const rest = afterFunction(value, first.end);
-			return {ok: true, attrs: {transform: rest || null}};
-		}
-	}
-	const text = `matrix(${written.join(' ')})`;
-	return {ok: true, attrs: {transform: [text, value.trim()].filter(Boolean).join(' ')}};
+	const leading = first?.name === 'matrix' ? fnMatrix(first) : null;
+	const rest = first && leading ? afterFunction(value, first.end) : value.trim();
+	const shift = Math.max(decimals, ...(leading ? [placesOf(leading.e), placesOf(leading.f)] : []));
+	const both = leading ? round(multiply(written, leading), Math.max(6, ...[leading.a, leading.b, leading.c, leading.d].map(placesOf)), shift) : written;
+	// nothing, but for what rounding each as it was written left: a slant to
+	// six places is a mirror only to about that, and a shift to its last place
+	const near = (n: number, to: number, by: number): boolean=>Math.abs(n - to) <= by;
+	const none = near(both.a, 1, 1e-5) && near(both.b, 0, 1e-5) && near(both.c, 0, 1e-5) && near(both.d, 1, 1e-5)
+		&& near(both.e, 0, 10 ** -shift + 1e-9) && near(both.f, 0, 10 ** -shift + 1e-9);
+	const text = none ? '' : `matrix(${[both.a, both.b, both.c, both.d, both.e, both.f].join(' ')})`;
+	const next = [text, rest].filter(Boolean).join(' ');
+	if (next === value.trim()) return {ok: true, attrs: {}};
+	return {ok: true, attrs: {transform: next || null}};
 }
