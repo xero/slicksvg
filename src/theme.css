@@ -317,6 +317,20 @@
           stroke-dasharray: 2 2;
         }
       }
+      /* the segment picked for the point tools, and the spot on it */
+      .spot {
+        path {
+          @apply fill-none stroke-header;
+          stroke-width: 4;
+          stroke-linecap: round;
+          opacity: 0.45;
+          vector-effect: non-scaling-stroke;
+        }
+        circle {
+          @apply fill-header stroke-menu-alt;
+          stroke-width: 1.5;
+        }
+      }
       /* resize and rotate handles take the pointer; the rest passes through */
       .handles {
         rect, circle {

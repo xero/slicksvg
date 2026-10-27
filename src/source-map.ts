@@ -292,3 +292,32 @@ export function duplicateInsertion(source: string, ordinal: number, copy: string
 	const alone = /^\s*$/.test(indent) && /^\s*$/.test(source.slice(extent.end, lineEnd));
 	return {from: extent.end, to: extent.end, insert: alone ? `\n${indent}${copy}` : copy};
 }
+
+/** The splices that make an element another kind: the name in its start
+ * tag, and in its closing tag when it has one. */
+export function renameElement(source: string, tag: StartTag, name: string): TextChange[] {
+	NAME.lastIndex = tag.start + 1;
+	const open = NAME.exec(source);
+	if (!open) return [];
+	const changes: TextChange[] = [{from: tag.start + 1, to: tag.start + 1 + open[0].length, insert: name}];
+	const extent = tag.selfClosing ? null : elementExtent(source, tag.ordinal);
+	const close = extent ? source.lastIndexOf('</', extent.end - 1) : -1;
+	if (close >= 0) {
+		NAME.lastIndex = close + 2;
+		const closing = NAME.exec(source);
+		if (closing) changes.push({from: close + 2, to: close + 2 + closing[0].length, insert: name});
+	}
+	return changes;
+}
+
+/** The splices that rename an attribute where it stands, keeping its
+ * quotes, and give it a new value; null when the tag does not have it. */
+export function renameAttribute(source: string, tag: StartTag, from: string, to: string, value: string): TextChange[] | null {
+	const attr = attributesOf(source, tag).find(a=>a.name === from);
+	if (!attr) return null;
+	const at = source.indexOf(from, tag.start + attr.start);
+	return [
+		{from: at, to: at + from.length, insert: to},
+		{from: tag.start + attr.valueStart, to: tag.start + attr.valueEnd, insert: escapeValue(value, attr.quote)},
+	];
+}

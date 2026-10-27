@@ -176,7 +176,7 @@ src/
 ├── source-map.ts    # Source text scanning, attribute edits, preview stamping
 ├── geometry.ts      # Move, resize, rotate, and flip planners
 ├── view.ts          # Pan and zoom about a point, wheel and pinch maths
-├── path-data.ts     # Path and polygon points: parse, move, add, remove
+├── path-data.ts     # Path and polygon points: parse, move, add, remove, smooth, curve
 ├── select.ts        # Preview selection picking and box geometry
 ├── xray.ts          # X-ray cursor-to-element lookup
 ├── theme.css        # CSS styles with Tailwind

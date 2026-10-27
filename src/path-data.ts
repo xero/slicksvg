@@ -439,6 +439,13 @@ function write(d: string, {segments, walked, plan}: Edit, decimals: number): str
 	return splice(d, splices);
 }
 
+/** Where a dragged point goes down: as finely as the drag, or its old
+ * numbers, say. */
+function dropped(seg: Segment, slot: Slot, at: Point, decimals: number): Point {
+	const [ox, oy] = tokensFor(seg, slot);
+	return {x: roundTo(at.x, Math.max(decimals, ox ? placesOf(ox.value) : 0)), y: roundTo(at.y, Math.max(decimals, oy ? placesOf(oy.value) : 0))};
+}
+
 /**
  * Put one point of a path somewhere else. An anchor takes the handles that
  * belong to it along, so the curve keeps its shape around it; the points
@@ -452,9 +459,7 @@ export function movePathPoint(d: string, point: {segment: number; slot: Slot}, a
 	const seg = e?.segments.at(point.segment);
 	if (!e || !seg || lower(seg.letter) === 'z') return null;
 	const {segments, walked, plan} = e;
-	// the point goes down as finely as the drag, or its old numbers, say
-	const [ox, oy] = tokensFor(seg, point.slot);
-	const to = {x: roundTo(at.x, Math.max(decimals, ox ? placesOf(ox.value) : 0)), y: roundTo(at.y, Math.max(decimals, oy ? placesOf(oy.value) : 0))};
+	const to = dropped(seg, point.slot, at, decimals);
 	const target = plan[point.segment][0];
 	const kind = lower(seg.letter);
 	if (point.slot === 'end') {
@@ -606,19 +611,22 @@ export function retractPathHandle(d: string, point: {segment: number; slot: 'cp1
 	return write(d, e, decimals);
 }
 
+/** The spot `t` of the way along a segment. Arcs are taken along their chord. */
+export function pointOnSegment(seg: Segment, w: Walked, t: number): Point {
+	const kind = lower(seg.letter);
+	if ((kind === 'c' || kind === 's') && w.cp1 && w.cp2) {
+		const a = lerp(lerp(w.start, w.cp1, t), lerp(w.cp1, w.cp2, t), t);
+		const b = lerp(lerp(w.cp1, w.cp2, t), lerp(w.cp2, w.end, t), t);
+		return lerp(a, b, t);
+	}
+	if ((kind === 'q' || kind === 't') && w.cp1) return lerp(lerp(w.start, w.cp1, t), lerp(w.cp1, w.end, t), t);
+	return lerp(w.start, kind === 'z' ? w.subpathStart : w.end, t);
+}
+
 /** Where a point lies on a segment, as the parameter `t` of the nearest
  * spot and the distance to it. Arcs are measured along their chord. */
 export function nearestOnSegment(seg: Segment, w: Walked, p: Point): {t: number; distance: number} {
-	const kind = lower(seg.letter);
-	const curve = (t: number): Point=>{
-		if ((kind === 'c' || kind === 's') && w.cp1 && w.cp2) {
-			const a = lerp(lerp(w.start, w.cp1, t), lerp(w.cp1, w.cp2, t), t);
-			const b = lerp(lerp(w.cp1, w.cp2, t), lerp(w.cp2, w.end, t), t);
-			return lerp(a, b, t);
-		}
-		if ((kind === 'q' || kind === 't') && w.cp1) return lerp(lerp(w.start, w.cp1, t), lerp(w.cp1, w.end, t), t);
-		return lerp(w.start, kind === 'z' ? w.subpathStart : w.end, t);
-	};
+	const curve = (t: number): Point=>pointOnSegment(seg, w, t);
 	const dist = (t: number): number=>Math.hypot(curve(t).x - p.x, curve(t).y - p.y);
 	let best = 0;
 	let bestDist = dist(0);
@@ -659,6 +667,312 @@ export function nearestPathSegment(d: string, p: Point): {segment: number; t: nu
 		if (!best || near.distance < best.distance) best = {segment: i, ...near};
 	});
 	return best;
+}
+
+// ---------------------------------------------------------------------------
+// Curves: smooth and corner anchors, curved and straight segments, and the
+// handle across an anchor that a smooth one keeps in line
+// ---------------------------------------------------------------------------
+
+/** How a drag of one handle moves the handle across its anchor: to the same
+ * length on the far side, along the same line at its own length, or not. */
+export type HandleMode = 'mirrored' | 'aligned' | 'independent';
+
+const sub = (p: Point, q: Point): Point=>({x: p.x - q.x, y: p.y - q.y});
+const times = (p: Point, k: number): Point=>({x: p.x * k, y: p.y * k});
+const size = (p: Point): number=>Math.hypot(p.x, p.y);
+const cross = (p: Point, q: Point): number=>p.x * q.y - p.y * q.x;
+const dot = (p: Point, q: Point): number=>p.x * q.x + p.y * q.y;
+function unit(p: Point): Point | null {
+	const l = size(p);
+	return l < 1e-12 ? null : {x: p.x / l, y: p.y / l};
+}
+
+/**
+ * The segments either side of the anchor at the end of `segment`: the one
+ * arriving at it and the one leaving it. A closed subpath goes round, so its
+ * first point has the closing line, or the curve that closes onto it,
+ * arriving; a closing line with no length is no side of its own.
+ */
+export function anchorSides(segments: Segment[], walked: Walked[], segment: number): {into: number | null; out: number | null} {
+	const seg = segments.at(segment);
+	if (!seg || lower(seg.letter) === 'z') return {into: null, out: null};
+	let m = segment;
+	while (m > 0 && lower(segments[m].letter) !== 'm') m -= 1;
+	let z: number | null = null;
+	for (let i = m + 1; i < segments.length && lower(segments[i].letter) !== 'm'; i++) {
+		if (lower(segments[i].letter) === 'z') {
+			z = i;
+			break;
+		}
+	}
+	const closes = z !== null && size(sub(walked[z].start, walked[z].end)) <= reachOf(segments);
+	const draws = (i: number): boolean=>i < segments.length && !/^[mz]$/i.test(segments[i].letter);
+	if (segment === m && lower(seg.letter) === 'm') {
+		const into = z === null ? null : closes ? z - 1 : z;
+		return {into: into !== null && into > m ? into : null, out: draws(m + 1) ? m + 1 : null};
+	}
+	if (z === segment + 1) return {into: segment, out: !closes ? z : draws(m + 1) && m + 1 !== segment ? m + 1 : null};
+	return {into: segment, out: draws(segment + 1) ? segment + 1 : null};
+}
+
+/** An arc's centre form (SVG 1.1 F.6.5), for the way it runs at its ends. */
+function arcCentre(seg: Segment, w: Walked): {rx: number; ry: number; phi: number; theta: number; delta: number} | null {
+	const [rx0, ry0, deg, large, sweep] = seg.args.map(a=>a.value);
+	if (rx0 === 0 || ry0 === 0 || size(sub(w.start, w.end)) < 1e-12) return null;
+	const phi = (deg * Math.PI) / 180;
+	const cos = Math.cos(phi);
+	const sin = Math.sin(phi);
+	const hx = (w.start.x - w.end.x) / 2;
+	const hy = (w.start.y - w.end.y) / 2;
+	const x1 = cos * hx + sin * hy;
+	const y1 = -sin * hx + cos * hy;
+	let rx = Math.abs(rx0);
+	let ry = Math.abs(ry0);
+	const lambda = (x1 * x1) / (rx * rx) + (y1 * y1) / (ry * ry);
+	if (lambda > 1) {
+		rx *= Math.sqrt(lambda);
+		ry *= Math.sqrt(lambda);
+	}
+	const num2 = rx * rx * ry * ry - rx * rx * y1 * y1 - ry * ry * x1 * x1;
+	const den = rx * rx * y1 * y1 + ry * ry * x1 * x1;
+	const k = (large !== sweep ? 1 : -1) * Math.sqrt(Math.max(0, num2 / den));
+	const cx = (k * rx * y1) / ry;
+	const cy = (-k * ry * x1) / rx;
+	const angle = (u: Point, v: Point): number=>Math.atan2(cross(u, v), dot(u, v));
+	const u = {x: (x1 - cx) / rx, y: (y1 - cy) / ry};
+	const v = {x: (-x1 - cx) / rx, y: (-y1 - cy) / ry};
+	let delta = angle(u, v);
+	if (!sweep && delta > 0) delta -= 2 * Math.PI;
+	if (sweep && delta < 0) delta += 2 * Math.PI;
+	return {rx, ry, phi, theta: angle({x: 1, y: 0}, u), delta};
+}
+
+/** The way a segment leaves its start, or arrives at its end, as a unit
+ * vector along the path, with the length of the handle or line that says
+ * so; null for a segment that goes nowhere. An arc says it exactly. */
+function heading(seg: Segment, w: Walked, atEnd: boolean): {dir: Point; length: number} | null {
+	if (lower(seg.letter) === 'a') {
+		const c = arcCentre(seg, w);
+		const th = c ? (atEnd ? c.theta + c.delta : c.theta) : 0;
+		const s = c ? Math.sign(c.delta) : 0;
+		const dir = c
+			? unit({x: s * (-c.rx * Math.cos(c.phi) * Math.sin(th) - c.ry * Math.sin(c.phi) * Math.cos(th)), y: s * (-c.rx * Math.sin(c.phi) * Math.sin(th) + c.ry * Math.cos(c.phi) * Math.cos(th))})
+			: unit(sub(w.end, w.start));
+		return dir && {dir, length: Infinity};
+	}
+	const pts = [w.start, w.cp1, w.cp2, w.end].filter((p): p is Point=>p !== null);
+	if (atEnd) pts.reverse();
+	const from = pts[0];
+	const to = pts.find(p=>size(sub(p, from)) > 1e-9);
+	const dir = to ? unit(atEnd ? sub(from, to) : sub(to, from)) : null;
+	return to && dir ? {dir, length: size(sub(to, from))} : null;
+}
+
+/** How far two directions may differ and still be one line through an
+ * anchor: what rounding the numbers that say them allows, at least two
+ * degrees and at most ten, as the sine of the angle. */
+function slackFor(reach: number, a: number, b: number): number {
+	return Math.min(Math.max(Math.sin(Math.PI / 90), reach / a + reach / b), Math.sin(Math.PI / 18));
+}
+
+/** The segment as a cubic in the plan, so both its handles can be set: a
+ * line gets handles at its thirds, a quadratic is raised exactly, and a
+ * closing Z gets the curve before it. Null for an arc or an M. */
+function cubicIn(e: Edit, i: number): Target | null {
+	const w = e.walked[i];
+	const t = e.plan[i][0];
+	const kind = lower(t.letter);
+	const letter = isRelative(e.segments[i].letter) ? 'c' : 'C';
+	let c: Target;
+	if (kind === 'c' || kind === 's') return t;
+	if (/^[lhvz]$/.test(kind)) c = {letter, cp1: lerp(w.start, t.end, 1 / 3), cp2: lerp(w.start, t.end, 2 / 3), end: t.end};
+	else if ((kind === 'q' || kind === 't') && t.cp1) c = {letter, cp1: lerp(w.start, t.cp1, 2 / 3), cp2: lerp(t.end, t.cp1, 2 / 3), end: t.end};
+	else return null;
+	e.plan[i] = kind === 'z' ? [c, t] : [c];
+	return c;
+}
+
+const lineTo = (seg: Segment, end: Point): Target=>({letter: isRelative(seg.letter) ? 'l' : 'L', cp1: null, cp2: null, end});
+
+/** Whether the path runs straight on through the anchor at the end of
+ * `segment` with a curve on at least one side: a smooth point. A corner is
+ * any other anchor with a segment on both sides; null for an open end. */
+export function anchorKind(d: string, segment: number): 'smooth' | 'corner' | null {
+	const segments = parsePathData(d);
+	if (!segments) return null;
+	const walked = walkPath(segments);
+	const {into, out} = anchorSides(segments, walked, segment);
+	if (into === null || out === null) return null;
+	const a = heading(segments[into], walked[into], true);
+	const b = heading(segments[out], walked[out], false);
+	const reach = reachOf(segments);
+	if (!a || !b || dot(a.dir, b.dir) <= 0 || Math.abs(cross(a.dir, b.dir)) > slackFor(reach, a.length, b.length)) return 'corner';
+	const P = walked[segment].end;
+	const off = (p: Point | null): boolean=>p !== null && size(sub(p, P)) > reach;
+	const curvedIn = /^[a]$/i.test(segments[into].letter) || (/^[csqt]$/i.test(segments[into].letter) && off(/^[qt]$/i.test(segments[into].letter) ? walked[into].cp1 : walked[into].cp2));
+	const curvedOut = /^[a]$/i.test(segments[out].letter) || (/^[csqt]$/i.test(segments[out].letter) && off(walked[out].cp1));
+	return curvedIn || curvedOut ? 'smooth' : 'corner';
+}
+
+/**
+ * Make the anchor at the end of `segment` smooth: both its handles on one
+ * line through it, across the angle the path turns there. A line beside it
+ * becomes a curve that leaves its far end as straight as before; a
+ * quadratic becomes the cubic that draws it. Handles it has keep their
+ * lengths, and new ones are a third of their segment. An arc keeps its shape,
+ * and the other side lines up with it.
+ */
+export function smoothPathPoint(d: string, segment: number, decimals: number): string | null {
+	const e = begin(d);
+	if (!e) return null;
+	const {segments, walked} = e;
+	const {into, out} = anchorSides(segments, walked, segment);
+	if (into === null || out === null) return null;
+	const P = walked[segment].end;
+	const inArc = lower(segments[into].letter) === 'a';
+	const outArc = lower(segments[out].letter) === 'a';
+	if (inArc && outArc) return null;
+	const dIn = heading(segments[into], walked[into], true)?.dir;
+	const dOut = heading(segments[out], walked[out], false)?.dir;
+	if (!dIn || !dOut) return null;
+	const tangent = inArc ? dIn : outArc ? dOut : unit(add(dIn, dOut)) ?? {x: -dIn.y, y: dIn.x};
+	const reach = reachOf(segments);
+	const reachFor = (c: Target, i: number, slot: 'cp1' | 'cp2'): number=>{
+		const h = c[slot];
+		return h && size(sub(h, P)) > reach ? size(sub(h, P)) : size(sub(c.end, walked[i].start)) / 3;
+	};
+	if (!inArc) {
+		const c = cubicIn(e, into);
+		if (!c) return null;
+		c.cp2 = sub(P, times(tangent, reachFor(c, into, 'cp2')));
+	}
+	if (!outArc) {
+		const c = cubicIn(e, out);
+		if (!c) return null;
+		c.cp1 = add(P, times(tangent, reachFor(c, out, 'cp1')));
+	}
+	return write(d, e, decimals);
+}
+
+/**
+ * Make the anchor at the end of `segment` a corner: its handles go back into
+ * it. A curve beside it left drawing a straight line is written as a line.
+ */
+export function cornerPathPoint(d: string, segment: number, decimals: number): string | null {
+	const e = begin(d);
+	if (!e) return null;
+	const {segments, walked, plan} = e;
+	const {into, out} = anchorSides(segments, walked, segment);
+	const P = walked[segment].end;
+	const reach = reachOf(segments);
+	const retract = (i: number | null, slot: 'cp1' | 'cp2'): boolean=>{
+		if (i === null || !/^[csqt]$/i.test(plan[i][0].letter)) return false;
+		const c = cubicIn(e, i);
+		const h = c?.[slot];
+		if (!c || !h || size(sub(h, P)) <= reach) return false;
+		c[slot] = P;
+		if (c.cp1 && c.cp2 && straightCubic(walked[i].start, c.cp1, c.cp2, c.end, reach)) plan[i] = [lineTo(segments[i], c.end)];
+		return true;
+	};
+	// both sides, whatever the first one did
+	const changed = [retract(into, 'cp2'), retract(out, 'cp1')];
+	return changed.includes(true) ? write(d, e, decimals) : null;
+}
+
+/** Whether a segment is written as a curve: a curve's letter or an arc's,
+ * even one whose handles lie on its chord, so that it has handles to pull. */
+export function segmentCurved(d: string, segment: number): boolean {
+	return /^[csqta]$/i.test(parsePathData(d)?.at(segment)?.letter ?? '');
+}
+
+/** Make a straight segment a curve that draws the same line, its handles at
+ * its thirds, ready to be pulled. A closing Z gets the curve before it. */
+export function curvePathSegment(d: string, segment: number, decimals: number): string | null {
+	const e = begin(d);
+	const seg = e?.segments.at(segment);
+	if (!e || !seg || !/^[lhvz]$/i.test(seg.letter)) return null;
+	const w = e.walked[segment];
+	if (size(sub(w.end, w.start)) <= reachOf(e.segments) || !cubicIn(e, segment)) return null;
+	return write(d, e, decimals);
+}
+
+/** Make a curve or an arc straight. A curve that closes its subpath onto a Z
+ * goes, since the Z draws that line itself. */
+export function straightenPathSegment(d: string, segment: number, decimals: number): string | null {
+	const e = begin(d);
+	const seg = e?.segments.at(segment);
+	if (!e || !seg || !/^[csqta]$/i.test(seg.letter)) return null;
+	const w = e.walked[segment];
+	const next = e.segments.at(segment + 1);
+	const closes = next && lower(next.letter) === 'z' && size(sub(w.end, e.walked[segment + 1].end)) <= reachOf(e.segments);
+	e.plan[segment] = closes ? [] : [lineTo(seg, w.end)];
+	return write(d, e, decimals);
+}
+
+/** The handle across the anchor from a handle, which a smooth anchor keeps
+ * in line: which segment's, where it is, and whether an S only implies it.
+ * A quadratic's handle shapes both its ends and has none. */
+function oppositeOf(e: Edit, point: {segment: number; slot: 'cp1' | 'cp2'}): {segment: number; slot: 'cp1' | 'cp2'; anchor: Point; at: Point; implied: boolean} | null {
+	const {segments, walked} = e;
+	const seg = segments[point.segment];
+	if (point.slot === 'cp2') {
+		if (!/^[cs]$/i.test(seg.letter)) return null;
+		const {out} = anchorSides(segments, walked, point.segment);
+		const at = out === null ? null : walked[out].cp1;
+		if (out === null || !at || !/^[cs]$/i.test(segments[out].letter)) return null;
+		return {segment: out, slot: 'cp1', anchor: walked[point.segment].end, at, implied: lower(segments[out].letter) === 's'};
+	}
+	if (lower(seg.letter) !== 'c') return null;
+	const {into} = anchorSides(segments, walked, point.segment - 1);
+	const at = into === null ? null : walked[into].cp2;
+	if (into === null || !at || !/^[cs]$/i.test(segments[into].letter)) return null;
+	return {segment: into, slot: 'cp2', anchor: walked[point.segment].start, at, implied: false};
+}
+
+/**
+ * How a drag of this handle should move the one across its anchor, read from
+ * where the two are: mirrored when they lie on one line through the anchor
+ * at one length, aligned when on one line at different lengths, independent
+ * otherwise or when either has no length. The handle an S implies is a
+ * mirror by the letter's own meaning.
+ */
+export function handleMode(d: string, point: {segment: number; slot: 'cp1' | 'cp2'}): HandleMode | null {
+	const e = begin(d);
+	const seg = e?.segments.at(point.segment);
+	const h = e && seg ? e.walked[point.segment][point.slot] : null;
+	if (!e || !h) return null;
+	const o = oppositeOf(e, point);
+	if (!o) return 'independent';
+	if (o.implied) return 'mirrored';
+	const reach = reachOf(e.segments);
+	const u = sub(h, o.anchor);
+	const v = sub(o.at, o.anchor);
+	const lu = size(u);
+	const lv = size(v);
+	if (lu <= reach || lv <= reach) return 'independent';
+	const bend = Math.abs(cross(u, v)) / (lu * lv);
+	if (dot(u, v) >= 0 || bend > slackFor(reach, lu, lv)) return 'independent';
+	return Math.abs(lu - lv) <= 2 * reach ? 'mirrored' : 'aligned';
+}
+
+/** Move a handle, taking the one across its anchor along as `mode` says. */
+export function moveHandle(d: string, point: {segment: number; slot: 'cp1' | 'cp2'}, at: Point, mode: HandleMode, decimals: number): string | null {
+	const e = begin(d);
+	const seg = e?.segments.at(point.segment);
+	if (!e || !seg || (point.slot === 'cp1' && !/^[cq]$/i.test(seg.letter)) || (point.slot === 'cp2' && !/^[cs]$/i.test(seg.letter))) return null;
+	const to = dropped(seg, point.slot, at, decimals);
+	e.plan[point.segment][0][point.slot] = to;
+	const o = oppositeOf(e, point);
+	if (o && mode !== 'independent') {
+		const away = unit(sub(o.anchor, to));
+		const reach = mode === 'mirrored' ? size(sub(to, o.anchor)) : size(sub(o.at, o.anchor));
+		if (away) e.plan[o.segment][0][o.slot] = add(o.anchor, times(away, reach));
+	}
+	// a quadratic's handle is the one a T after it reflects, unless the two are let go
+	const next = e.segments.at(point.segment + 1);
+	if (mode !== 'independent' && lower(seg.letter) === 'q' && next && lower(next.letter) === 't') e.plan[point.segment + 1][0].cp1 = reflect(to, e.walked[point.segment].end);
+	return write(d, e, decimals);
 }
 
 // ---------------------------------------------------------------------------
@@ -751,4 +1065,13 @@ export function polygonPoints(value: string): Point[] | null {
 	const pts: Point[] = [];
 	for (let i = 0; i < tokens.length; i += 2) pts.push({x: tokens[i].value, y: tokens[i + 1].value});
 	return pts;
+}
+
+/** A polygon's or polyline's points as path data, every number and
+ * separator as written: an M, the rest as the lines it implies, and a Z to
+ * close a polygon. Null when the points do not pair up. */
+export function pointsAsPathData(points: string, closed: boolean): string | null {
+	const tokens = parsePoints(points);
+	if (!tokens || tokens.length < 2) return null;
+	return `M${points.trim()}${closed ? 'Z' : ''}`;
 }

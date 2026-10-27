@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  renameElement, renameAttribute,
   scanTags, startTags, attributesOf, readAttribute, planAttributeEdits, applyChanges, stampSource, SOURCE_ATTR,
   elementExtent, removalRange, duplicateInsertion,
 } from '../src/source-map';
@@ -182,5 +183,22 @@ describe('Source map duplicate insertion', () => {
     const source = '<svg><rect/><circle/></svg>';
     expect(applyChanges(source, [duplicateInsertion(source, 1, '<rect x="1"/>')!])).toBe('<svg><rect/><rect x="1"/><circle/></svg>');
     expect(duplicateInsertion('<svg><g><rect/></svg>', 1, '')).toBeNull();
+  });
+});
+
+describe('Source map renaming', () => {
+  it('should rename an element in its start tag and its closing tag', () => {
+    const src = '<svg><polygon points="0,0 1,1"/><polyline points="0 0 1 1"></polyline></svg>';
+    const [, polygon, polyline] = startTags(src);
+    expect(applyChanges(src, renameElement(src, polygon, 'path'))).toBe('<svg><path points="0,0 1,1"/><polyline points="0 0 1 1"></polyline></svg>');
+    expect(applyChanges(src, renameElement(src, polyline, 'path'))).toBe('<svg><polygon points="0,0 1,1"/><path points="0 0 1 1"></path></svg>');
+  });
+
+  it('should rename an attribute where it stands, in its own quotes', () => {
+    const src = "<svg><polygon id='g' points='0,0 1,1' fill='red'/></svg>";
+    const tag = startTags(src)[1];
+    const changes = [...renameElement(src, tag, 'path'), ...renameAttribute(src, tag, 'points', 'd', 'M0,0 1,1Z')!];
+    expect(applyChanges(src, changes)).toBe("<svg><path id='g' d='M0,0 1,1Z' fill='red'/></svg>");
+    expect(renameAttribute(src, tag, 'd', 'x', '1')).toBeNull();
   });
 });

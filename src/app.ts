@@ -7,10 +7,14 @@ import {tokyoNightDay} from '@fsegurai/codemirror-theme-tokyo-night-day';
 import {tokyoNightStorm} from '@fsegurai/codemirror-theme-tokyo-night-storm';
 import {linter, lintGutter, forceLinting} from '@codemirror/lint';
 import {findElementAtCursor, type ElementRef} from './xray';
-import {startTags, readAttribute, attributesOf, planAttributeEdits, applyChanges, stampSource, parseSource, elementExtent, removalRange, duplicateInsertion, SOURCE_ATTR, type StartTag, type TextChange} from './source-map';
+import {startTags, readAttribute, attributesOf, planAttributeEdits, applyChanges, stampSource, parseSource, elementExtent, removalRange, duplicateInsertion, renameElement, renameAttribute, SOURCE_ATTR, type StartTag, type TextChange} from './source-map';
 import {findSvgTarget, selectionChain, nextInChain, ordinalOf, boxCorners, handleCursor} from './select';
 import {planMove, planResize, planRotate, planFlip, parentCenter, invert, applyToVector, applyToPoint, pixelsPerUnit, decimalsFor, roundTo, fmt, placesOf, type Matrix, type Point, type Rect, type Handle, type EditPlan} from './geometry';
-import {parsePathData, pathPoints, movePathPoint, insertPathPoint, removePathPoint, retractPathHandle, nearestPathSegment, polygonPoints, movePolygonPoint, insertPolygonPoint, removePolygonPoint, nearestPolygonEdge} from './path-data';
+import {
+	parsePathData, walkPath, pathPoints, pointOnSegment, movePathPoint, insertPathPoint, removePathPoint, retractPathHandle, nearestPathSegment,
+	smoothPathPoint, cornerPathPoint, anchorKind, curvePathSegment, straightenPathSegment, segmentCurved, handleMode, moveHandle, type HandleMode,
+	polygonPoints, movePolygonPoint, insertPolygonPoint, removePolygonPoint, nearestPolygonEdge, pointsAsPathData,
+} from './path-data';
 import {undo, redo, undoDepth, redoDepth, isolateHistory} from '@codemirror/commands';
 import {ZOOM_STEP, zoomAbout, pinchView, wheelZoomFactor, wheelPan, type View, type Pinch} from './view';
 
@@ -190,10 +194,19 @@ interface EditPoint {
 	ref: PointRef;
 }
 
-/** Point editing on one element: which, and which of its points is selected. */
+/** Point editing on one element: which, which of its points is selected,
+ * and the spot on its outline that was tapped, if that was what was. */
 interface PointMode {
 	ordinal: number;
 	selected: number | null;
+	spot: Spot | null;
+}
+
+/** A spot on an outline: a path's segment, or a polygon's edge from point
+ * `edge` to the next, and how far along it. */
+interface Spot {
+	edge: number;
+	t: number;
 }
 
 /** How far, in screen pixels, a double-click may be from the outline to add a point there. */
@@ -232,8 +245,9 @@ interface Drag {
 	/** The element's centre in its parent's units, and on screen. */
 	center: Point;
 	screenCenter: Point;
-	/** For a point drag: the point, where it started, and the attribute as it was. */
-	point: {ref: PointRef; from: Point} | null;
+	/** For a point drag: the point, where it started, and, for a handle, how
+	 * the handle across its anchor follows it. */
+	point: {ref: PointRef; from: Point; mode: HandleMode} | null;
 }
 
 interface Gesture {
@@ -311,10 +325,15 @@ function pointsOf(el: Element): EditPoint[] | null {
 	return null;
 }
 
-/** The attribute a point lives in, and the attribute changes that move it. */
-function movePoint(ref: PointRef, source: Element, to: Point, decimals: number): Record<string, string | null> | null {
+/** The attribute a point lives in, and the attribute changes that move it.
+ * A handle takes the one across its anchor along as `mode` says, or as the
+ * two lie when no mode is given. */
+function movePoint(ref: PointRef, source: Element, to: Point, decimals: number, mode?: HandleMode): Record<string, string | null> | null {
 	if (ref.type === 'path') {
-		const d = movePathPoint(source.getAttribute('d') ?? '', ref, to, decimals);
+		const was = source.getAttribute('d') ?? '';
+		const d = ref.slot === 'end'
+			? movePathPoint(was, ref, to, decimals)
+			: moveHandle(was, {segment: ref.segment, slot: ref.slot}, to, mode ?? handleMode(was, {segment: ref.segment, slot: ref.slot}) ?? 'independent', decimals);
 		return d === null ? null : {d};
 	}
 	if (ref.type === 'poly') {
@@ -328,6 +347,21 @@ function movePoint(ref: PointRef, source: Element, to: Point, decimals: number):
 }
 
 const pointAttr = (ref: PointRef): string=>ref.type === 'path' ? 'd' : ref.type === 'poly' ? 'points' : ref.index === 0 ? 'x1' : 'x2';
+
+/** A path's `d`, or a polygon's or polyline's points as the path data they
+ * draw, for the tools that need curves: such an element becomes a path when
+ * one is used on it. Its point `i` is the anchor of segment `i`, and its edge
+ * `i` is segment `i + 1`. */
+function pathDataOf(el: Element): {d: string; converted: boolean} | null {
+	const tag = el.tagName.toLowerCase();
+	if (tag === 'path') return {d: el.getAttribute('d') ?? '', converted: false};
+	if (tag !== 'polygon' && tag !== 'polyline') return null;
+	const d = pointsAsPathData(el.getAttribute('points') ?? '', tag === 'polygon');
+	return d === null ? null : {d, converted: true};
+}
+
+/** The segment an anchor ends, in its element's path data. */
+const anchorSegment = (ref: PointRef): number | null=>ref.type === 'path' && ref.slot === 'end' ? ref.segment : ref.type === 'poly' ? ref.index : null;
 
 function bboxOf(el: Element): Rect | null {
 	if (!(el instanceof SVGGraphicsElement)) return null;
@@ -373,6 +407,7 @@ class slick {
 	private pressToggle = false;
 	private pointMode: PointMode | null = null;
 	private pointsGroup!: SVGGElement;
+	private spotGroup!: SVGGElement;
 	private overlay!: SVGSVGElement;
 	private selectBox!: SVGPolygonElement;
 	private hoverBox!: SVGPolygonElement;
@@ -488,6 +523,9 @@ class slick {
 		this.handles.appendChild(rotate);
 		this.handleEls.set('rotate', rotate);
 		this.overlay.appendChild(this.handles);
+		this.spotGroup = document.createElementNS(SVG_NS, 'g');
+		this.spotGroup.classList.add('spot');
+		this.overlay.appendChild(this.spotGroup);
 		this.pointsGroup = document.createElementNS(SVG_NS, 'g');
 		this.pointsGroup.classList.add('points');
 		this.overlay.appendChild(this.pointsGroup);
@@ -600,10 +638,10 @@ class slick {
 			['redo', ()=>this.redoEdit()],
 			['duplicate', ()=>this.duplicateSelected()],
 			['points', ()=>this.togglePointMode()],
-			['point-delete', ()=>{
-				this.deletePoint();
-				this.svgPreview.focus({preventScroll: true});
-			}],
+			['point-add', ()=>this.pointTool(()=>this.addPointAtSpot())],
+			['point-smooth', ()=>this.pointTool(()=>this.toggleSmooth())],
+			['point-curve', ()=>this.pointTool(()=>this.toggleCurve())],
+			['point-delete', ()=>this.pointTool(()=>this.deletePoint())],
 			['point-done', ()=>this.togglePointMode()]
 		]);
 		document.addEventListener('keydown', this.handleHistoryKeys);
@@ -616,7 +654,7 @@ class slick {
 			if (touch && e.touches.length === 1) this.onHandlePress(e, touch.clientX, touch.clientY);
 		}, {passive: false});
 		document.addEventListener('mousemove', (e)=>{
-			if (this.gesture) this.gestureMove(e.clientX, e.clientY, e.shiftKey);
+			if (this.gesture) this.gestureMove(e.clientX, e.clientY, e.shiftKey, e.altKey);
 			else this.doPan(e);
 		});
 		document.addEventListener('mouseup', ()=>{
@@ -1049,9 +1087,15 @@ class slick {
 	 * selection, or takes an element back out of it. */
 	private clickSelect(target: EventTarget | null, toggle = false): void {
 		this.svgPreview.focus({preventScroll: true});
-		// while its points are being edited, a click on the element keeps it rather
-		// than walking its group, so a double-click on the outline can add a point
-		if (this.pointMode && !toggle && this.onSelection(target)) return;
+		// while its points are being edited, a click near its outline picks that
+		// spot, and one on the element keeps it rather than walking its group
+		if (this.pointMode && !toggle && this.pickSpot(this.pressX, this.pressY)) return;
+		if (this.pointMode && !toggle && this.onSelection(target)) {
+			this.pointMode.selected = null;
+			this.pointMode.spot = null;
+			this.refreshSelection();
+			return;
+		}
 		const pick = this.pickAt(target);
 		if (!pick) {
 			if (!toggle) this.clearSelection();
@@ -1150,7 +1194,9 @@ class slick {
 	}
 
 	/** While points are being edited, their tools take the place of the
-	 * preview's own buttons, but for the zoom, which editing needs too. */
+	 * preview's own buttons, but for the zoom, which editing needs too. Each
+	 * is there to be found, and can be pressed when what is selected is
+	 * something it works on. */
 	private refreshPointTools(editing: boolean): void {
 		this.get('point-tools').classList.toggle('hide', !editing);
 		for (const id of ['dark', 'flip']) this.get(id).classList.toggle('hide', editing);
@@ -1158,6 +1204,35 @@ class slick {
 		const remove = this.get('point-delete');
 		remove.toggleAttribute('disabled', !chosen || chosen.point.ref.type === 'line');
 		remove.setAttribute('aria-label', chosen?.point.kind === 'control' ? 'delete handle' : 'delete point');
+		const el = editing ? this.selectedElement() : null;
+		const data = el ? pathDataOf(el) : null;
+		const anchor = chosen?.point.kind === 'anchor' ? anchorSegment(chosen.point.ref) : null;
+		const kind = data && anchor !== null ? anchorKind(data.d, anchor) : null;
+		const smooth = this.get('point-smooth');
+		smooth.toggleAttribute('disabled', kind === null);
+		smooth.setAttribute('aria-pressed', kind === 'smooth' ? 'true' : 'false');
+		const segment = data ? this.spotSegment(data) : null;
+		const segments = data && segment !== null ? parsePathData(data.d) : null;
+		const curved = data && segment !== null ? segmentCurved(data.d, segment) : false;
+		const curve = this.get('point-curve');
+		curve.toggleAttribute('disabled', !segments || segment === null || /^[ma]$/i.test(segments[segment].letter));
+		curve.setAttribute('aria-pressed', curved ? 'true' : 'false');
+		this.get('point-add').toggleAttribute('disabled', !segments || segment === null || /^[ma]$/i.test(segments[segment].letter));
+	}
+
+	/** The segment of the path data the picked spot is on, if one is picked
+	 * and still there. */
+	private spotSegment(data: {d: string; converted: boolean}): number | null {
+		const spot = this.pointMode?.spot;
+		if (!spot) return null;
+		const segment = data.converted ? spot.edge + 1 : spot.edge;
+		return parsePathData(data.d)?.at(segment) ? segment : null;
+	}
+
+	/** Run a point tool from its button, then give the keys back to the canvas. */
+	private pointTool(run: () => void): void {
+		run();
+		this.svgPreview.focus({preventScroll: true});
 	}
 
 	// --- Point editing
@@ -1165,10 +1240,12 @@ class slick {
 	 * anchors, circles on the handles, with lines to the anchors they shape. */
 	private placePoints(el: Element | null): void {
 		this.pointsGroup.replaceChildren();
+		this.spotGroup.replaceChildren();
 		const points = el ? pointsOf(el) : null;
 		const ctm = el instanceof SVGGraphicsElement ? el.getScreenCTM() : null;
-		if (!points || !ctm) return;
+		if (!el || !points || !ctm) return;
 		const origin = this.overlay.getBoundingClientRect();
+		this.placeSpot(el, ctm, origin);
 		const onScreen = (p: Point): Point=>{
 			const q = new DOMPoint(p.x, p.y).matrixTransform(ctm);
 			return {x: q.x - origin.left, y: q.y - origin.top};
@@ -1202,6 +1279,34 @@ class slick {
 		});
 	}
 
+	/** The picked segment, drawn over the outline in the element's own units
+	 * with a stroke that keeps its width on screen, and a dot on the spot. */
+	private placeSpot(el: Element, ctm: DOMMatrix, origin: DOMRect): void {
+		const spot = this.pointMode?.spot;
+		const data = spot ? pathDataOf(el) : null;
+		const segments = data ? parsePathData(data.d) : null;
+		const index = data ? this.spotSegment(data) : null;
+		if (!spot || !segments || index === null) return;
+		const seg = segments[index];
+		const w = walkPath(segments)[index];
+		const p = (q: Point): string=>`${q.x} ${q.y}`;
+		const kind = seg.letter.toLowerCase();
+		const shape = (kind === 'c' || kind === 's') && w.cp1 && w.cp2 ? `C${p(w.cp1)} ${p(w.cp2)} ${p(w.end)}`
+			: (kind === 'q' || kind === 't') && w.cp1 ? `Q${p(w.cp1)} ${p(w.end)}`
+			: kind === 'a' ? `A${seg.args.slice(0, 5).map(a=>a.value).join(' ')} ${p(w.end)}`
+			: `L${p(w.end)}`;
+		const line = document.createElementNS(SVG_NS, 'path');
+		line.setAttribute('d', `M${p(w.start)} ${shape}`);
+		line.setAttribute('transform', `matrix(${ctm.a} ${ctm.b} ${ctm.c} ${ctm.d} ${ctm.e - origin.left} ${ctm.f - origin.top})`);
+		const on = pointOnSegment(seg, w, spot.t);
+		const at = new DOMPoint(on.x, on.y).matrixTransform(ctm);
+		const dot = document.createElementNS(SVG_NS, 'circle');
+		dot.setAttribute('cx', `${at.x - origin.left}`);
+		dot.setAttribute('cy', `${at.y - origin.top}`);
+		dot.setAttribute('r', `${HANDLE_SIZE / 2 - 1}`);
+		this.spotGroup.append(line, dot);
+	}
+
 	/** Edit the points of the one selected path, polygon, polyline, or line. */
 	private enterPointMode(): void {
 		const current = this.selectedElement();
@@ -1211,10 +1316,10 @@ class slick {
 			this.announceError('This element\'s points could not be read, so they cannot be edited here.');
 			return;
 		}
-		this.pointMode = {ordinal, selected: null};
+		this.pointMode = {ordinal, selected: null, spot: null};
 		this.refreshSelection();
 		this.svgPreview.focus({preventScroll: true});
-		this.announceAction(`Editing the points of ${current.tagName.toLowerCase()}: drag a point, double-click the outline to add one, Delete removes one`);
+		this.announceAction(`Editing the points of ${current.tagName.toLowerCase()}: drag a point, tap the outline to pick a segment, double-click it to add a point, Delete removes one`);
 	}
 
 	private leavePointMode(): void {
@@ -1240,7 +1345,115 @@ class slick {
 			this.enterPointMode();
 			return;
 		}
-		this.addPointAt(current, e.clientX, e.clientY);
+		const spot = this.outlineNear(current, e.clientX, e.clientY);
+		if (spot) this.addPointOn(current, spot);
+	}
+
+	/** The spot on an element's outline nearest a press, if it is within
+	 * reach of it. */
+	private outlineNear(el: Element, clientX: number, clientY: number): Spot | null {
+		const ctm = el instanceof SVGGraphicsElement ? el.getScreenCTM() : null;
+		const toLocal = ctm ? invert(toMatrix(ctm)) : null;
+		if (!ctm || !toLocal) return null;
+		const local = applyToPoint(toLocal, clientX, clientY);
+		const reach = Math.max(ADD_POINT_REACH, POINT_REACH) / pixelsPerUnit(toMatrix(ctm));
+		const tag = el.tagName.toLowerCase();
+		if (tag === 'path') {
+			const near = nearestPathSegment(el.getAttribute('d') ?? '', local);
+			return near && near.distance <= reach ? {edge: near.segment, t: near.t} : null;
+		}
+		if (tag === 'polygon' || tag === 'polyline') {
+			const near = nearestPolygonEdge(el.getAttribute('points') ?? '', local, tag === 'polygon');
+			return near && near.distance <= reach ? {edge: near.index, t: near.t} : null;
+		}
+		return null;
+	}
+
+	/** A tap near the outline of the element being edited picks that spot,
+	 * for the tools that work on a segment. */
+	private pickSpot(clientX: number, clientY: number): boolean {
+		const el = this.selectedElement();
+		const spot = el && this.pointMode ? this.outlineNear(el, clientX, clientY) : null;
+		if (!this.pointMode || !spot) return false;
+		this.pointMode.spot = spot;
+		this.pointMode.selected = null;
+		this.refreshSelection();
+		this.announceAction('Segment picked: add a point to it, or curve or straighten it');
+		return true;
+	}
+
+	/** The precision an edit made at the current zoom is written to. */
+	private decimalsAt(el: Element): number {
+		const ctm = el instanceof SVGGraphicsElement ? el.getScreenCTM() : null;
+		return ctm ? decimalsFor(pixelsPerUnit(toMatrix(ctm))) : 0;
+	}
+
+	/** Write new path data for the element being edited. A polygon or
+	 * polyline the tools gave curves becomes a path, its points attribute the
+	 * path's `d` where it stood. */
+	private commitPathData(found: Found, d: string, converted: boolean): boolean {
+		if (!converted) return this.commitChanges(found.sourceText, [{tag: found.tag, attrs: {d}}], 'slick.point');
+		const renamed = renameAttribute(found.sourceText, found.tag, 'points', 'd', d);
+		if (!renamed || this.editor.state.doc.toString() !== found.sourceText) return false;
+		const changes = [...renameElement(found.sourceText, found.tag, 'path'), ...renamed];
+		return this.applyEdits(changes.sort((a, b)=>a.from - b.from), 'slick.point');
+	}
+
+	/** Select the anchor at a place, after an edit that may have moved the
+	 * point list around it. */
+	private selectAnchorAt(ordinal: number, at: Point): void {
+		const made = this.elementForOrdinal(ordinal);
+		const index = (made ? pointsOf(made) : null)?.findIndex(p=>p.kind === 'anchor' && Math.hypot(p.x - at.x, p.y - at.y) < 1e-6) ?? -1;
+		if (this.pointMode) this.pointMode.selected = index < 0 ? null : index;
+		this.refreshSelection();
+		this.selectPointInEditor();
+	}
+
+	/** Add a point on the picked spot. */
+	private addPointAtSpot(): void {
+		const el = this.selectedElement();
+		const spot = this.pointMode?.spot;
+		if (el && spot) this.addPointOn(el, spot);
+	}
+
+	/** Make the selected anchor smooth, or a smooth one a corner. */
+	private toggleSmooth(): void {
+		const chosen = this.selectedPoint();
+		const segment = chosen?.point.kind === 'anchor' ? anchorSegment(chosen.point.ref) : null;
+		const found = chosen ? this.sourceFor(chosen.el) : null;
+		const data = found ? pathDataOf(found.source) : null;
+		if (!chosen || segment === null || !found || !data) return;
+		const smooth = anchorKind(data.d, segment) === 'smooth';
+		const decimals = this.decimalsAt(chosen.el);
+		const next = smooth ? cornerPathPoint(data.d, segment, decimals) : smoothPathPoint(data.d, segment, decimals);
+		if (next === null) {
+			this.announceError(smooth ? 'This point has no handles to take in.' : 'This point cannot be made smooth.');
+			return;
+		}
+		if (!this.commitPathData(found, next, data.converted)) return;
+		this.selectAnchorAt(found.tag.ordinal, chosen.point);
+		this.announceAction(smooth ? 'Point made a corner' : 'Point made smooth');
+	}
+
+	/** Make the picked segment a curve, or a curved one straight. */
+	private toggleCurve(): void {
+		const el = this.selectedElement();
+		const found = el ? this.sourceFor(el) : null;
+		const data = found ? pathDataOf(found.source) : null;
+		const segment = data ? this.spotSegment(data) : null;
+		if (!el || !found || !data || segment === null || !this.pointMode?.spot) return;
+		const curved = segmentCurved(data.d, segment);
+		const next = curved ? straightenPathSegment(data.d, segment, this.decimalsAt(el)) : curvePathSegment(data.d, segment, this.decimalsAt(el));
+		if (next === null) {
+			this.announceError(curved ? 'This segment cannot be made straight.' : 'This segment cannot be made a curve.');
+			return;
+		}
+		if (!this.commitPathData(found, next, data.converted)) return;
+		// the segment keeps its place, unless a closing curve went for its Z
+		const kept = (parsePathData(next)?.length ?? 0) >= (parsePathData(data.d)?.length ?? 0);
+		this.pointMode.spot = kept ? {edge: segment, t: this.pointMode.spot.t} : null;
+		this.refreshSelection();
+		this.announceAction(curved ? 'Segment made straight' : 'Segment made a curve: drag its handles to shape it');
 	}
 
 	/** The point of the element being edited that is selected, with its ref. */
@@ -1283,47 +1496,40 @@ class slick {
 		if (span) this.editor.dispatch({selection: {anchor: span[0], head: span[1]}, scrollIntoView: true});
 	}
 
-	/** Add a point to the element where its outline is nearest the pointer. */
-	private addPointAt(el: Element, clientX: number, clientY: number): void {
+	/** Add a point to the element at a spot on its outline. */
+	private addPointOn(el: Element, spot: Spot): void {
 		const found = this.sourceFor(el);
-		const ctm = el instanceof SVGGraphicsElement ? el.getScreenCTM() : null;
-		const toLocal = ctm ? invert(toMatrix(ctm)) : null;
-		if (!found || !ctm || !toLocal) return;
-		const local = applyToPoint(toLocal, clientX, clientY);
-		const scale = pixelsPerUnit(toMatrix(ctm));
-		const decimals = decimalsFor(scale);
+		if (!found) return;
+		const decimals = this.decimalsAt(el);
 		const tag = el.tagName.toLowerCase();
 		let attrs: Record<string, string | null> | null = null;
 		let select: ((points: EditPoint[]) => number) | null = null;
 		if (tag === 'path') {
-			const d = found.source.getAttribute('d') ?? '';
-			const near = nearestPathSegment(d, local);
-			if (!near || near.distance * scale > ADD_POINT_REACH) return;
-			const next = insertPathPoint(d, near.segment, near.t, decimals);
+			const next = insertPathPoint(found.source.getAttribute('d') ?? '', spot.edge, spot.t, decimals);
 			if (next === null) {
 				this.announceError('A point cannot be added on this part of the path.');
 				return;
 			}
 			attrs = {d: next};
-			select = points=>points.findIndex(p=>p.ref.type === 'path' && p.ref.segment === near.segment && p.ref.slot === 'end');
+			select = points=>points.findIndex(p=>p.ref.type === 'path' && p.ref.segment === spot.edge && p.ref.slot === 'end');
 		} else if (tag === 'polygon' || tag === 'polyline') {
 			const value = found.source.getAttribute('points') ?? '';
-			const near = nearestPolygonEdge(value, local, tag === 'polygon');
-			if (!near || near.distance * scale > ADD_POINT_REACH) return;
 			const pts = polygonPoints(value) ?? [];
-			const a = pts[near.index];
-			const b = pts[(near.index + 1) % pts.length];
-			const p = {x: a.x + (b.x - a.x) * near.t, y: a.y + (b.y - a.y) * near.t};
-			const next = insertPolygonPoint(value, near.index, p, decimals);
+			const a = pts.at(spot.edge);
+			const b = pts.at((spot.edge + 1) % pts.length);
+			const next = a && b ? insertPolygonPoint(value, spot.edge, {x: a.x + (b.x - a.x) * spot.t, y: a.y + (b.y - a.y) * spot.t}, decimals) : null;
 			if (next === null) return;
 			attrs = {points: next};
-			select = ()=>near.index + 1;
+			select = ()=>spot.edge + 1;
 		}
 		if (!attrs || !select) return;
 		if (!this.commitChanges(found.sourceText, [{tag: found.tag, attrs}], 'slick.point')) return;
 		const made = this.elementForOrdinal(found.tag.ordinal);
 		const points = made ? pointsOf(made) : null;
-		if (this.pointMode && points) this.pointMode.selected = select(points);
+		if (this.pointMode && points) {
+			this.pointMode.selected = select(points);
+			this.pointMode.spot = null;
+		}
 		this.refreshSelection();
 		this.selectPointInEditor();
 		this.announceAction('Point added');
@@ -1448,6 +1654,7 @@ class slick {
 		e.preventDefault();
 		e.stopPropagation();
 		this.pointMode.selected = index;
+		this.pointMode.spot = null;
 		this.refreshSelection();
 		this.selectPointInEditor();
 		this.gesture = {mode: 'point', handle: null, fromHandle: true, toggle: false, startX: x, startY: y, targets: [current], drags: [], point: index};
@@ -1556,10 +1763,13 @@ class slick {
 			const toUnits = ctm ? invert(toMatrix(ctm)) : null;
 			if (!found || !point || !ctm || !toUnits) return false;
 			const scale = pixelsPerUnit(toMatrix(ctm));
+			// a handle of a smooth point keeps the one across it in line, as the two lay when the drag began
+			const ref = point.ref;
+			const mode = ref.type === 'path' && ref.slot !== 'end' ? handleMode(found.source.getAttribute('d') ?? '', {segment: ref.segment, slot: ref.slot}) ?? 'independent' : 'independent';
 			g.drags = [{
 				target, found, live: new LiveEdit(target), attrs: {}, toUnits, decimals: decimalsFor(scale),
 				bbox: {x: 0, y: 0, width: 0, height: 0}, minSize: 0, center: {x: 0, y: 0}, screenCenter: {x: 0, y: 0},
-				point: {ref: point.ref, from: {x: point.x, y: point.y}},
+				point: {ref, from: {x: point.x, y: point.y}, mode},
 			}];
 			this.drawBox(this.hoverBox, null);
 			return true;
@@ -1607,7 +1817,9 @@ class slick {
 		return true;
 	}
 
-	private gestureMove(x: number, y: number, shift: boolean): void {
+	/** The gesture follows the pointer. Shift snaps a turn and swaps how a
+	 * handle resizes; Alt lets a curve handle go of the one across its anchor. */
+	private gestureMove(x: number, y: number, shift: boolean, alt = false): void {
 		const g = this.gesture;
 		if (!g) return;
 		const sx = x - g.startX;
@@ -1625,7 +1837,7 @@ class slick {
 			if (d.point) {
 				const v = applyToVector(d.toUnits, sx, sy);
 				const to = {x: roundTo(d.point.from.x + v.x, d.decimals), y: roundTo(d.point.from.y + v.y, d.decimals)};
-				const attrs = movePoint(d.point.ref, d.found.source, to, d.decimals);
+				const attrs = movePoint(d.point.ref, d.found.source, to, d.decimals, alt ? 'independent' : d.point.mode);
 				plan = attrs ? {ok: true, attrs} : {ok: false, reason: 'This point could not be moved.'};
 			} else if (g.mode === 'rotate') {
 				// the turn from where the handle was pressed to where it is now, measured in the parent's frame

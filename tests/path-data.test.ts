@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   parsePathData, walkPath, pathPoints, movePathPoint, insertPathPoint, removePathPoint, retractPathHandle, nearestPathSegment,
+  smoothPathPoint, cornerPathPoint, anchorKind, curvePathSegment, straightenPathSegment, segmentCurved, handleMode, moveHandle, pointsAsPathData,
   parsePoints, polygonPoints, movePolygonPoint, insertPolygonPoint, removePolygonPoint, nearestPolygonEdge,
 } from '../src/path-data';
 
@@ -280,5 +281,108 @@ describe('Polygon points', () => {
   it('should find the nearest edge, counting the closing edge of a polygon', () => {
     expect(nearestPolygonEdge('0,0 10,0 10,10', { x: 1, y: 5 }, false)!.index).toBe(0);
     expect(nearestPolygonEdge('0,0 10,0 10,10', { x: 1, y: 5 }, true)!.index).toBe(2);
+  });
+});
+
+describe('Smooth and corner anchors', () => {
+  it('should turn the lines beside a corner into curves tangent through it', () => {
+    expect(smoothPathPoint('M0 0 L30 0 L30 30', 1, 0)).toBe('M0 0 C10 0 23 -7 30 0 C37 7 30 20 30 30');
+    expect(smoothPathPoint('m0 0 l30 0 l0 30', 1, 0)).toBe('m0 0 c10 0 23 -7 30 0 c7 7 0 20 0 30');
+    expect(smoothPathPoint('M0 0 h30 v30', 1, 0)).toBe('M0 0 c10 0 23 -7 30 0 c7 7 0 20 0 30');
+  });
+
+  it('should go round a closed subpath, putting the closing curve before the Z', () => {
+    expect(smoothPathPoint('M0 0 L30 0 L30 30 Z', 0, 0)).toBe('M0 0 C4 -9 20 0 30 0 L30 30 C20 20 -5 13 0 0 Z');
+  });
+
+  it('should line up with an arc and leave the arc alone', () => {
+    expect(smoothPathPoint('M0 0 L10 0 A10 10 0 0 1 30 0', 1, 1)).toBe('M0 0 C3.3 0 10 3.3 10 0 A10 10 0 0 1 30 0');
+  });
+
+  it('should refuse an open end', () => {
+    expect(smoothPathPoint('M0 0 L10 0', 1, 0)).toBeNull();
+    expect(smoothPathPoint('M0 0 L10 0', 0, 0)).toBeNull();
+  });
+
+  it('should retract handles to make a corner, writing a straight curve as a line', () => {
+    expect(cornerPathPoint('M0 0 C10 0 23 -7 30 0 C37 7 30 20 30 30', 1, 0)).toBe('M0 0 L30 0 L30 30');
+    expect(cornerPathPoint('M0 0 C0 10 10 10 10 0 S20 -10 20 0', 1, 0)).toBe('M0 0 C0 10 10 0 10 0 S20 -10 20 0');
+    expect(cornerPathPoint('M0 0 L10 0 L10 10', 1, 0)).toBeNull();
+  });
+
+  it('should tell a smooth anchor from a corner', () => {
+    expect(anchorKind('M0 0 C10 0 23 -7 30 0 C37 7 30 20 30 30', 1)).toBe('smooth');
+    expect(anchorKind('M0 0 L30 0 L30 30', 1)).toBe('corner');
+    // lines running straight on have no curve to be smooth
+    expect(anchorKind('M0 0 L10 0 L20 0', 1)).toBe('corner');
+    expect(anchorKind('M0 0 L10 0 C20 0 20 10 20 20', 1)).toBe('smooth');
+    expect(anchorKind('M0 0 L10 0', 1)).toBeNull();
+    expect(anchorKind('M0 0 C4 -9 20 0 30 0 L30 30 C20 20 -5 13 0 0 Z', 0)).toBe('smooth');
+  });
+});
+
+describe('Curved and straight segments', () => {
+  it('should make a line a curve with handles at its thirds', () => {
+    expect(curvePathSegment('M10 10 l20 0', 1, 0)).toBe('M10 10 c7 0 13 0 20 0');
+    expect(curvePathSegment('M10 10 h20.25', 1, 0)).toBe('M10 10 c6.75 0 13.5 0 20.25 0');
+    expect(curvePathSegment('m0 0 l30 0 l0 30z', 3, 0)).toBe('m0 0 l30 0 l0 30c-10 -10 -20 -20 -30 -30 z');
+    expect(curvePathSegment('M0 0 L10 0 20 0 30 0', 2, 0)).toBe('M0 0 L10 0 C13 0 17 0 20 0 L30 0');
+    expect(curvePathSegment('M0 0 C0 10 10 10 10 0', 1, 0)).toBeNull();
+    expect(curvePathSegment('M0 0 L10 0 L0 0 Z', 3, 0)).toBeNull();
+  });
+
+  it('should make a curve straight, writing out the S or T that leaned on it', () => {
+    expect(straightenPathSegment('m0 0 c0 10 10.5 10 10.5 0', 1, 0)).toBe('m0 0 l10.5 0');
+    expect(straightenPathSegment('M0 0 C0 10 10 10 10 0 S20 -10 20 0', 1, 0)).toBe('M0 0 L10 0 C10 -10 20 -10 20 0');
+    expect(straightenPathSegment('M0 0 Q5 10 10 0 T20 0 T30 0', 1, 0)).toBe('M0 0 L10 0 Q15 -10 20 0 T30 0');
+    expect(straightenPathSegment('M0 0 L30 0 L30 30 C20 20 10 10 0 0 Z', 3, 0)).toBe('M0 0 L30 0 L30 30 Z');
+  });
+
+  it('should tell a curve from a line by its letter', () => {
+    expect(segmentCurved('M0 0 C0 10 10 10 10 0', 1)).toBe(true);
+    expect(segmentCurved('M0 0 C3 0 7 0 10 0', 1)).toBe(true);
+    expect(segmentCurved('M0 0 L10 0 Z', 2)).toBe(false);
+    expect(segmentCurved('M0 0 L10 0', 1)).toBe(false);
+    expect(segmentCurved('M0 0 A5 5 0 0 1 10 0', 1)).toBe(true);
+  });
+});
+
+describe('Handle modes', () => {
+  it('should read the mode from where the handles are', () => {
+    expect(handleMode('M0 0 C0 10 10 10 10 0 C10 -10 20 -10 20 0', { segment: 1, slot: 'cp2' })).toBe('mirrored');
+    expect(handleMode('M0 0 C0 10 10 5 10 0 C10 -10 20 -10 20 0', { segment: 1, slot: 'cp2' })).toBe('aligned');
+    expect(handleMode('M0 0 C0 10 12 10 10 0 C10 -10 20 -10 20 0', { segment: 1, slot: 'cp2' })).toBe('independent');
+    expect(handleMode('M0 0 C1 4 7.33 6.67 10 3.33 C12.67 0 20 -10 20 0', { segment: 1, slot: 'cp2' })).toBe('mirrored');
+    expect(handleMode('M0 0 C0 10 10 10 10 0 S20 -10 20 0', { segment: 1, slot: 'cp2' })).toBe('mirrored');
+    expect(handleMode('M0 0 C0 10 10 10 10 0 C10 -10 20 -10 20 0', { segment: 2, slot: 'cp1' })).toBe('mirrored');
+    expect(handleMode('M0 0 C0 10 10 10 10 0 L20 0', { segment: 1, slot: 'cp2' })).toBe('independent');
+  });
+
+  it('should move the handle across the anchor as the mode says', () => {
+    const d = 'M0 0 C0 10 10 10 10 0 C10 -10 20 -20 20 0';
+    expect(moveHandle(d, { segment: 1, slot: 'cp2' }, { x: 4, y: 4 }, 'mirrored', 0)).toBe('M0 0 C0 10 4 4 10 0 C16 -4 20 -20 20 0');
+    expect(moveHandle(d, { segment: 1, slot: 'cp2' }, { x: 4, y: 4 }, 'aligned', 0)).toBe('M0 0 C0 10 4 4 10 0 C18 -6 20 -20 20 0');
+    expect(moveHandle(d, { segment: 1, slot: 'cp2' }, { x: 4, y: 4 }, 'independent', 0)).toBe('M0 0 C0 10 4 4 10 0 C10 -10 20 -20 20 0');
+    expect(moveHandle('m0 0 c0 10 10 10 10 0 c0 -10 10 -20 10 0', { segment: 2, slot: 'cp1' }, { x: 13, y: -4 }, 'aligned', 0)).toBe('m0 0 c0 10 4 8 10 0 c3 -4 10 -20 10 0');
+  });
+
+  it('should keep an S while mirrored, and write it out when let go', () => {
+    const d = 'M0 0 C0 10 10 10 10 0 S20 -10 20 0';
+    expect(moveHandle(d, { segment: 1, slot: 'cp2' }, { x: 4, y: 4 }, 'mirrored', 0)).toBe('M0 0 C0 10 4 4 10 0 S20 -10 20 0');
+    expect(moveHandle(d, { segment: 1, slot: 'cp2' }, { x: 4, y: 4 }, 'independent', 0)).toBe('M0 0 C0 10 4 4 10 0 C10 -10 20 -10 20 0');
+  });
+
+  it('should go round a closed subpath to the handle across its first point', () => {
+    const d = 'M0 0 C0 -10 10 -10 10 0 C10 10 0 10 0 0 Z';
+    expect(handleMode(d, { segment: 1, slot: 'cp1' })).toBe('mirrored');
+    expect(moveHandle(d, { segment: 1, slot: 'cp1' }, { x: 5, y: -10 }, 'mirrored', 0)).toBe('M0 0 C5 -10 10 -10 10 0 C10 10 -5 10 0 0 Z');
+  });
+});
+
+describe('Polygons as paths', () => {
+  it('should read points as path data, keeping every number and separator', () => {
+    expect(pointsAsPathData('0,0 10,0 10,10', true)).toBe('M0,0 10,0 10,10Z');
+    expect(pointsAsPathData(' 0 0 10 0 ', false)).toBe('M0 0 10 0');
+    expect(pointsAsPathData('0,0 10', true)).toBeNull();
   });
 });

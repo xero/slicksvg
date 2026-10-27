@@ -238,6 +238,94 @@ test.describe('SVG Editor Point Editing', () => {
     expect(await getSource(page)).toContain('d="M30 20 L100 20 L100 100 C60 100 30 60 30 20 Z"');
   });
 
+  test('should make a polygon\'s corner smooth, as a path, and make it a corner again', async ({ page }) => {
+    await page.locator('.svg-container polygon').click();
+    await page.keyboard.press('Enter');
+    const smooth = page.locator('#point-smooth');
+    await expect(smooth).toBeDisabled();
+    await page.locator('.points [data-point="2"]').click();
+    await expect(smooth).toBeEnabled();
+    await expect(smooth).toHaveAttribute('aria-pressed', 'false');
+
+    await smooth.click();
+    expect(await getSource(page)).toContain('<path id="g" d="M120,120 180,120 C170 140 172 180 150 180C128 180 130 140 120 120 Z" fill="#aa0000"/>');
+    await expect(smooth).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('.points rect.selected')).toHaveCount(1);
+    await expect(page.locator('.points circle')).toHaveCount(4);
+
+    await smooth.click();
+    expect(await getSource(page)).toContain('<path id="g" d="M120,120 180,120 L150 180L120 120 Z" fill="#aa0000"/>');
+    await expect(smooth).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.locator('.points circle')).toHaveCount(0);
+
+    // one undo step each
+    await page.locator('#undo').click();
+    await page.locator('#undo').click();
+    expect(await getSource(page)).toBe(FIXTURE);
+  });
+
+  test('should curve a segment picked on the outline, and straighten it again', async ({ page }) => {
+    await page.locator('.svg-container path').click();
+    await page.keyboard.press('Enter');
+    const curve = page.locator('#point-curve');
+    await expect(curve).toBeDisabled();
+    const edge = await at(page, 60, 21);
+    await page.mouse.click(edge.x, edge.y);
+    await expect(page.locator('.spot path')).toHaveCount(1);
+    await expect(curve).toBeEnabled();
+    await expect(page.locator('#point-add')).toBeEnabled();
+
+    await curve.click();
+    expect(await getSource(page)).toBe(FIXTURE.replace('L100 20', 'C47 20 73 20 100 20'));
+    await expect(curve).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('.points circle')).toHaveCount(2);
+
+    await curve.click();
+    expect(await getSource(page)).toBe(FIXTURE);
+    await expect(curve).toHaveAttribute('aria-pressed', 'false');
+
+    // the closing line of the Z gets its curve before the Z
+    const closing = await at(page, 60, 61);
+    await page.mouse.click(closing.x, closing.y);
+    await curve.click();
+    expect(await getSource(page)).toBe(FIXTURE.replace('L100 100 Z', 'L100 100 C73 73 47 47 20 20 Z'));
+    // the curve ends on the first point, which is offered once
+    await expect(page.locator('.points rect')).toHaveCount(3);
+  });
+
+  test('should add a point on the picked spot', async ({ page }) => {
+    await page.locator('.svg-container path').click();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#point-add')).toBeDisabled();
+    const edge = await at(page, 100, 61);
+    await page.mouse.click(edge.x, edge.y);
+    await page.locator('#point-add').click();
+    expect(await getSource(page)).toBe(FIXTURE.replace('L100 100', 'L100 61 L100 100'));
+    expect(await editorSelection(page)).toBe('100 61');
+    await expect(page.locator('.points rect.selected')).toHaveCount(1);
+    await expect(page.locator('.spot path')).toHaveCount(0);
+  });
+
+  test('should keep a smooth point\'s handles in line while one is dragged, but not with Alt', async ({ page }) => {
+    const wave = 'M20 100 C20 60 60 60 60 100 C60 140 100 140 100 100';
+    await setContent(page, FIXTURE.replace('M20 20 L100 20 L100 100 Z', wave).replace('fill="#6291e0"', 'fill="none" stroke="#6291e0" stroke-width="6"'));
+    const stroke = await at(page, 20, 90);
+    await page.mouse.click(stroke.x, stroke.y);
+    await page.keyboard.press('Enter');
+    await expect(page.locator('.points rect')).toHaveCount(3);
+    await page.locator('.points [data-point="3"]').click();
+    await expect(page.locator('#point-smooth')).toHaveAttribute('aria-pressed', 'true');
+
+    // the handle above the middle point, dragged right: the one below follows across
+    await dragPoint(page, 2, 20, 0);
+    expect(await getSource(page)).toContain('d="M20 100 C20 60 80 60 60 100 C40 140 100 140 100 100"');
+
+    await page.keyboard.down('Alt');
+    await dragPoint(page, 2, 0, -10);
+    await page.keyboard.up('Alt');
+    expect(await getSource(page)).toContain('d="M20 100 C20 60 80 50 60 100 C40 140 100 140 100 100"');
+  });
+
   test('should keep a line end\'s written precision when nudged', async ({ page }) => {
     await setContent(page, FIXTURE.replace('<path id="p" d="M20 20 L100 20 L100 100 Z" fill="#6291e0"/>', '<line id="ln" x1="10.5" y1="40" x2="100" y2="40" stroke="#6291e0" stroke-width="8"/>'));
     // a line has no area, so Playwright will not click it by locator; aim at its stroke
