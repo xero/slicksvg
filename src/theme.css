@@ -179,6 +179,9 @@
 			stroke-linecap: round;
 			stroke-linejoin: round;
 		}
+		&[aria-pressed="true"] {
+			@apply bg-btn-h;
+		}
 		&:disabled {
 			@apply opacity-40 cursor-default;
 			&:hover, &:focus {
@@ -275,6 +278,26 @@
         stroke-width: 1;
         stroke-dasharray: 2 3;
         opacity: 0.7;
+      }
+      /* point editing: squares on anchors, circles on handles, lines between */
+      .points {
+        rect, circle {
+          @apply fill-menu-alt stroke-header pointer-events-auto;
+          stroke-width: 1.5;
+          touch-action: none;
+          cursor: move;
+        }
+        circle {
+          @apply stroke-btn-txt;
+        }
+        .selected {
+          @apply fill-header;
+        }
+        line {
+          @apply stroke-btn-txt;
+          stroke-width: 1;
+          stroke-dasharray: 2 2;
+        }
       }
       /* resize and rotate handles take the pointer; the rest passes through */
       .handles {

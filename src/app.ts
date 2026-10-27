@@ -9,7 +9,9 @@ import {linter, lintGutter, forceLinting} from '@codemirror/lint';
 import {findElementAtCursor, type ElementRef} from './xray';
 import {startTags, readAttribute, planAttributeEdits, applyChanges, stampSource, parseSource, elementExtent, removalRange, duplicateInsertion, SOURCE_ATTR, type StartTag, type TextChange} from './source-map';
 import {findSvgTarget, selectionChain, nextInChain, ordinalOf, boxCorners} from './select';
-import {planMove, planResize, planRotate, planFlip, parentCenter, invert, applyToVector, pixelsPerUnit, decimalsFor, roundTo, type Matrix, type Point, type Rect, type Handle, type EditPlan} from './geometry';
+import {planMove, planResize, planRotate, planFlip, parentCenter, invert, applyToVector, applyToPoint, pixelsPerUnit, decimalsFor, roundTo, fmt, type Matrix, type Point, type Rect, type Handle, type EditPlan} from './geometry';
+import {parsePathData, pathPoints, movePathPoint, insertPathPoint, removePathPoint, nearestPathSegment, polygonPoints, movePolygonPoint, insertPolygonPoint, removePolygonPoint, nearestPolygonEdge} from './path-data';
+import {attributesOf} from './source-map';
 import {undo, redo, undoDepth, redoDepth, isolateHistory} from '@codemirror/commands';
 
 // --- Constants
@@ -168,7 +170,32 @@ function resetElementStyles(...elements: HTMLElement[]) {
 }
 
 // --- SVGEditor Class
-type GestureMode = 'move' | 'resize' | 'rotate';
+type GestureMode = 'move' | 'resize' | 'rotate' | 'point';
+
+/** A point of a path, polygon, polyline, or line, as the edit functions address it. */
+type PointRef =
+	| {type: 'path'; segment: number; slot: 'end' | 'cp1' | 'cp2'}
+	| {type: 'poly'; index: number}
+	| {type: 'line'; index: 0 | 1};
+
+interface EditPoint {
+	x: number;
+	y: number;
+	kind: 'anchor' | 'control';
+	/** For a control point, the anchors its handle lines go to. */
+	anchors: Point[];
+	ref: PointRef;
+}
+
+/** Point editing on one element: which, and which of its points is selected. */
+interface PointMode {
+	ordinal: number;
+	selected: number | null;
+}
+
+/** How far, in screen pixels, a double-click may be from the outline to add a point there. */
+const ADD_POINT_REACH = 12;
+const POINT_ELEMENTS = /^(path|polygon|polyline|line)$/;
 
 /** The source behind a preview element: the text, the start tag, and the
  * parsed element the planners read. */
@@ -190,6 +217,8 @@ interface Drag {
 	/** The element's centre in its parent's units, and on screen. */
 	center: Point;
 	screenCenter: Point;
+	/** For a point drag: the point, where it started, and the attribute as it was. */
+	point: {ref: PointRef; from: Point; attr: string; original: string} | null;
 }
 
 interface Gesture {
@@ -205,6 +234,8 @@ interface Gesture {
 	targets: Element[];
 	/** Filled in once the pointer has travelled far enough to be a drag. */
 	drags: Drag[];
+	/** The point a point gesture holds, by its place in the element's point list. */
+	point: number | null;
 }
 
 /**
@@ -237,6 +268,45 @@ class LiveEdit {
 }
 
 const toMatrix = (m: DOMMatrix): Matrix=>({a: m.a, b: m.b, c: m.c, d: m.d, e: m.e, f: m.f});
+
+/** The points a person can take hold of on an element, in its own units. */
+function pointsOf(el: Element): EditPoint[] | null {
+	const tag = el.tagName.toLowerCase();
+	if (tag === 'path') {
+		const segments = parsePathData(el.getAttribute('d') ?? '');
+		return segments && pathPoints(segments).map(p=>({
+			x: p.x, y: p.y, kind: p.slot === 'end' ? 'anchor' : 'control', anchors: p.anchors,
+			ref: {type: 'path', segment: p.segment, slot: p.slot},
+		}));
+	}
+	if (tag === 'polygon' || tag === 'polyline') {
+		const pts = polygonPoints(el.getAttribute('points') ?? '');
+		return pts && pts.map((p, index)=>({x: p.x, y: p.y, kind: 'anchor', anchors: [], ref: {type: 'poly', index}}));
+	}
+	if (tag === 'line') {
+		const n = (name: string): number=>parseFloat(el.getAttribute(name) ?? '0') || 0;
+		return [
+			{x: n('x1'), y: n('y1'), kind: 'anchor', anchors: [], ref: {type: 'line', index: 0}},
+			{x: n('x2'), y: n('y2'), kind: 'anchor', anchors: [], ref: {type: 'line', index: 1}},
+		];
+	}
+	return null;
+}
+
+/** The attribute a point lives in, and the attribute changes that move it. */
+function movePoint(ref: PointRef, original: string, to: Point, decimals: number): Record<string, string | null> | null {
+	if (ref.type === 'path') {
+		const d = movePathPoint(original, ref, to, decimals);
+		return d === null ? null : {d};
+	}
+	if (ref.type === 'poly') {
+		const points = movePolygonPoint(original, ref.index, to, decimals);
+		return points === null ? null : {points};
+	}
+	return ref.index === 0 ? {x1: fmt(to.x, decimals), y1: fmt(to.y, decimals)} : {x2: fmt(to.x, decimals), y2: fmt(to.y, decimals)};
+}
+
+const pointAttr = (ref: PointRef): string=>ref.type === 'path' ? 'd' : ref.type === 'poly' ? 'points' : ref.index === 0 ? 'x1' : 'x2';
 
 function bboxOf(el: Element): Rect | null {
 	if (!(el instanceof SVGGraphicsElement)) return null;
@@ -286,6 +356,8 @@ class slick {
 	private selected: number[] = [];
 	private moreBoxes: SVGPolygonElement[] = [];
 	private pressToggle = false;
+	private pointMode: PointMode | null = null;
+	private pointsGroup!: SVGGElement;
 	private overlay!: SVGSVGElement;
 	private selectBox!: SVGPolygonElement;
 	private hoverBox!: SVGPolygonElement;
@@ -399,6 +471,9 @@ class slick {
 		this.handles.appendChild(rotate);
 		this.handleEls.set('rotate', rotate);
 		this.overlay.appendChild(this.handles);
+		this.pointsGroup = document.createElementNS(SVG_NS, 'g');
+		this.pointsGroup.classList.add('points');
+		this.overlay.appendChild(this.pointsGroup);
 		this.previewContainer.appendChild(this.overlay);
 		new ResizeObserver(()=>this.refreshSelection()).observe(this.svgPreview);
 	}
@@ -506,7 +581,8 @@ class slick {
 			['xray', ()=>this.toggleXray()],
 			['undo', ()=>this.undoEdit()],
 			['redo', ()=>this.redoEdit()],
-			['duplicate', ()=>this.duplicateSelected()]
+			['duplicate', ()=>this.duplicateSelected()],
+			['points', ()=>this.togglePointMode()]
 		]);
 		document.addEventListener('keydown', this.handleHistoryKeys);
 		this.updateHistoryButtons();
@@ -534,12 +610,15 @@ class slick {
 			}
 			const target = e.target;
 			if (target instanceof Element && target.closest('.cm-editor, dialog')) return;
-			this.clearSelection();
+			// point editing ends first; a second Escape clears the selection
+			if (this.pointMode) this.leavePointMode();
+			else this.clearSelection();
 		});
 		this.svgPreview.addEventListener('touchstart', (e)=>this.handleTouchStart(e), {passive: false});
 		this.svgPreview.addEventListener('touchmove', (e)=>this.handleTouchMove(e), {passive: false});
 		this.svgPreview.addEventListener('touchend', (e)=>this.handleTouchEnd(e), {passive: false});
 		this.svgPreview.addEventListener('mousemove', (e)=>this.hoverAt(e));
+		this.svgPreview.addEventListener('dblclick', (e)=>this.onDoubleClick(e));
 		this.svgPreview.addEventListener('mouseleave', ()=>this.drawBox(this.hoverBox, null));
 		this.svgPreview.addEventListener('keydown', (e)=>this.onCanvasKey(e));
 		this.setupResizeDragbar();
@@ -705,7 +784,7 @@ class slick {
 		this.pressX = this.lastPanX = e.clientX;
 		this.pressY = this.lastPanY = e.clientY;
 		if (this.onSelection(e.target) && !this.pressToggle) {
-			this.gesture = {mode: 'move', handle: null, fromHandle: false, toggle: false, startX: e.clientX, startY: e.clientY, targets: this.selectedElements(), drags: []};
+			this.gesture = {mode: 'move', handle: null, fromHandle: false, toggle: false, startX: e.clientX, startY: e.clientY, targets: this.selectedElements(), drags: [], point: null};
 			return;
 		}
 		this.isPanning = true;
@@ -754,7 +833,7 @@ class slick {
 			this.pressY = this.lastPanY = e.touches[0].clientY;
 			const current = this.onSelection(e.target);
 			if (current) {
-				this.gesture = {mode: 'move', handle: null, fromHandle: false, toggle: false, startX: this.pressX, startY: this.pressY, targets: this.selectedElements(), drags: []};
+				this.gesture = {mode: 'move', handle: null, fromHandle: false, toggle: false, startX: this.pressX, startY: this.pressY, targets: this.selectedElements(), drags: [], point: null};
 				this.isPanning = false;
 			} else {
 				this.isPanning = true;
@@ -931,8 +1010,213 @@ class slick {
 		const others = els.slice(0, -1);
 		while (this.moreBoxes.length < others.length) this.moreBoxes.push(this.makeBox('select-more'));
 		this.moreBoxes.forEach((box, i)=>this.drawBox(box, others.at(i) ?? null));
-		this.placeHandles(els.length === 1 ? corners : null);
+		// point editing ends when its element is no longer the one selection
+		if (this.pointMode && (els.length !== 1 || this.selected[0] !== this.pointMode.ordinal)) this.pointMode = null;
+		const editing = this.pointMode && primary ? primary : null;
+		this.placeHandles(els.length === 1 && !editing ? corners : null);
+		this.placePoints(editing);
 		this.get('duplicate').toggleAttribute('disabled', !primary);
+		const pointsButton = this.get('points');
+		pointsButton.toggleAttribute('disabled', !(els.length === 1 && primary && POINT_ELEMENTS.test(primary.tagName.toLowerCase())));
+		pointsButton.setAttribute('aria-pressed', editing ? 'true' : 'false');
+	}
+
+	// --- Point editing
+	/** Markers for every point of the element being edited: squares on the
+	 * anchors, circles on the handles, with lines to the anchors they shape. */
+	private placePoints(el: Element | null): void {
+		this.pointsGroup.replaceChildren();
+		const points = el ? pointsOf(el) : null;
+		const ctm = el instanceof SVGGraphicsElement ? el.getScreenCTM() : null;
+		if (!points || !ctm) return;
+		const origin = this.overlay.getBoundingClientRect();
+		const onScreen = (p: Point): Point=>{
+			const q = new DOMPoint(p.x, p.y).matrixTransform(ctm);
+			return {x: q.x - origin.left, y: q.y - origin.top};
+		};
+		const size = HANDLE_SIZE - 1;
+		points.forEach((point, i)=>{
+			const at = onScreen(point);
+			for (const anchor of point.anchors) {
+				const a = onScreen(anchor);
+				const link = document.createElementNS(SVG_NS, 'line');
+				link.setAttribute('x1', `${at.x}`);
+				link.setAttribute('y1', `${at.y}`);
+				link.setAttribute('x2', `${a.x}`);
+				link.setAttribute('y2', `${a.y}`);
+				this.pointsGroup.appendChild(link);
+			}
+			const marker = document.createElementNS(SVG_NS, point.kind === 'anchor' ? 'rect' : 'circle');
+			if (point.kind === 'anchor') {
+				marker.setAttribute('x', `${at.x - size / 2}`);
+				marker.setAttribute('y', `${at.y - size / 2}`);
+				marker.setAttribute('width', `${size}`);
+				marker.setAttribute('height', `${size}`);
+			} else {
+				marker.setAttribute('cx', `${at.x}`);
+				marker.setAttribute('cy', `${at.y}`);
+				marker.setAttribute('r', `${size / 2}`);
+			}
+			marker.setAttribute('data-point', `${i}`);
+			if (this.pointMode?.selected === i) marker.classList.add('selected');
+			this.pointsGroup.appendChild(marker);
+		});
+	}
+
+	/** Edit the points of the one selected path, polygon, polyline, or line. */
+	private enterPointMode(): void {
+		const current = this.selectedElement();
+		const ordinal = this.selected.at(-1);
+		if (!current || ordinal === undefined || this.selected.length !== 1 || !POINT_ELEMENTS.test(current.tagName.toLowerCase())) return;
+		if (!pointsOf(current)) {
+			this.announceError('This element\'s points could not be read, so they cannot be edited here.');
+			return;
+		}
+		this.pointMode = {ordinal, selected: null};
+		this.refreshSelection();
+		this.svgPreview.focus({preventScroll: true});
+		this.announceAction(`Editing the points of ${current.tagName.toLowerCase()}: drag a point, double-click the outline to add one, Delete removes one`);
+	}
+
+	private leavePointMode(): void {
+		if (!this.pointMode) return;
+		this.pointMode = null;
+		this.refreshSelection();
+		this.announceAction('Point editing ended');
+	}
+
+	private togglePointMode(): void {
+		if (this.pointMode) this.leavePointMode();
+		else this.enterPointMode();
+		this.svgPreview.focus({preventScroll: true});
+	}
+
+	/** A double-click on the selection edits its points; in point editing it
+	 * adds a point where the outline is nearest. */
+	private onDoubleClick(e: MouseEvent): void {
+		const current = this.onSelection(e.target);
+		if (!current) return;
+		e.preventDefault();
+		if (!this.pointMode) {
+			this.enterPointMode();
+			return;
+		}
+		this.addPointAt(current, e.clientX, e.clientY);
+	}
+
+	/** The point of the element being edited that is selected, with its ref. */
+	private selectedPoint(): {el: Element; points: EditPoint[]; index: number; point: EditPoint} | null {
+		const el = this.selectedElement();
+		const index = this.pointMode?.selected ?? null;
+		const points = el ? pointsOf(el) : null;
+		const point = index === null ? undefined : points?.at(index);
+		if (!el || index === null || !points || !point) return null;
+		return {el, points, index, point};
+	}
+
+	/** Select the numbers of the selected point in the editor. */
+	private selectPointInEditor(): void {
+		const chosen = this.selectedPoint();
+		if (!chosen) return;
+		const found = this.sourceFor(chosen.el);
+		if (!found) return;
+		const attr = attributesOf(found.sourceText, found.tag).find(a=>a.name === pointAttr(chosen.point.ref));
+		if (!attr) return;
+		const value = attr.value;
+		const at = found.tag.start + attr.valueStart;
+		const ref = chosen.point.ref;
+		let span: [number, number] | null = null;
+		if (ref.type === 'path') {
+			const seg = parsePathData(value)?.at(ref.segment);
+			const k = seg ? (ref.slot === 'cp1' ? 0 : ref.slot === 'cp2' ? 2 : seg.args.length - 2) : -1;
+			const x = seg?.args.at(k);
+			const y = seg?.args.at(k + 1);
+			if (x && y) span = [at + x.start, at + y.end];
+		} else if (ref.type === 'poly') {
+			const tokens = parsePathData(`M${value}`);
+			const x = tokens?.at(ref.index)?.args.at(0);
+			const y = tokens?.at(ref.index)?.args.at(1);
+			if (x && y) span = [at + x.start - 1, at + y.end - 1];
+		} else {
+			span = [at, at + value.length];
+		}
+		if (span) this.editor.dispatch({selection: {anchor: span[0], head: span[1]}, scrollIntoView: true});
+	}
+
+	/** Add a point to the element where its outline is nearest the pointer. */
+	private addPointAt(el: Element, clientX: number, clientY: number): void {
+		const found = this.sourceFor(el);
+		const ctm = el instanceof SVGGraphicsElement ? el.getScreenCTM() : null;
+		const toLocal = ctm ? invert(toMatrix(ctm)) : null;
+		if (!found || !ctm || !toLocal) return;
+		const local = applyToPoint(toLocal, clientX, clientY);
+		const scale = pixelsPerUnit(toMatrix(ctm));
+		const decimals = decimalsFor(scale);
+		const tag = el.tagName.toLowerCase();
+		let attrs: Record<string, string | null> | null = null;
+		let select: ((points: EditPoint[]) => number) | null = null;
+		if (tag === 'path') {
+			const d = found.source.getAttribute('d') ?? '';
+			const near = nearestPathSegment(d, local);
+			if (!near || near.distance * scale > ADD_POINT_REACH) return;
+			const next = insertPathPoint(d, near.segment, near.t, decimals);
+			if (next === null) {
+				this.announceError('A point cannot be added on this part of the path.');
+				return;
+			}
+			attrs = {d: next};
+			select = points=>points.findIndex(p=>p.ref.type === 'path' && p.ref.segment === near.segment && p.ref.slot === 'end');
+		} else if (tag === 'polygon' || tag === 'polyline') {
+			const value = found.source.getAttribute('points') ?? '';
+			const near = nearestPolygonEdge(value, local, tag === 'polygon');
+			if (!near || near.distance * scale > ADD_POINT_REACH) return;
+			const pts = polygonPoints(value) ?? [];
+			const a = pts[near.index];
+			const b = pts[(near.index + 1) % pts.length];
+			const p = {x: a.x + (b.x - a.x) * near.t, y: a.y + (b.y - a.y) * near.t};
+			const next = insertPolygonPoint(value, near.index, p, decimals);
+			if (next === null) return;
+			attrs = {points: next};
+			select = ()=>near.index + 1;
+		}
+		if (!attrs || !select) return;
+		if (!this.commitChanges(found.sourceText, [{tag: found.tag, attrs}], 'slick.point')) return;
+		const made = this.elementForOrdinal(found.tag.ordinal);
+		const points = made ? pointsOf(made) : null;
+		if (this.pointMode && points) this.pointMode.selected = select(points);
+		this.refreshSelection();
+		this.selectPointInEditor();
+		this.announceAction('Point added');
+	}
+
+	/** Move the selected point by whole units of the element, from the keyboard. */
+	private nudgePoint(dx: number, dy: number): void {
+		const chosen = this.selectedPoint();
+		if (!chosen || this.gesture?.drags.length) return;
+		const found = this.sourceFor(chosen.el);
+		if (!found) return;
+		const attrs = movePoint(chosen.point.ref, found.source.getAttribute(pointAttr(chosen.point.ref)) ?? '', {x: chosen.point.x + dx, y: chosen.point.y + dy}, 0);
+		if (!attrs) return;
+		this.commitChanges(found.sourceText, [{tag: found.tag, attrs}], undefined, false);
+		this.selectPointInEditor();
+	}
+
+	/** Take the selected point out of the element. */
+	private deletePoint(): void {
+		const chosen = this.selectedPoint();
+		if (!chosen) return;
+		const found = this.sourceFor(chosen.el);
+		if (!found) return;
+		const ref = chosen.point.ref;
+		let attrs: Record<string, string | null> | null = null;
+		if (ref.type === 'path' && ref.slot === 'end') attrs = ((d)=>d === null ? null : {d})(removePathPoint(found.source.getAttribute('d') ?? '', ref.segment, 0));
+		else if (ref.type === 'poly') attrs = ((p)=>p === null ? null : {points: p})(removePolygonPoint(found.source.getAttribute('points') ?? '', ref.index));
+		if (!attrs) {
+			this.announceError(ref.type === 'line' ? 'A line keeps both its ends.' : ref.type === 'path' && ref.slot !== 'end' ? 'A handle goes with its anchor.' : 'This point could not be removed.');
+			return;
+		}
+		if (this.pointMode) this.pointMode.selected = null;
+		if (this.commitChanges(found.sourceText, [{tag: found.tag, attrs}], 'slick.point')) this.announceAction('Point removed');
 	}
 
 	/** Put a box over an element, or take it away. */
@@ -983,30 +1267,43 @@ class slick {
 	// --- Gestures: dragging the selection and its handles, and the keyboard
 	/** A press on a resize or rotate handle starts that gesture on the selection. */
 	private onHandlePress(e: Event, x: number, y: number): void {
-		const handle = e.target instanceof Element ? e.target.closest('[data-handle]')?.getAttribute('data-handle') : null;
 		const current = this.selectedElement();
+		const marker = e.target instanceof Element ? e.target.closest('[data-point]')?.getAttribute('data-point') : null;
+		if (marker !== null && marker !== undefined && current && this.pointMode) {
+			e.preventDefault();
+			e.stopPropagation();
+			this.pointMode.selected = Number(marker);
+			this.refreshSelection();
+			this.selectPointInEditor();
+			this.gesture = {mode: 'point', handle: null, fromHandle: true, toggle: false, startX: x, startY: y, targets: [current], drags: [], point: Number(marker)};
+			return;
+		}
+		const handle = e.target instanceof Element ? e.target.closest('[data-handle]')?.getAttribute('data-handle') : null;
 		if (!handle || !current || this.selected.length !== 1) return;
 		e.preventDefault();
 		e.stopPropagation();
 		const rotate = handle === 'rotate';
-		this.gesture = {mode: rotate ? 'rotate' : 'resize', handle: rotate ? null : handle as Handle, fromHandle: true, toggle: false, startX: x, startY: y, targets: [current], drags: []};
+		this.gesture = {mode: rotate ? 'rotate' : 'resize', handle: rotate ? null : handle as Handle, fromHandle: true, toggle: false, startX: x, startY: y, targets: [current], drags: [], point: null};
 	}
 
 	/** Keys on the canvas: arrows nudge the selection by a unit (ten with
-	 * Shift), Delete removes it, Escape clears it or cancels a drag. */
+	 * Shift), Enter edits its points, Delete removes it. Escape is handled
+	 * for the whole page, outside the editor, in setupEventListeners. */
 	private onCanvasKey(e: KeyboardEvent): void {
 		const arrows: Record<string, [number, number] | undefined> = {ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1]};
 		const arrow = arrows[e.key];
 		if (arrow && this.selected.length > 0 && !e.ctrlKey && !e.metaKey && !e.altKey) {
 			e.preventDefault();
 			const step = e.shiftKey ? 10 : 1;
-			this.nudge(arrow[0] * step, arrow[1] * step);
-		} else if (e.key === 'Escape') {
-			if (this.gesture?.drags.length) this.cancelGesture();
-			else this.clearSelection();
+			if (this.pointMode) this.nudgePoint(arrow[0] * step, arrow[1] * step);
+			else this.nudge(arrow[0] * step, arrow[1] * step);
+		} else if (e.key === 'Enter' && !this.pointMode) {
+			e.preventDefault();
+			this.enterPointMode();
 		} else if (e.key === 'Delete' || e.key === 'Backspace') {
 			e.preventDefault();
-			this.deleteSelected();
+			if (this.pointMode) this.deletePoint();
+			else this.deleteSelected();
 		} else if (e.key.toLowerCase() === 'd' && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
 			e.preventDefault();
 			this.duplicateSelected();
@@ -1064,6 +1361,23 @@ class slick {
 	/** The drag begins: find each element in the source and measure its frame. */
 	private beginDrag(g: Gesture): boolean {
 		const drags: Drag[] = [];
+		if (g.mode === 'point') {
+			const target = g.targets[0];
+			const found = this.sourceFor(target);
+			const point = g.point === null ? undefined : pointsOf(target)?.at(g.point);
+			const ctm = target instanceof SVGGraphicsElement ? target.getScreenCTM() : null;
+			const toUnits = ctm ? invert(toMatrix(ctm)) : null;
+			if (!found || !point || !ctm || !toUnits) return false;
+			const scale = pixelsPerUnit(toMatrix(ctm));
+			const attr = pointAttr(point.ref);
+			g.drags = [{
+				target, found, live: new LiveEdit(target), attrs: {}, toUnits, decimals: decimalsFor(scale),
+				bbox: {x: 0, y: 0, width: 0, height: 0}, minSize: 0, center: {x: 0, y: 0}, screenCenter: {x: 0, y: 0},
+				point: {ref: point.ref, from: {x: point.x, y: point.y}, attr, original: found.source.getAttribute(attr) ?? ''},
+			}];
+			this.drawBox(this.hoverBox, null);
+			return true;
+		}
 		for (const target of g.targets) {
 			const found = this.sourceFor(target);
 			const bbox = bboxOf(target);
@@ -1092,6 +1406,7 @@ class slick {
 				minSize: 2 / scale,
 				center: parentCenter(found.source, bbox) ?? {x: 0, y: 0},
 				screenCenter: onScreen ? {x: onScreen.x, y: onScreen.y} : {x: g.startX, y: g.startY},
+				point: null,
 			});
 		}
 		if (drags.length === 0) return false;
@@ -1116,7 +1431,12 @@ class slick {
 		}
 		for (const d of g.drags) {
 			let plan: EditPlan;
-			if (g.mode === 'rotate') {
+			if (d.point) {
+				const v = applyToVector(d.toUnits, sx, sy);
+				const to = {x: roundTo(d.point.from.x + v.x, d.decimals), y: roundTo(d.point.from.y + v.y, d.decimals)};
+				const attrs = movePoint(d.point.ref, d.point.original, to, d.decimals);
+				plan = attrs ? {ok: true, attrs} : {ok: false, reason: 'This point could not be moved.'};
+			} else if (g.mode === 'rotate') {
 				// the turn from where the handle was pressed to where it is now, measured in the parent's frame
 				const from = applyToVector(d.toUnits, g.startX - d.screenCenter.x, g.startY - d.screenCenter.y);
 				const to = applyToVector(d.toUnits, x - d.screenCenter.x, y - d.screenCenter.y);
@@ -1143,6 +1463,11 @@ class slick {
 		this.refreshSelection();
 		// the status bar reads out the edit as it will be written
 		const first = g.drags[0];
+		if (first.point) {
+			const v = applyToVector(first.toUnits, sx, sy);
+			this.updateStatusBar(`point ${fmt(first.point.from.x + v.x, first.decimals)}, ${fmt(first.point.from.y + v.y, first.decimals)}`, false);
+			return;
+		}
 		const readout = Object.entries(first.attrs).map(([name, value])=>value === null ? `no ${name}` : `${name}="${value}"`).join(' ');
 		this.updateStatusBar(g.drags.length > 1 ? `${g.drags.length} elements` : `${first.target.tagName.toLowerCase()} ${readout || 'unchanged'}`, false);
 	}
@@ -1167,7 +1492,8 @@ class slick {
 			forceLinting(this.editor);
 			return;
 		}
-		const verb = g.mode === 'move' ? 'moved' : g.mode === 'resize' ? 'resized' : 'rotated';
+		if (g.mode === 'point') this.selectPointInEditor();
+		const verb = g.mode === 'move' ? 'moved' : g.mode === 'resize' ? 'resized' : g.mode === 'rotate' ? 'rotated' : 'point moved';
 		this.announceAction(moved.length > 1 ? `${moved.length} elements ${verb}` : `${moved[0].target.tagName.toLowerCase()} ${verb}`);
 	}
 

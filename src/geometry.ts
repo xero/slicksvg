@@ -82,7 +82,7 @@ export function fmt(n: number, decimals = 6): string {
 }
 
 /** Decimal places a number was written with. */
-function placesOf(n: number): number {
+export function placesOf(n: number): number {
 	const parts = String(n).toLowerCase().split('e');
 	const fraction = parts[0].split('.').at(1) ?? '';
 	return Math.max(0, fraction.length - Number(parts.at(1) ?? 0));
