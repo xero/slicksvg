@@ -55,6 +55,7 @@ A **Node.js**-based, web SVG editor written in **TypeScript**, with no frontend 
 - **Edit in the preview**: Drag the selection to move it, drag a corner handle to resize it in proportion or a side handle to stretch one axis (Shift swaps the two) or the top handle to rotate, nudge it with the arrow keys, Delete removes it, and the duplicate button (or Ctrl/Cmd+D) makes a shifted copy with its own id. Every edit is written into the code as a change to that element's own attributes, and undoes in one step
 - **Edit points**: With a path, polygon, polyline, or line selected, press Enter, double-click it, or use the points button to edit its points. Drag anchors and curve handles (a press near a point takes hold of it, a fingertip's width on a touch screen), double-click the outline to add a point, and nudge one with the arrow keys. While you edit, the preview bar holds the point tools: tap the outline to pick a segment, then Add puts a point there and Curve turns a line into a curve (or a curve back into a line); Smooth makes the selected corner smooth, with its handles on one line, or a smooth point a corner; Symmetric makes it smooth with both handles one length; Delete removes the selected point, or puts a handle back into its anchor; and Done finishes. Dragging one handle of a smooth point keeps the other in line (hold Alt to move it alone). To pull handles out of a corner, hold a finger on it for half a second and drag, or drag it with Alt held. Drag the outline itself to bend the segment there: the spot you hold follows the pointer, and a smooth join stays smooth. A polygon or polyline becomes a path when it gets a curve. The code changes only the numbers that moved, and keeps absolute and relative commands as they were
 - **Rotate and flip the selection**: With an element selected, the rotate and flip buttons act on it about its centre; with nothing selected they act on the whole drawing
+- **Convert to path**: The to-path button makes the selected rects, circles, ellipses, lines, polygons, and polylines (and those inside a selected group) paths that draw the same, keeping their other attributes, so their points can be edited. Round corners and circles become cubic curves, which every point tool can work on. There is no way back but undo
 - **Touch Support**: Full multi-touch support: two fingers pinch-zoom the drawing (never the page) about the spot between them, one finger pans or drags; on a touch screen every button is a fingertip wide, and a toolbar too narrow for its buttons scrolls
 - **Responsive Design**: Adapts to different screen sizes and orientations
 - **Visual Feedback**: Real-time zoom level announcements for accessibility
@@ -236,7 +237,8 @@ tests/                       # Unit and integration tests (Vitest)
 ├── source-map.test.ts          # Tag scanning, attribute edits, stamping
 ├── select.test.ts              # Preview selection picking and group walking
 ├── geometry.test.ts            # Move, resize, rotate, and flip planning
-└── path-data.test.ts           # Path and polygon point editing
+├── path-data.test.ts           # Path and polygon point editing
+└── shapes.test.ts              # Shapes as path data, and the edit that makes one a path
 
 e2e/                         # End-to-end tests (Playwright)
 ├── svg-editor.spec.ts          # Core editor functionality
@@ -253,6 +255,7 @@ e2e/                         # End-to-end tests (Playwright)
 ├── svg-edit.spec.ts            # Drag, nudge, resize, rotate, flip, delete
 ├── svg-points.spec.ts          # Point editing mode
 ├── svg-cursors.spec.ts         # Handle, drag, and pan cursors
+├── svg-to-path.spec.ts         # Converting shapes to paths
 └── svg-zoom.spec.ts            # Wheel, trackpad, and touch pinch zoom
 ```
 
@@ -269,6 +272,7 @@ src/
 ├── geometry.ts      # Move, resize, rotate, and flip planners
 ├── view.ts          # Pan and zoom about a point, wheel and pinch maths
 ├── path-data.ts     # Path and polygon points: parse, move, add, remove, smooth, curve
+├── shapes.ts        # Rects, circles, ellipses, lines, and polygons as paths
 ├── select.ts        # Preview selection picking and box geometry
 ├── xray.ts          # X-ray cursor-to-element lookup
 ├── theme.css        # CSS styles with Tailwind
@@ -294,7 +298,8 @@ tests/               # Unit and integration tests (Vitest)
 ├── source-map.test.ts          # Tag scanning, attribute edits, stamping
 ├── select.test.ts              # Preview selection picking and group walking
 ├── geometry.test.ts            # Move, resize, rotate, and flip planning
-└── path-data.test.ts           # Path and polygon point editing
+├── path-data.test.ts           # Path and polygon point editing
+└── shapes.test.ts              # Shapes as path data, and the edit that makes one a path
 
 e2e/                 # End-to-end tests (Playwright)
 ├── svg-editor.spec.ts          # Core editor functionality
@@ -311,6 +316,7 @@ e2e/                 # End-to-end tests (Playwright)
 ├── svg-edit.spec.ts            # Drag, nudge, resize, rotate, flip, delete
 ├── svg-points.spec.ts          # Point editing mode
 ├── svg-cursors.spec.ts         # Handle, drag, and pan cursors
+├── svg-to-path.spec.ts         # Converting shapes to paths
 └── svg-zoom.spec.ts            # Wheel, trackpad, and touch pinch zoom
 
 dist/                # Built assets (generated)

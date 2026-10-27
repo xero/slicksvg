@@ -7,13 +7,14 @@ import {tokyoNightDay} from '@fsegurai/codemirror-theme-tokyo-night-day';
 import {tokyoNightStorm} from '@fsegurai/codemirror-theme-tokyo-night-storm';
 import {linter, lintGutter, forceLinting} from '@codemirror/lint';
 import {findElementAtCursor, type ElementRef} from './xray';
-import {startTags, readAttribute, attributesOf, planAttributeEdits, applyChanges, stampSource, parseSource, elementExtent, removalRange, duplicateInsertion, renameElement, renameAttribute, SOURCE_ATTR, type StartTag, type TextChange} from './source-map';
+import {startTags, readAttribute, attributesOf, planAttributeEdits, applyChanges, stampSource, parseSource, elementExtent, removalRange, duplicateInsertion, SOURCE_ATTR, type StartTag, type TextChange} from './source-map';
+import {GEOMETRY, SHAPES, plainLength, shapePathData, asPathChanges, type Length, type ShapePath} from './shapes';
 import {findSvgTarget, selectionChain, nextInChain, ordinalOf, boxCorners, handleCursor} from './select';
 import {planMove, planResize, planRotate, planFlip, parentCenter, invert, applyToVector, applyToPoint, pixelsPerUnit, decimalsFor, roundTo, fmt, placesOf, type Matrix, type Point, type Rect, type Handle, type EditPlan} from './geometry';
 import {
 	parsePathData, walkPath, pathPoints, pointOnSegment, movePathPoint, insertPathPoint, removePathPoint, retractPathHandle, nearestPathSegment,
 	smoothPathPoint, cornerPathPoint, symmetricPathPoint, anchorKind, curvePathSegment, straightenPathSegment, segmentCurved, handleMode, moveHandle, pullHandles, bendPathSegment, type HandleMode,
-	polygonPoints, movePolygonPoint, insertPolygonPoint, removePolygonPoint, nearestPolygonEdge, pointsAsPathData,
+	polygonPoints, movePolygonPoint, insertPolygonPoint, removePolygonPoint, nearestPolygonEdge,
 } from './path-data';
 import {undo, redo, undoDepth, redoDepth, isolateHistory} from '@codemirror/commands';
 import {ZOOM_STEP, zoomAbout, pinchView, wheelZoomFactor, wheelPan, type View, type Pinch} from './view';
@@ -341,7 +342,8 @@ class LivePath implements Live {
 	show(attrs: Record<string, string | null>): void {
 		if (!this.stand) {
 			this.stand = document.createElementNS(SVG_NS, 'path');
-			for (const attr of Array.from(this.el.attributes)) if (attr.name !== 'points') this.stand.setAttribute(attr.name, attr.value);
+			const geometry = GEOMETRY[this.el.tagName.toLowerCase()] ?? [];
+			for (const attr of Array.from(this.el.attributes)) if (!geometry.includes(attr.name)) this.stand.setAttribute(attr.name, attr.value);
 			this.el.before(this.stand);
 			this.display = this.el.style.display;
 			this.el.style.display = 'none';
@@ -405,16 +407,38 @@ function movePoint(ref: PointRef, source: Element, to: Point, decimals: number, 
 
 const pointAttr = (ref: PointRef): string=>ref.type === 'path' ? 'd' : ref.type === 'poly' ? 'points' : ref.index === 0 ? 'x1' : 'x2';
 
-/** A path's `d`, or a polygon's or polyline's points as the path data they
- * draw, for the tools that need curves: such an element becomes a path when
- * one is used on it. Its point `i` is the anchor of segment `i`, and its edge
- * `i` is segment `i + 1`. */
+/** A path's `d`, or the path data a polygon, polyline, or line draws, for
+ * the tools that need curves: such an element becomes a path when one is
+ * used on it. Its point `i` is the anchor of segment `i`, and its edge `i`
+ * is segment `i + 1`. A line whose ends are written with units has none. */
 function pathDataOf(el: Element): {d: string; converted: boolean} | null {
 	const tag = el.tagName.toLowerCase();
 	if (tag === 'path') return {d: el.getAttribute('d') ?? '', converted: false};
-	if (tag !== 'polygon' && tag !== 'polyline') return null;
-	const d = pointsAsPathData(el.getAttribute('points') ?? '', tag === 'polygon');
-	return d === null ? null : {d, converted: true};
+	if (tag !== 'polygon' && tag !== 'polyline' && tag !== 'line') return null;
+	const lengths = writtenLengths(el);
+	const made = lengths ? shapePathData(tag, lengths, el.getAttribute('points')) : null;
+	return made?.ok ? {d: made.d, converted: true} : null;
+}
+
+/** A shape's geometry as written, absent or auto lengths left out; null when
+ * one is written with units or as a percentage, which `resolve` can read from
+ * the drawing as the browser laid it out. */
+function writtenLengths(el: Element, resolve?: (name: string) => number | null): Record<string, Length | undefined> | null {
+	const lengths: Record<string, Length | undefined> = {};
+	for (const name of GEOMETRY[el.tagName.toLowerCase()] ?? []) {
+		const text = el.getAttribute(name)?.trim() ?? '';
+		if (name === 'points' || text === '' || text === 'auto') continue;
+		const value = plainLength(text) ?? ((resolved)=>resolved === null ? null : {value: resolved, places: 3})(resolve?.(name) ?? null);
+		if (!value) return null;
+		lengths[name] = value;
+	}
+	return lengths;
+}
+
+/** A length attribute of a drawn element, in user units, as the browser resolved it. */
+function resolvedLength(el: Element, name: string): number | null {
+	const animated: unknown = Reflect.get(el, name);
+	return animated instanceof SVGAnimatedLength ? animated.baseVal.value : null;
 }
 
 /** The segment an anchor ends, in its element's path data. */
@@ -698,6 +722,7 @@ class slick {
 			['redo', ()=>this.redoEdit()],
 			['duplicate', ()=>this.duplicateSelected()],
 			['points', ()=>this.togglePointMode()],
+			['topath', ()=>this.pointTool(()=>this.convertToPaths())],
 			['point-add', ()=>this.pointTool(()=>this.addPointAtSpot())],
 			['point-smooth', ()=>this.pointTool(()=>this.toggleSmooth())],
 			['point-symmetric', ()=>this.pointTool(()=>this.makeSymmetric())],
@@ -1255,6 +1280,7 @@ class slick {
 		const pointsButton = this.get('points');
 		pointsButton.toggleAttribute('disabled', !(els.length === 1 && primary && POINT_ELEMENTS.test(primary.tagName.toLowerCase())));
 		pointsButton.setAttribute('aria-pressed', editing ? 'true' : 'false');
+		this.get('topath').toggleAttribute('disabled', this.shapesIn(els).length === 0);
 		this.refreshPointTools(editing !== null);
 	}
 
@@ -1298,7 +1324,7 @@ class slick {
 		return parsePathData(data.d)?.at(segment) ? segment : null;
 	}
 
-	/** Run a point tool from its button, then give the keys back to the canvas. */
+	/** Run a tool from its button, then give the keys back to the canvas. */
 	private pointTool(run: () => void): void {
 		run();
 		this.svgPreview.focus({preventScroll: true});
@@ -1403,7 +1429,12 @@ class slick {
 	private enterPointMode(): void {
 		const current = this.selectedElement();
 		const ordinal = this.selected.at(-1);
-		if (!current || ordinal === undefined || this.selected.length !== 1 || !POINT_ELEMENTS.test(current.tagName.toLowerCase())) return;
+		if (!current || ordinal === undefined || this.selected.length !== 1) return;
+		const tag = current.tagName.toLowerCase();
+		if (!POINT_ELEMENTS.test(tag)) {
+			if (SHAPES.includes(tag)) this.announceError(`A ${tag} has no points to edit until it is a path: use the to-path button first.`);
+			return;
+		}
 		if (!pointsOf(current)) {
 			this.announceError('This element\'s points could not be read, so they cannot be edited here.');
 			return;
@@ -1454,8 +1485,9 @@ class slick {
 			const near = nearestPathSegment(el.getAttribute('d') ?? '', local);
 			return near && near.distance <= reach ? {edge: near.segment, t: near.t} : null;
 		}
-		if (tag === 'polygon' || tag === 'polyline') {
-			const near = nearestPolygonEdge(el.getAttribute('points') ?? '', local, tag === 'polygon');
+		if (tag === 'polygon' || tag === 'polyline' || tag === 'line') {
+			const ends = tag === 'line' ? pointsOf(el)?.map(p=>`${p.x},${p.y}`).join(' ') ?? '' : el.getAttribute('points') ?? '';
+			const near = nearestPolygonEdge(ends, local, tag === 'polygon');
 			return near && near.distance <= reach ? {edge: near.index, t: near.t} : null;
 		}
 		return null;
@@ -1485,10 +1517,55 @@ class slick {
 	 * path's `d` where it stood. */
 	private commitPathData(found: Found, d: string, converted: boolean): boolean {
 		if (!converted) return this.commitChanges(found.sourceText, [{tag: found.tag, attrs: {d}}], 'slick.point');
-		const renamed = renameAttribute(found.sourceText, found.tag, 'points', 'd', d);
-		if (!renamed || this.editor.state.doc.toString() !== found.sourceText) return false;
-		const changes = [...renameElement(found.sourceText, found.tag, 'path'), ...renamed];
-		return this.applyEdits(changes.sort((a, b)=>a.from - b.from), 'slick.point');
+		if (this.editor.state.doc.toString() !== found.sourceText) return false;
+		return this.applyEdits(asPathChanges(found.sourceText, found.tag, d), 'slick.point');
+	}
+
+	/** The shapes a conversion to paths takes: each selected shape, and each
+	 * shape inside a selected group, once. */
+	private shapesIn(els: Element[]): Element[] {
+		const selector = SHAPES.join(',');
+		const found = new Set<Element>();
+		for (const el of els) {
+			if (el.matches(selector)) found.add(el);
+			else for (const inner of Array.from(el.querySelectorAll(selector))) found.add(inner);
+		}
+		return [...found];
+	}
+
+	/** Make every selected shape a path that draws the same, in one step.
+	 * There is no way back but undo. */
+	private convertToPaths(): void {
+		const parsed = this.parseOnce();
+		const shapes = this.shapesIn(this.selectedElements());
+		if (!parsed || shapes.length === 0) return;
+		const changes: TextChange[] = [];
+		let count = 0;
+		let refusal: string | null = null;
+		for (const el of shapes) {
+			const found = this.sourceFor(el, parsed);
+			if (!found) continue;
+			const lengths = writtenLengths(found.source, (name)=>resolvedLength(el, name));
+			const made: ShapePath = lengths ? shapePathData(found.tag.name, lengths, found.source.getAttribute('points')) : {ok: false, reason: `This ${found.tag.name}'s sizes could not be read, so it cannot be made a path here.`};
+			if (made.ok) {
+				changes.push(...asPathChanges(parsed.sourceText, found.tag, made.d));
+				count += 1;
+			} else {
+				refusal = made.reason;
+			}
+		}
+		if (changes.length === 0) {
+			this.announceError(refusal ?? 'Nothing selected can be made a path.');
+			return;
+		}
+		// a spot or point picked on a polygon is numbered apart from the path it becomes
+		if (this.pointMode) {
+			this.pointMode.selected = null;
+			this.pointMode.spot = null;
+		}
+		if (!this.applyEdits(changes.sort((a, b)=>a.from - b.from), 'slick.topath')) return;
+		const one = shapes.length === 1 ? shapes[0].tagName.toLowerCase() : null;
+		this.announceAction(one && count === 1 ? `${one} made a path: press Enter to edit its points` : `${count} shapes made paths${refusal ? `; ${refusal}` : ''}`);
 	}
 
 	/** Select the anchor at a place, after an edit that may have moved the
@@ -1630,9 +1707,17 @@ class slick {
 			if (next === null) return;
 			attrs = {points: next};
 			select = ()=>spot.edge + 1;
+		} else if (tag === 'line') {
+			// a line has two points: a third makes it a path
+			const data = pathDataOf(found.source);
+			const next = data ? insertPathPoint(data.d, spot.edge + 1, spot.t, decimals) : null;
+			if (next === null) return;
+			attrs = {d: next};
+			select = points=>points.findIndex(p=>p.ref.type === 'path' && p.ref.segment === spot.edge + 1 && p.ref.slot === 'end');
 		}
 		if (!attrs || !select) return;
-		if (!this.commitChanges(found.sourceText, [{tag: found.tag, attrs}], 'slick.point')) return;
+		const written = tag === 'line' && attrs.d ? this.commitPathData(found, attrs.d, true) : this.commitChanges(found.sourceText, [{tag: found.tag, attrs}], 'slick.point');
+		if (!written) return;
 		const made = this.elementForOrdinal(found.tag.ordinal);
 		const points = made ? pointsOf(made) : null;
 		if (this.pointMode && points) {

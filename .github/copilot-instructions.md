@@ -144,7 +144,8 @@ tests/                       # Unit and integration tests (Vitest)
 ├── source-map.test.ts          # Tag scanning, attribute edits, stamping
 ├── select.test.ts              # Preview selection picking and group walking
 ├── geometry.test.ts            # Move, resize, rotate, and flip planning
-└── path-data.test.ts           # Path and polygon point editing
+├── path-data.test.ts           # Path and polygon point editing
+└── shapes.test.ts              # Shapes as path data, and the edit that makes one a path
 
 e2e/                         # End-to-end tests (Playwright)
 ├── svg-editor.spec.ts          # Core editor functionality
@@ -161,6 +162,7 @@ e2e/                         # End-to-end tests (Playwright)
 ├── svg-edit.spec.ts            # Drag, nudge, resize, rotate, flip, delete
 ├── svg-points.spec.ts          # Point editing mode
 ├── svg-cursors.spec.ts         # Handle, drag, and pan cursors
+├── svg-to-path.spec.ts         # Converting shapes to paths
 └── svg-zoom.spec.ts            # Wheel, trackpad, and touch pinch zoom
 ```
 
@@ -177,6 +179,7 @@ src/
 ├── geometry.ts      # Move, resize, rotate, and flip planners
 ├── view.ts          # Pan and zoom about a point, wheel and pinch maths
 ├── path-data.ts     # Path and polygon points: parse, move, add, remove, smooth, curve
+├── shapes.ts        # Rects, circles, ellipses, lines, and polygons as paths
 ├── select.ts        # Preview selection picking and box geometry
 ├── xray.ts          # X-ray cursor-to-element lookup
 ├── theme.css        # CSS styles with Tailwind
