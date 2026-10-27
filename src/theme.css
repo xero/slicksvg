@@ -311,6 +311,10 @@
         .selected {
           @apply fill-header;
         }
+        .pulling {
+          stroke-width: 5;
+          paint-order: stroke;
+        }
         line {
           @apply stroke-btn-txt;
           stroke-width: 1;

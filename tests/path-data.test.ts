@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   parsePathData, walkPath, pathPoints, movePathPoint, insertPathPoint, removePathPoint, retractPathHandle, nearestPathSegment,
-  smoothPathPoint, cornerPathPoint, anchorKind, curvePathSegment, straightenPathSegment, segmentCurved, handleMode, moveHandle, pointsAsPathData,
+  smoothPathPoint, cornerPathPoint, anchorKind, curvePathSegment, straightenPathSegment, segmentCurved, handleMode, moveHandle, pointsAsPathData, pullHandles,
   parsePoints, polygonPoints, movePolygonPoint, insertPolygonPoint, removePolygonPoint, nearestPolygonEdge,
 } from '../src/path-data';
 
@@ -384,5 +384,23 @@ describe('Polygons as paths', () => {
     expect(pointsAsPathData('0,0 10,0 10,10', true)).toBe('M0,0 10,0 10,10Z');
     expect(pointsAsPathData(' 0 0 10 0 ', false)).toBe('M0 0 10 0');
     expect(pointsAsPathData('0,0 10', true)).toBeNull();
+  });
+});
+
+describe('Pulling handles out of an anchor', () => {
+  it('should pull a mirrored pair out of a corner, the leaving one to the pointer', () => {
+    expect(pullHandles('M0 0 L10 0 L10 10', 1, { x: 15, y: 0 }, 0)).toBe('M0 0 C3 0 5 0 10 0 C15 0 10 7 10 10');
+    expect(pullHandles('m0 0 l10 0 l0 10', 1, { x: 15, y: 0 }, 0)).toBe('m0 0 c3 0 5 0 10 0 c5 0 0 7 0 10');
+  });
+
+  it('should pull one handle out of an open end, to the pointer', () => {
+    expect(pullHandles('M0 0 L10 0', 1, { x: 10, y: 5 }, 0)).toBe('M0 0 C3 0 10 5 10 0');
+    expect(pullHandles('M0 0 L10 0', 0, { x: 0, y: 5 }, 0)).toBe('M0 0 C0 5 7 0 10 0');
+  });
+
+  it('should go round a closed subpath, and leave an arc alone', () => {
+    expect(pullHandles('M0 0 L10 0 L10 10 Z', 0, { x: 0, y: -5 }, 0)).toBe('M0 0 C0 -5 7 0 10 0 L10 10 C7 7 0 5 0 0 Z');
+    expect(pullHandles('M0 0 L10 0 A5 5 0 0 1 20 0', 1, { x: 13, y: 3 }, 0)).toBe('M0 0 C3 0 7 -3 10 0 A5 5 0 0 1 20 0');
+    expect(pullHandles('M0 0 A5 5 0 0 1 10 0', 1, { x: 12, y: 2 }, 0)).toBeNull();
   });
 });

@@ -378,3 +378,67 @@ test.describe('SVG Editor Point Editing on a touch screen', () => {
     expect(await getSource(page)).not.toContain('L100 20 ');
   });
 });
+
+test.describe('SVG Editor pulling handles out of a point', () => {
+  test.use({ viewport: { width: 820, height: 1180 }, hasTouch: true, isMobile: true });
+
+  async function editPoints(page: Page, selector: string) {
+    await page.goto('/index.html');
+    await expect(page.locator('.svg-container svg')).toBeVisible();
+    await setContent(page, FIXTURE);
+    await page.locator(`.svg-container ${selector}`).tap();
+    await page.locator('#points').tap();
+    await expect(page.locator('.points rect')).toHaveCount(3);
+  }
+
+  /** A finger on the marker of point `index`, held for `hold` ms, then moved by (dx, dy). */
+  async function fingerDrag(page: Page, index: number, dx: number, dy: number, hold = 0) {
+    const marker = (await page.locator(`.points [data-point="${index}"]`).boundingBox())!;
+    const x = marker.x + marker.width / 2;
+    const y = marker.y + marker.height / 2;
+    const cdp = await page.context().newCDPSession(page);
+    const touch = (px: number, py: number) => [{ x: px, y: py, id: 1 }];
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: touch(x, y) });
+    if (hold) await page.waitForTimeout(hold);
+    for (const k of [0.25, 0.5, 0.75, 1]) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: touch(x + dx * k, y + dy * k) });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  }
+
+  test('should drag a point a finger lands right on', async ({ page }) => {
+    await editPoints(page, '#p');
+    await fingerDrag(page, 1, 20, 10);
+    expect(await getSource(page)).toBe(FIXTURE.replace('L100 20', 'L120 30'));
+  });
+
+  test('should pull handles out of a corner a finger holds, and keep the corner where it was', async ({ page }) => {
+    await editPoints(page, '#p');
+    await fingerDrag(page, 1, 20, 0, 650);
+    expect(await getSource(page)).toBe(FIXTURE.replace('L100 20 L100 100', 'C47 20 80 20 100 20 C120 20 100 73 100 100'));
+    await expect(page.locator('.points circle')).toHaveCount(4);
+    await expect(page.locator('.points rect.selected')).toHaveCount(1);
+    await expect(page.locator('#point-smooth')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('should make a polygon a path when handles are pulled out of its corner', async ({ page }) => {
+    await editPoints(page, 'polygon');
+    await fingerDrag(page, 2, 20, 0, 650);
+    expect(await getSource(page)).toContain('<path id="g" d="M120,120 180,120 C170 140 130 180 150 180C170 180 130 140 120 120 Z" fill="#aa0000"/>');
+    await expect(page.locator('.svg-container polygon')).toHaveCount(0);
+    await page.locator('#undo').tap();
+    expect(await getSource(page)).toBe(FIXTURE);
+  });
+});
+
+test.describe('SVG Editor pulling handles with the mouse', () => {
+  test('should pull handles out of a corner with Alt held', async ({ page }) => {
+    await page.goto('/index.html');
+    await expect(page.locator('.svg-container svg')).toBeVisible();
+    await setContent(page, FIXTURE);
+    await page.locator('.svg-container path').click();
+    await page.keyboard.press('Enter');
+    await page.keyboard.down('Alt');
+    await dragPoint(page, 1, 20, 0);
+    await page.keyboard.up('Alt');
+    expect(await getSource(page)).toBe(FIXTURE.replace('L100 20 L100 100', 'C47 20 80 20 100 20 C120 20 100 73 100 100'));
+  });
+});

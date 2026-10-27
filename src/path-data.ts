@@ -910,6 +910,31 @@ export function straightenPathSegment(d: string, segment: number, decimals: numb
 	return write(d, e, decimals);
 }
 
+/**
+ * Pull handles out of the anchor at the end of `segment`, as a pen does: the
+ * handle leaving it goes to `at`, and the one arriving at it goes the same
+ * length the other way, so the anchor is smooth. An end of an open path has
+ * one side, whose handle goes to `at`. A line beside it becomes a curve; an
+ * arc keeps its shape.
+ */
+export function pullHandles(d: string, segment: number, at: Point, decimals: number): string | null {
+	const e = begin(d);
+	const seg = e?.segments.at(segment);
+	if (!e || !seg || lower(seg.letter) === 'z') return null;
+	const {into, out} = anchorSides(e.segments, e.walked, segment);
+	const curves = (i: number | null): number | null=>i !== null && lower(e.segments[i].letter) !== 'a' ? i : null;
+	const inSide = curves(into);
+	const outSide = curves(out);
+	if (inSide === null && outSide === null) return null;
+	const P = e.walked[segment].end;
+	const to = {x: roundTo(at.x, decimals), y: roundTo(at.y, decimals)};
+	const leaving = outSide === null ? null : cubicIn(e, outSide);
+	if (leaving) leaving.cp1 = to;
+	const arriving = inSide === null ? null : cubicIn(e, inSide);
+	if (arriving) arriving.cp2 = out === null ? to : reflect(to, P);
+	return write(d, e, decimals);
+}
+
 /** The handle across the anchor from a handle, which a smooth anchor keeps
  * in line: which segment's, where it is, and whether an S only implies it.
  * A quadratic's handle shapes both its ends and has none. */

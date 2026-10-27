@@ -12,7 +12,7 @@ import {findSvgTarget, selectionChain, nextInChain, ordinalOf, boxCorners, handl
 import {planMove, planResize, planRotate, planFlip, parentCenter, invert, applyToVector, applyToPoint, pixelsPerUnit, decimalsFor, roundTo, fmt, placesOf, type Matrix, type Point, type Rect, type Handle, type EditPlan} from './geometry';
 import {
 	parsePathData, walkPath, pathPoints, pointOnSegment, movePathPoint, insertPathPoint, removePathPoint, retractPathHandle, nearestPathSegment,
-	smoothPathPoint, cornerPathPoint, anchorKind, curvePathSegment, straightenPathSegment, segmentCurved, handleMode, moveHandle, type HandleMode,
+	smoothPathPoint, cornerPathPoint, anchorKind, curvePathSegment, straightenPathSegment, segmentCurved, handleMode, moveHandle, pullHandles, type HandleMode,
 	polygonPoints, movePolygonPoint, insertPolygonPoint, removePolygonPoint, nearestPolygonEdge, pointsAsPathData,
 } from './path-data';
 import {undo, redo, undoDepth, redoDepth, isolateHistory} from '@codemirror/commands';
@@ -25,6 +25,10 @@ const RANDOM_FILENAME_LENGTH = 6;
 const ZOOM_SETTLE = 400;
 // how far a press may travel and still count as a click
 const DRAG_THRESHOLD = 3;
+/** A finger held this long on an anchor, within this many pixels of where
+ * it landed, pulls handles out of it instead of moving it. */
+const HOLD_MS = 500;
+const HOLD_SLOP = 10;
 // resize handles are this many screen pixels square; the rotate handle sits
 // this far above the top edge
 const HANDLE_SIZE = window.matchMedia('(pointer: coarse)').matches ? 14 : 8;
@@ -235,7 +239,7 @@ function topLevelOf(els: Element[]): Element[] {
 interface Drag {
 	target: Element;
 	found: Found;
-	live: LiveEdit;
+	live: Live;
 	attrs: Record<string, string | null>;
 	/** Screen pixels to the units the edit is made in. */
 	toUnits: Matrix;
@@ -246,8 +250,17 @@ interface Drag {
 	center: Point;
 	screenCenter: Point;
 	/** For a point drag: the point, where it started, and, for a handle, how
-	 * the handle across its anchor follows it. */
-	point: {ref: PointRef; from: Point; mode: HandleMode} | null;
+	 * the handle across its anchor follows it; for handles pulled out of an
+	 * anchor, the path data they are pulled from. */
+	point: {ref: PointRef; from: Point; mode: HandleMode; pull: Pull | null} | null;
+}
+
+/** Handles being pulled out of an anchor: the path data, a polygon's or
+ * polyline's as the path it becomes, and the segment the anchor ends. */
+interface Pull {
+	d: string;
+	converted: boolean;
+	segment: number;
 }
 
 interface Gesture {
@@ -268,6 +281,18 @@ interface Gesture {
 	/** Set when a second finger turned the gesture into a pinch: what it did
 	 * stays on screen, and is written once every finger has lifted. */
 	held?: boolean;
+	/** How far the pointer goes before the press is a drag: further for a
+	 * finger on an anchor, which may be holding still to pull handles out. */
+	slop?: number;
+	/** Set when the press on an anchor pulls handles out of it: after a hold
+	 * on a touch screen, or with Alt held. */
+	pull?: boolean;
+}
+
+/** What a gesture shows on screen until it is written or taken back. */
+interface Live {
+	show(attrs: Record<string, string | null>): void;
+	revert(): void;
 }
 
 /**
@@ -276,7 +301,7 @@ interface Gesture {
  * the whole change from the start of the gesture, so an attribute no longer
  * in it goes back to what it was.
  */
-class LiveEdit {
+class LiveEdit implements Live {
 	private originals = new Map<string, string | null>();
 	constructor(private el: Element) {}
 
@@ -296,6 +321,32 @@ class LiveEdit {
 	revert(): void {
 		for (const [name, original] of this.originals) this.put(name, original);
 		this.originals.clear();
+	}
+}
+
+/**
+ * A polygon or polyline shown as the path it is becoming: a path with its
+ * attributes stands in front of it, and it is hidden, not taken out, since a
+ * touch that began on it must still be heard.
+ */
+class LivePath implements Live {
+	private stand: SVGPathElement | null = null;
+	constructor(private el: SVGElement) {}
+
+	show(attrs: Record<string, string | null>): void {
+		if (!this.stand) {
+			this.stand = document.createElementNS(SVG_NS, 'path');
+			for (const attr of Array.from(this.el.attributes)) if (attr.name !== 'points') this.stand.setAttribute(attr.name, attr.value);
+			this.el.before(this.stand);
+			this.el.style.display = 'none';
+		}
+		this.stand.setAttribute('d', attrs.d ?? '');
+	}
+
+	revert(): void {
+		this.stand?.remove();
+		this.stand = null;
+		this.el.style.display = '';
 	}
 }
 
@@ -399,6 +450,9 @@ class slick {
 	// the scale Safari's last pinch event reported, while one is under way
 	private safariScale: number | null = null;
 	private zoomTimer: ReturnType<typeof setTimeout> | undefined;
+	private holdTimer: ReturnType<typeof setTimeout> | undefined;
+	/** The marker a finger is on, which is kept in the page until it lifts. */
+	private touchedMarker: Element | null = null;
 	private isResizing = false;
 	// the selection in the preview, by source ordinal so it survives re-renders;
 	// the last one is the primary, whose tag the editor's selection follows
@@ -1035,6 +1089,7 @@ class slick {
 			}
 		}
 		if (this.pinch) return;
+		if (e.touches.length === 0) this.touchedMarker = null;
 		if (e.touches.length === 0 && this.gesture) {
 			this.gestureEnd();
 			return;
@@ -1237,46 +1292,62 @@ class slick {
 
 	// --- Point editing
 	/** Markers for every point of the element being edited: squares on the
-	 * anchors, circles on the handles, with lines to the anchors they shape. */
+	 * anchors, circles on the handles, with lines to the anchors they shape.
+	 * Their elements are kept from one drawing to the next where they can be:
+	 * a touch reports to the element it began on, and a marker under a finger
+	 * that was replaced mid-drag would take the rest of the touch with it. */
 	private placePoints(el: Element | null): void {
-		this.pointsGroup.replaceChildren();
 		this.spotGroup.replaceChildren();
 		const points = el ? pointsOf(el) : null;
 		const ctm = el instanceof SVGGraphicsElement ? el.getScreenCTM() : null;
-		if (!el || !points || !ctm) return;
-		const origin = this.overlay.getBoundingClientRect();
-		this.placeSpot(el, ctm, origin);
-		const onScreen = (p: Point): Point=>{
-			const q = new DOMPoint(p.x, p.y).matrixTransform(ctm);
-			return {x: q.x - origin.left, y: q.y - origin.top};
+		const shapes: {tag: 'line' | 'rect' | 'circle'; attrs: Record<string, string>; selected: boolean; pulling: boolean}[] = [];
+		if (el && points && ctm) {
+			const origin = this.overlay.getBoundingClientRect();
+			this.placeSpot(el, ctm, origin);
+			const onScreen = (p: Point): Point=>{
+				const q = new DOMPoint(p.x, p.y).matrixTransform(ctm);
+				return {x: q.x - origin.left, y: q.y - origin.top};
+			};
+			const size = HANDLE_SIZE - 1;
+			points.forEach((point, i)=>{
+				const at = onScreen(point);
+				for (const anchor of point.anchors) {
+					const a = onScreen(anchor);
+					shapes.push({tag: 'line', attrs: {x1: `${at.x}`, y1: `${at.y}`, x2: `${a.x}`, y2: `${a.y}`}, selected: false, pulling: false});
+				}
+				const selected = this.pointMode?.selected === i;
+				// an anchor a finger is holding shows that handles will come out of it
+				const pulling = this.gesture?.pull === true && this.gesture.point === i;
+				shapes.push(point.kind === 'anchor'
+					? {tag: 'rect', attrs: {x: `${at.x - size / 2}`, y: `${at.y - size / 2}`, width: `${size}`, height: `${size}`, 'data-point': `${i}`}, selected, pulling}
+					: {tag: 'circle', attrs: {cx: `${at.x}`, cy: `${at.y}`, r: `${size / 2}`, 'data-point': `${i}`}, selected, pulling});
+			});
+		}
+		// the marker under a finger is hidden rather than taken out, even when
+		// the points change around it, as handles pulled out of it do
+		const drop = (node: Element): void=>{
+			if (node === this.touchedMarker) node.classList.add('hide');
+			else node.remove();
 		};
-		const size = HANDLE_SIZE - 1;
-		points.forEach((point, i)=>{
-			const at = onScreen(point);
-			for (const anchor of point.anchors) {
-				const a = onScreen(anchor);
-				const link = document.createElementNS(SVG_NS, 'line');
-				link.setAttribute('x1', `${at.x}`);
-				link.setAttribute('y1', `${at.y}`);
-				link.setAttribute('x2', `${a.x}`);
-				link.setAttribute('y2', `${a.y}`);
-				this.pointsGroup.appendChild(link);
+		const kids = Array.from(this.pointsGroup.children);
+		shapes.forEach((shape, k)=>{
+			let node = kids.at(k);
+			if (node?.tagName !== shape.tag) {
+				const made = document.createElementNS(SVG_NS, shape.tag);
+				if (node) {
+					node.before(made);
+					drop(node);
+				} else {
+					this.pointsGroup.appendChild(made);
+				}
+				node = made;
 			}
-			const marker = document.createElementNS(SVG_NS, point.kind === 'anchor' ? 'rect' : 'circle');
-			if (point.kind === 'anchor') {
-				marker.setAttribute('x', `${at.x - size / 2}`);
-				marker.setAttribute('y', `${at.y - size / 2}`);
-				marker.setAttribute('width', `${size}`);
-				marker.setAttribute('height', `${size}`);
-			} else {
-				marker.setAttribute('cx', `${at.x}`);
-				marker.setAttribute('cy', `${at.y}`);
-				marker.setAttribute('r', `${size / 2}`);
-			}
-			marker.setAttribute('data-point', `${i}`);
-			if (this.pointMode?.selected === i) marker.classList.add('selected');
-			this.pointsGroup.appendChild(marker);
+			for (const [name, value] of Object.entries(shape.attrs)) node.setAttribute(name, value);
+			node.classList.toggle('selected', shape.selected);
+			node.classList.toggle('pulling', shape.pulling);
+			node.classList.remove('hide');
 		});
+		for (const extra of kids.slice(shapes.length)) drop(extra);
 	}
 
 	/** The picked segment, drawn over the outline in the element's own units
@@ -1657,8 +1728,36 @@ class slick {
 		this.pointMode.spot = null;
 		this.refreshSelection();
 		this.selectPointInEditor();
-		this.gesture = {mode: 'point', handle: null, fromHandle: true, toggle: false, startX: x, startY: y, targets: [current], drags: [], point: index};
+		const g: Gesture = {mode: 'point', handle: null, fromHandle: true, toggle: false, startX: x, startY: y, targets: [current], drags: [], point: index};
+		this.gesture = g;
+		if ('touches' in e && e.target instanceof Element && this.pointsGroup.contains(e.target)) this.touchedMarker = e.target;
+		// an anchor gives out handles: at once with Alt, or to a finger held still
+		const point = pointsOf(current)?.at(index);
+		if (!point || point.kind !== 'anchor' || anchorSegment(point.ref) === null) return true;
+		if ('touches' in e) {
+			g.slop = HOLD_SLOP;
+			this.holdTimer = setTimeout(()=>{
+				this.holdTimer = undefined;
+				if (this.gesture === g && g.drags.length === 0) this.startPull(g);
+			}, HOLD_MS);
+		} else if (e instanceof MouseEvent && e.altKey) {
+			this.startPull(g);
+		}
 		return true;
+	}
+
+	/** The press on an anchor pulls handles out of it from here on. */
+	private startPull(g: Gesture): void {
+		g.pull = true;
+		g.slop = DRAG_THRESHOLD;
+		if ('vibrate' in navigator) navigator.vibrate(10);
+		this.refreshSelection();
+		this.announceAction('Drag to pull handles out of the point');
+	}
+
+	private clearHold(): void {
+		clearTimeout(this.holdTimer);
+		this.holdTimer = undefined;
 	}
 
 	/** A press on a point, or a resize or rotate handle, starts that gesture
@@ -1766,10 +1865,14 @@ class slick {
 			// a handle of a smooth point keeps the one across it in line, as the two lay when the drag began
 			const ref = point.ref;
 			const mode = ref.type === 'path' && ref.slot !== 'end' ? handleMode(found.source.getAttribute('d') ?? '', {segment: ref.segment, slot: ref.slot}) ?? 'independent' : 'independent';
+			const data = g.pull ? pathDataOf(found.source) : null;
+			const segment = anchorSegment(ref);
+			const pull = data && segment !== null ? {...data, segment} : null;
+			if (g.pull && !pull) return false;
 			g.drags = [{
-				target, found, live: new LiveEdit(target), attrs: {}, toUnits, decimals: decimalsFor(scale),
+				target, found, live: pull?.converted && target instanceof SVGElement ? new LivePath(target) : new LiveEdit(target), attrs: {}, toUnits, decimals: decimalsFor(scale),
 				bbox: {x: 0, y: 0, width: 0, height: 0}, minSize: 0, center: {x: 0, y: 0}, screenCenter: {x: 0, y: 0},
-				point: {ref, from: {x: point.x, y: point.y}, mode},
+				point: {ref, from: {x: point.x, y: point.y}, mode, pull},
 			}];
 			this.drawBox(this.hoverBox, null);
 			return true;
@@ -1825,7 +1928,8 @@ class slick {
 		const sx = x - g.startX;
 		const sy = y - g.startY;
 		if (g.drags.length === 0) {
-			if (Math.hypot(sx, sy) < DRAG_THRESHOLD) return;
+			if (Math.hypot(sx, sy) < (g.slop ?? DRAG_THRESHOLD)) return;
+			this.clearHold();
 			if (!this.beginDrag(g)) {
 				this.gesture = null;
 				this.tapTarget = null;
@@ -1837,7 +1941,9 @@ class slick {
 			if (d.point) {
 				const v = applyToVector(d.toUnits, sx, sy);
 				const to = {x: roundTo(d.point.from.x + v.x, d.decimals), y: roundTo(d.point.from.y + v.y, d.decimals)};
-				const attrs = movePoint(d.point.ref, d.found.source, to, d.decimals, alt ? 'independent' : d.point.mode);
+				const pull = d.point.pull;
+				const pulled = pull ? pullHandles(pull.d, pull.segment, to, d.decimals) : null;
+				const attrs = pull ? (pulled === null ? null : {d: pulled}) : movePoint(d.point.ref, d.found.source, to, d.decimals, alt ? 'independent' : d.point.mode);
 				plan = attrs ? {ok: true, attrs} : {ok: false, reason: 'This point could not be moved.'};
 			} else if (g.mode === 'rotate') {
 				// the turn from where the handle was pressed to where it is now, measured in the parent's frame
@@ -1882,19 +1988,32 @@ class slick {
 	private gestureEnd(): void {
 		const g = this.gesture;
 		this.gesture = null;
+		this.clearHold();
 		this.svgPreview.style.cursor = '';
 		if (!g) return;
+		if (g.pull && g.drags.length === 0) this.refreshSelection();
 		if (g.drags.length === 0) {
 			if (!g.fromHandle) this.clickSelect(this.tapTarget, g.toggle);
 			return;
 		}
 		const moved = g.drags.filter(d=>Object.keys(d.attrs).length > 0);
 		const sourceText = g.drags[0].found.sourceText;
+		const first = g.drags[0];
+		const pull = first.point?.pull ?? null;
 		// the preview re-renders from the new source, which replaces the live copies
-		if (moved.length === 0 || !this.commitChanges(sourceText, moved.map(d=>({tag: d.found.tag, attrs: d.attrs})), `slick.${g.mode}`)) {
+		const written = moved.length > 0 && (pull && first.attrs.d
+			? this.commitPathData(first.found, first.attrs.d, pull.converted)
+			: this.commitChanges(sourceText, moved.map(d=>({tag: d.found.tag, attrs: d.attrs})), `slick.${g.mode}`));
+		if (!written) {
 			for (const d of g.drags) d.live.revert();
 			this.refreshSelection();
 			forceLinting(this.editor);
+			return;
+		}
+		if (pull && first.point) {
+			// handles came in before the anchor, so it is found again by where it is
+			this.selectAnchorAt(first.found.tag.ordinal, first.point.from);
+			this.announceAction('Handles pulled out');
 			return;
 		}
 		if (g.mode === 'point') this.selectPointInEditor();
@@ -1905,6 +2024,7 @@ class slick {
 	private cancelGesture(): void {
 		const g = this.gesture;
 		this.gesture = null;
+		this.clearHold();
 		this.svgPreview.style.cursor = '';
 		if (!g || g.drags.length === 0) return;
 		for (const d of g.drags) d.live.revert();
