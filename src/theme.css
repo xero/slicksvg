@@ -254,6 +254,8 @@
   }
   #preview {
     @apply bg-preview;
+    /* every touch on the pane is the app's: a pinch zooms the drawing, never the page */
+    touch-action: none;
     &.resizing {
       flex: none;
     }

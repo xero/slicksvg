@@ -50,12 +50,12 @@ A **Node.js**-based, web SVG editor written in **TypeScript**, with no frontend 
 
 ### Interactive Preview
 - **Resizable Layout**: Drag the separator between editor and preview to customize panel sizes in both horizontal and vertical modes
-- **Pan & Zoom**: Click and drag to pan, use +/- buttons or pinch gestures to zoom
+- **Pan & Zoom**: Click and drag or scroll to pan; zoom with the +/- buttons, Ctrl/Cmd+wheel, a trackpad pinch, or two fingers, about the spot under the pointer
 - **Select**: Click an element in the preview to select it and its code; click again to walk into a group, Ctrl/Cmd+click to add or remove elements, Escape to clear
 - **Edit in the preview**: Drag the selection to move it, drag a corner handle to resize it in proportion or a side handle to stretch one axis (Shift swaps the two) or the top handle to rotate, nudge it with the arrow keys, Delete removes it, and the duplicate button (or Ctrl/Cmd+D) makes a shifted copy with its own id. Every edit is written into the code as a change to that element's own attributes, and undoes in one step
 - **Edit points**: With a path, polygon, polyline, or line selected, press Enter, double-click it, or use the points button to edit its points. Drag anchors and curve handles, double-click the outline to add a point, Delete removes one, and the arrow keys nudge it. The code changes only the numbers that moved, and keeps absolute and relative commands as they were
 - **Rotate and flip the selection**: With an element selected, the rotate and flip buttons act on it about its centre; with nothing selected they act on the whole drawing
-- **Touch Support**: Full multi-touch support with pinch-to-zoom on mobile devices
+- **Touch Support**: Full multi-touch support: two fingers pinch-zoom the drawing (never the page) about the spot between them, one finger pans or drags
 - **Responsive Design**: Adapts to different screen sizes and orientations
 - **Visual Feedback**: Real-time zoom level announcements for accessibility
 
@@ -230,7 +230,7 @@ tests/                       # Unit and integration tests (Vitest)
 ├── svg-fallback-sizing.test.ts # SVG sizing logic
 ├── svg-linting.test.ts         # SVG/XML linting functionality
 ├── svg-drag-drop-clear.test.ts # Drag & drop and clear functionality
-├── pinch-zoom.test.ts          # Pinch zoom calculations
+├── view.test.ts                # Pan and zoom view maths
 ├── tokyo-night-theme-integration.test.ts # Tokyo Night theme integration
 ├── svg-xray.test.ts            # X-ray cursor-to-element lookup
 ├── source-map.test.ts          # Tag scanning, attribute edits, stamping
@@ -251,7 +251,8 @@ e2e/                         # End-to-end tests (Playwright)
 ├── svg-history.spec.ts         # Undo, redo, and root-tag edits
 ├── svg-select.spec.ts          # Click-to-select, group walking, editor sync
 ├── svg-edit.spec.ts            # Drag, nudge, resize, rotate, flip, delete
-└── svg-points.spec.ts          # Point editing mode
+├── svg-points.spec.ts          # Point editing mode
+└── svg-zoom.spec.ts            # Wheel, trackpad, and touch pinch zoom
 ```
 
 > **Note**: Keep test files in their respective directories to avoid runner conflicts. Vitest excludes the `e2e/` directory, and Playwright only looks in the `e2e/` directory.
@@ -265,6 +266,7 @@ src/
 ├── app.ts           # Main TypeScript application
 ├── source-map.ts    # Source text scanning, attribute edits, preview stamping
 ├── geometry.ts      # Move, resize, rotate, and flip planners
+├── view.ts          # Pan and zoom about a point, wheel and pinch maths
 ├── path-data.ts     # Path and polygon points: parse, move, add, remove
 ├── select.ts        # Preview selection picking and box geometry
 ├── xray.ts          # X-ray cursor-to-element lookup
@@ -285,7 +287,7 @@ tests/               # Unit and integration tests (Vitest)
 ├── svg-fallback-sizing.test.ts # SVG sizing logic
 ├── svg-linting.test.ts         # SVG/XML linting functionality
 ├── svg-drag-drop-clear.test.ts # Drag & drop and clear functionality
-├── pinch-zoom.test.ts          # Pinch zoom calculations
+├── view.test.ts                # Pan and zoom view maths
 ├── tokyo-night-theme-integration.test.ts # Tokyo Night theme integration
 ├── svg-xray.test.ts            # X-ray cursor-to-element lookup
 ├── source-map.test.ts          # Tag scanning, attribute edits, stamping
@@ -306,7 +308,8 @@ e2e/                 # End-to-end tests (Playwright)
 ├── svg-history.spec.ts         # Undo, redo, and root-tag edits
 ├── svg-select.spec.ts          # Click-to-select, group walking, editor sync
 ├── svg-edit.spec.ts            # Drag, nudge, resize, rotate, flip, delete
-└── svg-points.spec.ts          # Point editing mode
+├── svg-points.spec.ts          # Point editing mode
+└── svg-zoom.spec.ts            # Wheel, trackpad, and touch pinch zoom
 
 dist/                # Built assets (generated)
 ├── theme.css        # Compiled CSS
@@ -338,7 +341,7 @@ The application is built with modern web technologies:
 6. **Transform SVGs**: Use the toolbar buttons to rotate, flip, or optimize your SVG
 7. **Resize**: Click the Resize button to change SVG dimensions via modal dialog
 8. **Xray Mode**: Click the eye button to enable visual highlighting - move your cursor through different SVG elements in the code to see them highlighted in the preview
-9. **Pan & Zoom**: Click and drag to pan the SVG; use +/- buttons or pinch gestures to zoom in/out
+9. **Pan & Zoom**: Click and drag or scroll to pan the SVG; use the +/- buttons, Ctrl/Cmd+wheel, or a pinch to zoom in/out about the pointer
 10. **Select**: Click an element in the preview to select it and jump to its code; repeated clicks walk from a group into its parts, Ctrl/Cmd+click builds a multiple selection, and the box follows your cursor in the editor
 11. **Edit points**: Select a path, polygon, polyline, or line and press Enter (or double-click it) to edit its points: drag them, double-click the outline to add one, Delete to remove one, Escape to finish
 12. **Edit in the preview**: Drag the selection to move it, drag a handle to resize or rotate it, use the arrow keys to nudge it, press Delete to remove it, or duplicate it with the toolbar button or Ctrl/Cmd+D. The rotate and flip buttons act on the selection when there is one

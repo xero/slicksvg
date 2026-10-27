@@ -12,12 +12,13 @@ import {findSvgTarget, selectionChain, nextInChain, ordinalOf, boxCorners} from 
 import {planMove, planResize, planRotate, planFlip, parentCenter, invert, applyToVector, applyToPoint, pixelsPerUnit, decimalsFor, roundTo, fmt, placesOf, type Matrix, type Point, type Rect, type Handle, type EditPlan} from './geometry';
 import {parsePathData, pathPoints, movePathPoint, insertPathPoint, removePathPoint, nearestPathSegment, polygonPoints, movePolygonPoint, insertPolygonPoint, removePolygonPoint, nearestPolygonEdge} from './path-data';
 import {undo, redo, undoDepth, redoDepth, isolateHistory} from '@codemirror/commands';
+import {ZOOM_STEP, zoomAbout, pinchView, wheelZoomFactor, wheelPan, type View, type Pinch} from './view';
 
 // --- Constants
 const DEFAULT_SVG_SIZE = 200;
 const RANDOM_FILENAME_LENGTH = 6;
-const ZOOM_MAX = 50;
-const ZOOM_MIN = 0.1;
+// the zoom is announced this long after the last wheel or pinch step
+const ZOOM_SETTLE = 400;
 // how far a press may travel and still count as a click
 const DRAG_THRESHOLD = 3;
 // resize handles are this many screen pixels square; the rotate handle sits
@@ -25,6 +26,9 @@ const DRAG_THRESHOLD = 3;
 const HANDLE_SIZE = window.matchMedia('(pointer: coarse)').matches ? 14 : 8;
 const ROTATE_OFFSET = 24;
 const SVG_NS = 'http://www.w3.org/2000/svg';
+
+/** Safari's pinch event, which the DOM typings leave out. */
+type SafariGesture = Event & {scale?: number; clientX?: number; clientY?: number};
 
 // Global variable to hold status bar update callback
 let statusBarUpdateCallback: ((message: string, isError: boolean) => void) | null = null;
@@ -244,6 +248,9 @@ interface Gesture {
 	drags: Drag[];
 	/** The point a point gesture holds, by its place in the element's point list. */
 	point: number | null;
+	/** Set when a second finger turned the gesture into a pinch: what it did
+	 * stays on screen, and is written once every finger has lifted. */
+	held?: boolean;
 }
 
 /**
@@ -357,10 +364,12 @@ class slick {
 	private flipX = false;
 	private flipY = false;
 	private themeCompartment = new Compartment();
-	private isMultiTouch = false;
 	private xray = false;
-	private initialPinchDistance = 0;
-	private initialZoomLevel = 1;
+	// a two-finger pinch under way: the view and the fingers as it began
+	private pinch: {view: View; from: Pinch} | null = null;
+	// the scale Safari's last pinch event reported, while one is under way
+	private safariScale: number | null = null;
+	private zoomTimer: ReturnType<typeof setTimeout> | undefined;
 	private isResizing = false;
 	// the selection in the preview, by source ordinal so it survives re-renders;
 	// the last one is the primary, whose tag the editor's selection follows
@@ -602,8 +611,9 @@ class slick {
 		this.svgPreview.addEventListener('mousedown', (e)=>this.onPress(e));
 		this.overlay.addEventListener('mousedown', (e)=>this.onHandlePress(e, e.clientX, e.clientY));
 		this.overlay.addEventListener('touchstart', (e)=>{
+			// a second finger on a handle joins a pinch instead
 			const touch = e.touches.item(0);
-			if (touch) this.onHandlePress(e, touch.clientX, touch.clientY);
+			if (touch && e.touches.length === 1) this.onHandlePress(e, touch.clientX, touch.clientY);
 		}, {passive: false});
 		document.addEventListener('mousemove', (e)=>{
 			if (this.gesture) this.gestureMove(e.clientX, e.clientY, e.shiftKey);
@@ -628,8 +638,10 @@ class slick {
 			else this.clearSelection();
 		});
 		this.svgPreview.addEventListener('touchstart', (e)=>this.handleTouchStart(e), {passive: false});
-		// a finger that pressed a handle in the overlay sends its moves to the handle,
-		// not the wrapper, so the rest of a touch gesture is read from the page
+		// a second finger may land anywhere, so a pinch is caught from the page;
+		// a finger that pressed a handle in the overlay sends its moves to the
+		// handle, not the wrapper, so the rest of a touch gesture is read there too
+		document.addEventListener('touchstart', (e)=>this.handlePinchStart(e), {passive: false});
 		document.addEventListener('touchmove', (e)=>this.handleTouchMove(e), {passive: false});
 		document.addEventListener('touchend', (e)=>this.handleTouchEnd(e), {passive: false});
 		document.addEventListener('touchcancel', (e)=>this.handleTouchEnd(e));
@@ -637,6 +649,13 @@ class slick {
 		this.svgPreview.addEventListener('dblclick', (e)=>this.onDoubleClick(e));
 		this.svgPreview.addEventListener('mouseleave', ()=>this.drawBox(this.hoverBox, null));
 		this.svgPreview.addEventListener('keydown', (e)=>this.onCanvasKey(e));
+		// the wheel and a trackpad pinch zoom the drawing, not the page: every
+		// browser but Safari reports the pinch as Ctrl+wheel, and Safari sends
+		// its own gesture events, which an iPhone sends beside the touches too
+		this.previewContainer.addEventListener('wheel', (e)=>this.onWheel(e), {passive: false});
+		this.previewContainer.addEventListener('gesturestart', (e)=>this.onGestureStart(e), {passive: false});
+		this.previewContainer.addEventListener('gesturechange', (e)=>this.onGestureChange(e), {passive: false});
+		this.previewContainer.addEventListener('gestureend', (e)=>this.onGestureEnd(e), {passive: false});
 		this.setupResizeDragbar();
 	}
 
@@ -659,7 +678,8 @@ class slick {
 		}
 	}
 
-	private applySVGStyles(): void {
+	/** The pan and zoom: eased for a toolbar step, immediate under the hand. */
+	private applySVGStyles(animate = true): void {
 		const svgElement = this.svgPreview.querySelector('svg');
 		if (svgElement) {
 			const hasWidth = svgElement.hasAttribute('width');
@@ -670,7 +690,7 @@ class slick {
 			if (svgContainer && svgContainer.classList.contains('svg-container')) {
 				svgContainer.style.transform = `translate(${this.panX}px, ${this.panY}px) scale(${this.zoomLevel})`;
 				svgContainer.style.transformOrigin = 'center center';
-				svgContainer.style.transition = 'transform 0.1s ease-out';
+				svgContainer.style.transition = animate ? 'transform 0.1s ease-out' : 'none';
 			}
 		}
 		this.refreshSelection();
@@ -778,15 +798,79 @@ class slick {
 		});
 	}
 
+	// --- Pan and zoom
+	/** The toolbar zooms about the middle of the drawing, wherever it was panned to. */
 	private zoomIn(): void {
-		this.zoomLevel = Math.min(this.zoomLevel * 1.2, ZOOM_MAX);
-		this.applySVGStyles();
+		const v = this.view();
+		this.setView(zoomAbout(v, ZOOM_STEP, v.panX, v.panY), true);
 		this.announceAction(`Zoomed in to ${Math.round(this.zoomLevel * 100)}%`);
 	}
 	private zoomOut(): void {
-		this.zoomLevel = Math.max(this.zoomLevel / 1.2, ZOOM_MIN);
-		this.applySVGStyles();
+		const v = this.view();
+		this.setView(zoomAbout(v, 1 / ZOOM_STEP, v.panX, v.panY), true);
 		this.announceAction(`Zoomed out to ${Math.round(this.zoomLevel * 100)}%`);
+	}
+	private view(): View {
+		return {zoom: this.zoomLevel, panX: this.panX, panY: this.panY};
+	}
+	private setView(view: View, animate = false): void {
+		this.zoomLevel = view.zoom;
+		this.panX = view.panX;
+		this.panY = view.panY;
+		this.drawBox(this.hoverBox, null);
+		this.applySVGStyles(animate);
+	}
+	/** A point on the screen as an offset from the middle of the pane, which
+	 * the drawing is centred on and scaled about. */
+	private fromPaneCenter(clientX: number, clientY: number): [number, number] {
+		const r = this.svgPreview.getBoundingClientRect();
+		return [clientX - (r.left + r.width / 2), clientY - (r.top + r.height / 2)];
+	}
+	/** The zoom in the status bar as it changes, and announced once it has
+	 * settled: a pinch changes it dozens of times a second. */
+	private showZoom(): void {
+		const pct = `${Math.round(this.zoomLevel * 100)}%`;
+		this.updateStatusBar(`Zoom ${pct}`, false);
+		clearTimeout(this.zoomTimer);
+		this.zoomTimer = setTimeout(()=>this.announceAction(`Zoomed to ${pct}`), ZOOM_SETTLE);
+	}
+	/** The wheel over the preview: with Ctrl or Cmd, which is how a trackpad
+	 * pinch arrives, it zooms about the pointer; on its own it pans. Either
+	 * way the page itself keeps still. */
+	private onWheel(e: WheelEvent): void {
+		e.preventDefault();
+		if (this.gesture || this.pinch) return;
+		if (e.ctrlKey || e.metaKey) {
+			const [x, y] = this.fromPaneCenter(e.clientX, e.clientY);
+			this.setView(zoomAbout(this.view(), wheelZoomFactor(e.deltaY, e.deltaMode), x, y));
+			this.showZoom();
+		} else {
+			const [dx, dy] = wheelPan(e);
+			const v = this.view();
+			this.setView({zoom: v.zoom, panX: v.panX + dx, panY: v.panY + dy});
+		}
+	}
+	/** Safari's own pinch events: a Mac trackpad pinch arrives only as these
+	 * there, never as Ctrl+wheel. An iPhone sends them beside the touches,
+	 * which already zoom, so they are left alone while a touch pinch is on. */
+	private onGestureStart(e: Event): void {
+		e.preventDefault();
+		if (this.pinch || this.gesture) return;
+		this.safariScale = (e as SafariGesture).scale ?? 1;
+	}
+	private onGestureChange(e: Event): void {
+		e.preventDefault();
+		const g = e as SafariGesture;
+		const scale = g.scale ?? 0;
+		if (this.safariScale === null || this.pinch || !(scale > 0)) return;
+		const [x, y] = g.clientX === undefined || g.clientY === undefined ? [0, 0] : this.fromPaneCenter(g.clientX, g.clientY);
+		this.setView(zoomAbout(this.view(), scale / this.safariScale, x, y));
+		this.safariScale = scale;
+		this.showZoom();
+	}
+	private onGestureEnd(e: Event): void {
+		e.preventDefault();
+		this.safariScale = null;
 	}
 
 	/** A press on the canvas: on the selection it starts a move, anywhere
@@ -824,7 +908,7 @@ class slick {
 		this.panY += deltaY;
 		this.lastPanX = e.clientX;
 		this.lastPanY = e.clientY;
-		this.applySVGStyles();
+		this.applySVGStyles(false);
 		e.preventDefault();
 	}
 	private endPan(): void {
@@ -832,76 +916,91 @@ class slick {
 		this.isPanning = false;
 	}
 
+	/** One finger on the canvas: on the selection it starts a move, anywhere
+	 * else a pan, and a finger that does not travel is a tap. */
 	private handleTouchStart(e: TouchEvent): void {
-		if (e.touches.length === 2) {
-			// a second finger turns a drag into a pinch; the drag keeps its move
-			if (this.gesture) this.gestureEnd();
-			this.isMultiTouch = true;
-			this.initialPinchDistance = this.calculatePinchDistance(e.touches[0], e.touches[1]);
-			this.initialZoomLevel = this.zoomLevel;
-			this.tapTarget = null;
-			e.preventDefault();
-		} else if (e.touches.length === 1) {
-			this.isMultiTouch = false;
-			this.tapTarget = e.target;
-			this.pressToggle = false;
-			this.pressX = this.lastPanX = e.touches[0].clientX;
-			this.pressY = this.lastPanY = e.touches[0].clientY;
-			const current = this.onSelection(e.target);
-			if (current) {
-				this.gesture = {mode: 'move', handle: null, fromHandle: false, toggle: false, startX: this.pressX, startY: this.pressY, targets: this.selectedElements(), drags: [], point: null};
-				this.isPanning = false;
-			} else {
-				this.isPanning = true;
-			}
-			e.preventDefault();
+		if (e.touches.length !== 1) return;
+		this.tapTarget = e.target;
+		this.pressToggle = false;
+		this.pressX = this.lastPanX = e.touches[0].clientX;
+		this.pressY = this.lastPanY = e.touches[0].clientY;
+		const current = this.onSelection(e.target);
+		if (current) {
+			this.gesture = {mode: 'move', handle: null, fromHandle: false, toggle: false, startX: this.pressX, startY: this.pressY, targets: this.selectedElements(), drags: [], point: null};
+			this.isPanning = false;
 		} else {
-			this.isMultiTouch = false;
+			this.isPanning = true;
 		}
+		e.preventDefault();
+	}
+	/** A second finger starts a pinch when the first is on the preview, wherever
+	 * the second lands. Left to the browser, the pinch would zoom the whole page.
+	 * A drag the first finger had going keeps what it did, but is written only
+	 * once every finger has lifted: writing it now would redraw the preview
+	 * under the fingers, and a touch reports to the element it began on even
+	 * after that element has been replaced, so the pinch would go unheard. */
+	private handlePinchStart(e: TouchEvent): void {
+		if (e.touches.length !== 2) return;
+		const changed = Array.from(e.changedTouches);
+		const first = Array.from(e.touches).find(t=>!changed.some(c=>c.identifier === t.identifier)) ?? e.touches[0];
+		if (!(first.target instanceof Node) || !this.previewContainer.contains(first.target)) return;
+		e.preventDefault();
+		if (this.gesture?.drags.length) this.gesture.held = true;
+		else if (this.gesture) this.cancelGesture();
+		this.isPanning = false;
+		this.tapTarget = null;
+		this.pinch = {view: this.view(), from: this.pinchOf(e.touches)};
+	}
+	private pinchOf(touches: TouchList): Pinch {
+		const [a, b] = [touches[0], touches[1]];
+		const [x, y] = this.fromPaneCenter((a.clientX + b.clientX) / 2, (a.clientY + b.clientY) / 2);
+		return {x, y, spread: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY)};
 	}
 	private handleTouchMove(e: TouchEvent): void {
-		if (this.gesture && e.touches.length === 1) {
+		if (this.pinch) {
+			if (e.touches.length !== 2) return;
+			e.preventDefault();
+			this.setView(pinchView(this.pinch.view, this.pinch.from, this.pinchOf(e.touches)));
+			this.showZoom();
+			return;
+		}
+		if (this.gesture && !this.gesture.held && e.touches.length === 1) {
 			this.gestureMove(e.touches[0].clientX, e.touches[0].clientY, false);
 			e.preventDefault();
 			return;
 		}
-		if (this.isMultiTouch && e.touches.length === 2) {
-			const currentDistance = this.calculatePinchDistance(e.touches[0], e.touches[1]);
-			const scale = currentDistance / this.initialPinchDistance;
-			const newZoomLevel = this.initialZoomLevel * scale;
-			this.zoomLevel = Math.max(ZOOM_MIN, Math.min(newZoomLevel, ZOOM_MAX));
-			this.applySVGStyles();
-			e.preventDefault();
-		} else if (!this.isMultiTouch && e.touches.length === 1 && this.isPanning) {
+		if (e.touches.length === 1 && this.isPanning) {
 			const touch = e.touches[0];
 			if (Math.hypot(touch.clientX - this.pressX, touch.clientY - this.pressY) >= DRAG_THRESHOLD) this.tapTarget = null;
-			const deltaX = touch.clientX - this.lastPanX;
-			const deltaY = touch.clientY - this.lastPanY;
-			this.panX += deltaX;
-			this.panY += deltaY;
+			this.panX += touch.clientX - this.lastPanX;
+			this.panY += touch.clientY - this.lastPanY;
 			this.lastPanX = touch.clientX;
 			this.lastPanY = touch.clientY;
-			this.applySVGStyles();
+			this.applySVGStyles(false);
 			e.preventDefault();
 		}
 	}
 	private handleTouchEnd(e: TouchEvent): void {
+		if (this.pinch && e.touches.length < 2) {
+			this.pinch = null;
+			// the finger left behind goes on as a pan, from where it is now,
+			// unless it is holding a drag, which waits for it to lift
+			const rest = e.touches.item(0);
+			this.isPanning = rest !== null && !this.gesture;
+			if (rest) {
+				this.pressX = this.lastPanX = rest.clientX;
+				this.pressY = this.lastPanY = rest.clientY;
+			}
+		}
+		if (this.pinch) return;
 		if (e.touches.length === 0 && this.gesture) {
 			this.gestureEnd();
 			return;
-		}
-		if (e.touches.length < 2) {
-			this.isMultiTouch = false;
 		}
 		if (e.touches.length === 0) {
 			if (this.isPanning && this.tapTarget) this.clickSelect(this.tapTarget);
 			this.isPanning = false;
 		}
-	}
-	private calculatePinchDistance(touch1: Touch, touch2: Touch): number {
-		const dx = touch1.clientX - touch2.clientX;
-		const dy = touch1.clientY - touch2.clientY;
-		return Math.sqrt(dx * dx + dy * dy);
 	}
 
 	// --- Selection
@@ -1864,9 +1963,10 @@ class slick {
 	}
 
 	private resetViewState(): void {
-		this.zoomLevel = this.initialZoomLevel = 1;
-		this.panX = this.panY = this.lastPanX = this.lastPanY = this.rotationDegrees = this.initialPinchDistance = 0;
-		this.flipX = this.flipY = this.isPanning = this.isMultiTouch = false;
+		this.zoomLevel = 1;
+		this.panX = this.panY = this.lastPanX = this.lastPanY = this.rotationDegrees = 0;
+		this.flipX = this.flipY = this.isPanning = false;
+		this.pinch = null;
 	}
 
 	private handleFileUpload(file: File): void {

@@ -138,7 +138,7 @@ tests/                       # Unit and integration tests (Vitest)
 ├── svg-fallback-sizing.test.ts # SVG sizing logic
 ├── svg-linting.test.ts         # SVG/XML linting functionality
 ├── svg-drag-drop-clear.test.ts # Drag & drop and clear functionality
-├── pinch-zoom.test.ts          # Pinch zoom calculations
+├── view.test.ts                # Pan and zoom view maths
 ├── tokyo-night-theme-integration.test.ts # Tokyo Night theme integration
 ├── svg-xray.test.ts            # X-ray cursor-to-element lookup
 ├── source-map.test.ts          # Tag scanning, attribute edits, stamping
@@ -159,7 +159,8 @@ e2e/                         # End-to-end tests (Playwright)
 ├── svg-history.spec.ts         # Undo, redo, and root-tag edits
 ├── svg-select.spec.ts          # Click-to-select, group walking, editor sync
 ├── svg-edit.spec.ts            # Drag, nudge, resize, rotate, flip, delete
-└── svg-points.spec.ts          # Point editing mode
+├── svg-points.spec.ts          # Point editing mode
+└── svg-zoom.spec.ts            # Wheel, trackpad, and touch pinch zoom
 ```
 
 > **Note**: Keep test files in their respective directories to avoid runner conflicts. Vitest excludes the `e2e/` directory, and Playwright only looks in the `e2e/` directory.
@@ -173,6 +174,7 @@ src/
 ├── app.ts           # Main TypeScript application
 ├── source-map.ts    # Source text scanning, attribute edits, preview stamping
 ├── geometry.ts      # Move, resize, rotate, and flip planners
+├── view.ts          # Pan and zoom about a point, wheel and pinch maths
 ├── path-data.ts     # Path and polygon points: parse, move, add, remove
 ├── select.ts        # Preview selection picking and box geometry
 ├── xray.ts          # X-ray cursor-to-element lookup
@@ -180,7 +182,7 @@ src/
 └── index.html       # Main HTML file
 
 tests/               # Unit and integration tests (Vitest)
-├── pinch-zoom.test.ts
+├── view.test.ts
 ├── svg-fallback-sizing.test.ts
 ├── svg-resolution-change.test.ts
 └── svg-upload.test.ts
@@ -208,7 +210,7 @@ The application is built with:
 
 1. **Edit SVG Code**: Use the CodeMirror editor on the left to write/edit SVG markup
 2. **Live Preview**: See your changes instantly in the preview panel on the right
-3. **Pan & Zoom**: Click and drag to pan the SVG; use +/- buttons to zoom
+3. **Pan & Zoom**: Click and drag or scroll to pan the SVG; use the +/- buttons, Ctrl/Cmd+wheel, or a pinch to zoom about the pointer
 4. **Layout Toggle**: Click "flip screen" to switch between horizontal and vertical layouts
 
 ## Development
