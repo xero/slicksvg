@@ -326,6 +326,23 @@ test.describe('SVG Editor Point Editing', () => {
     expect(await getSource(page)).toContain('d="M20 100 C20 60 80 50 60 100 C40 140 100 140 100 100"');
   });
 
+  test('should bend a segment dragged by its outline, and keep it picked', async ({ page }) => {
+    await page.locator('.svg-container path').click();
+    await page.keyboard.press('Enter');
+    const edge = await at(page, 60, 20);
+    await page.mouse.move(edge.x, edge.y);
+    await page.mouse.down();
+    await page.mouse.move(edge.x, edge.y + 6, { steps: 4 });
+    await page.mouse.move(edge.x, edge.y + 12, { steps: 4 });
+    await page.mouse.up();
+    // the line became a curve bowed down through the spot held; its handles share the move by where it was held
+    expect(await getSource(page)).toMatch(/<path id="p" d="M20 20 C4\d 3\d 7\d 3\d 100 20 L100 100 Z"/);
+    await expect(page.locator('.spot path')).toHaveCount(1);
+    await expect(page.locator('#point-curve')).toHaveAttribute('aria-pressed', 'true');
+    await page.locator('#undo').click();
+    expect(await getSource(page)).toBe(FIXTURE);
+  });
+
   test('should keep a line end\'s written precision when nudged', async ({ page }) => {
     await setContent(page, FIXTURE.replace('<path id="p" d="M20 20 L100 20 L100 100 Z" fill="#6291e0"/>', '<line id="ln" x1="10.5" y1="40" x2="100" y2="40" stroke="#6291e0" stroke-width="8"/>'));
     // a line has no area, so Playwright will not click it by locator; aim at its stroke
@@ -417,6 +434,19 @@ test.describe('SVG Editor pulling handles out of a point', () => {
     await expect(page.locator('.points circle')).toHaveCount(4);
     await expect(page.locator('.points rect.selected')).toHaveCount(1);
     await expect(page.locator('#point-smooth')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('should bend a polygon\'s edge with a finger, making it a path', async ({ page }) => {
+    await editPoints(page, 'polygon');
+    const svg = (await page.locator('.svg-container svg').boundingBox())!;
+    const x = svg.x + 150;
+    const y = svg.y + 120;
+    const cdp = await page.context().newCDPSession(page);
+    const touch = (px: number, py: number) => [{ x: px, y: py, id: 1 }];
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: touch(x, y) });
+    for (const dy of [-3, -6, -9, -12]) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: touch(x, y + dy) });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    expect(await getSource(page)).toContain('<path id="g" d="M120,120 C140 104 160 104 180 120 L150,180Z" fill="#aa0000"/>');
   });
 
   test('should make a polygon a path when handles are pulled out of its corner', async ({ page }) => {

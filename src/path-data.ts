@@ -935,6 +935,62 @@ export function pullHandles(d: string, segment: number, at: Point, decimals: num
 	return write(d, e, decimals);
 }
 
+/**
+ * Bend a segment so the spot `t` of the way along it goes to `at`. A cubic's
+ * handles share the move by how near each end the spot is, as Inkscape
+ * shares it; a quadratic's one handle takes it all; a line becomes a cubic
+ * first. Where the segment ran on smoothly into the one beyond an end, the
+ * handle across that end follows, so the join stays smooth.
+ */
+export function bendPathSegment(d: string, segment: number, t: number, at: Point, decimals: number): string | null {
+	const e = begin(d);
+	const seg = e?.segments.at(segment);
+	if (!e || !seg || /^[ma]$/i.test(seg.letter)) return null;
+	const {segments, walked, plan} = e;
+	const w = walked[segment];
+	const reach = reachOf(segments);
+	if (size(sub(w.end, w.start)) <= reach && /^[lhvz]$/i.test(seg.letter)) return null;
+	const u = Math.min(0.95, Math.max(0.05, t));
+	const to = {x: roundTo(at.x, decimals), y: roundTo(at.y, decimals)};
+	const kind = lower(seg.letter);
+	if ((kind === 'q' || kind === 't') && w.cp1) {
+		const delta = sub(to, pointOnSegment(seg, w, u));
+		plan[segment] = [{letter: isRelative(seg.letter) ? 'q' : 'Q', cp1: add(w.cp1, times(delta, 1 / (2 * u * (1 - u)))), cp2: null, end: w.end}];
+		return write(d, e, decimals);
+	}
+	// how the segment met the ones beyond its ends, before it moved
+	const leaves = heading(seg, w, false);
+	const arrives = heading(seg, w, true);
+	const c = cubicIn(e, segment);
+	if (!c?.cp1 || !c.cp2) return null;
+	const before = {cp1: c.cp1, cp2: c.cp2};
+	const delta = sub(to, pointOnSegment({...seg, letter: 'C'}, {...w, cp1: c.cp1, cp2: c.cp2}, u));
+	const feel = u <= 1 / 6 ? 0 : u <= 0.5 ? ((6 * u - 1) / 2) ** 3 / 2 : u <= 5 / 6 ? (1 - ((6 * (1 - u) - 1) / 2) ** 3) / 2 + 0.5 : 1;
+	c.cp1 = add(c.cp1, times(delta, (1 - feel) / (3 * u * (1 - u) ** 2)));
+	c.cp2 = add(c.cp2, times(delta, feel / (3 * u * u * (1 - u))));
+	const follow = (slot: 'cp1' | 'cp2'): void=>{
+		const start = slot === 'cp1';
+		const anchor = start ? w.start : w.end;
+		const way = start ? leaves : arrives;
+		const side = start ? anchorSides(segments, walked, segment - 1).into : anchorSides(segments, walked, segment).out;
+		const across = start ? 'cp2' : 'cp1';
+		const other = side === null ? null : walked[side][across];
+		const h = c[slot];
+		if (side === null || side === segment || !other || !h || !way || !/^[cs]$/i.test(segments[side].letter)) return;
+		const v = sub(other, anchor);
+		const lv = size(v);
+		// the handle across ran on from this end in a line, or the join was a corner to leave be
+		const expect = start ? times(way.dir, -1) : way.dir;
+		if (lv <= reach || dot(v, expect) <= 0 || Math.abs(cross(v, expect)) / lv > slackFor(reach, lv, way.length)) return;
+		const away = unit(sub(anchor, h));
+		const mirrored = Math.abs(size(sub(before[slot], anchor)) - lv) <= 2 * reach;
+		if (away) plan[side][0][across] = add(anchor, times(away, mirrored ? size(sub(h, anchor)) : lv));
+	};
+	follow('cp1');
+	follow('cp2');
+	return write(d, e, decimals);
+}
+
 /** The handle across the anchor from a handle, which a smooth anchor keeps
  * in line: which segment's, where it is, and whether an S only implies it.
  * A quadratic's handle shapes both its ends and has none. */

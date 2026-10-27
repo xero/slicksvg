@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   parsePathData, walkPath, pathPoints, movePathPoint, insertPathPoint, removePathPoint, retractPathHandle, nearestPathSegment,
-  smoothPathPoint, cornerPathPoint, anchorKind, curvePathSegment, straightenPathSegment, segmentCurved, handleMode, moveHandle, pointsAsPathData, pullHandles,
+  smoothPathPoint, cornerPathPoint, anchorKind, curvePathSegment, straightenPathSegment, segmentCurved, handleMode, moveHandle, pointsAsPathData, pullHandles, bendPathSegment,
   parsePoints, polygonPoints, movePolygonPoint, insertPolygonPoint, removePolygonPoint, nearestPolygonEdge,
 } from '../src/path-data';
 
@@ -402,5 +402,23 @@ describe('Pulling handles out of an anchor', () => {
     expect(pullHandles('M0 0 L10 0 L10 10 Z', 0, { x: 0, y: -5 }, 0)).toBe('M0 0 C0 -5 7 0 10 0 L10 10 C7 7 0 5 0 0 Z');
     expect(pullHandles('M0 0 L10 0 A5 5 0 0 1 20 0', 1, { x: 13, y: 3 }, 0)).toBe('M0 0 C3 0 7 -3 10 0 A5 5 0 0 1 20 0');
     expect(pullHandles('M0 0 A5 5 0 0 1 10 0', 1, { x: 12, y: 2 }, 0)).toBeNull();
+  });
+});
+
+describe('Bending a segment', () => {
+  it('should put the spot it was held by under the pointer', () => {
+    expect(bendPathSegment('m0 0 l30 0', 1, 0.5, { x: 15, y: 9 }, 0)).toBe('m0 0 c10 12 20 12 30 0');
+    expect(bendPathSegment('M0 0 Q15 10 30 0', 1, 0.5, { x: 15, y: 10 }, 0)).toBe('M0 0 Q15 20 30 0');
+    expect(bendPathSegment('M0 0 L30 0 Z', 2, 0.5, { x: 15, y: 9 }, 0)).toBe('M0 0 L30 0 C20 12 10 12 0 0 Z');
+  });
+
+  it('should keep a smooth join smooth, and leave a corner be', () => {
+    expect(bendPathSegment('M0 0 C0 10 10 10 10 0 C10 -10 20 -10 20 0', 1, 0.5, { x: 5, y: 12 }, 1)).toBe('M0 0 C0 16 10 16 10 0 C10 -16 20 -10 20 0');
+    expect(bendPathSegment('M0 0 C0 10 10 10 10 0 C20 0 20 -10 20 0', 1, 0.5, { x: 5, y: 12 }, 1)).toBe('M0 0 C0 16 10 16 10 0 C20 0 20 -10 20 0');
+  });
+
+  it('should refuse an arc and an M', () => {
+    expect(bendPathSegment('M0 0 A5 5 0 0 1 10 0', 1, 0.5, { x: 5, y: 5 }, 0)).toBeNull();
+    expect(bendPathSegment('M0 0 L10 0', 0, 0.5, { x: 5, y: 5 }, 0)).toBeNull();
   });
 });

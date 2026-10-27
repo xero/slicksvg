@@ -12,7 +12,7 @@ import {findSvgTarget, selectionChain, nextInChain, ordinalOf, boxCorners, handl
 import {planMove, planResize, planRotate, planFlip, parentCenter, invert, applyToVector, applyToPoint, pixelsPerUnit, decimalsFor, roundTo, fmt, placesOf, type Matrix, type Point, type Rect, type Handle, type EditPlan} from './geometry';
 import {
 	parsePathData, walkPath, pathPoints, pointOnSegment, movePathPoint, insertPathPoint, removePathPoint, retractPathHandle, nearestPathSegment,
-	smoothPathPoint, cornerPathPoint, anchorKind, curvePathSegment, straightenPathSegment, segmentCurved, handleMode, moveHandle, pullHandles, type HandleMode,
+	smoothPathPoint, cornerPathPoint, anchorKind, curvePathSegment, straightenPathSegment, segmentCurved, handleMode, moveHandle, pullHandles, bendPathSegment, type HandleMode,
 	polygonPoints, movePolygonPoint, insertPolygonPoint, removePolygonPoint, nearestPolygonEdge, pointsAsPathData,
 } from './path-data';
 import {undo, redo, undoDepth, redoDepth, isolateHistory} from '@codemirror/commands';
@@ -181,7 +181,7 @@ function resetElementStyles(...elements: HTMLElement[]) {
 }
 
 // --- SVGEditor Class
-type GestureMode = 'move' | 'resize' | 'rotate' | 'point';
+type GestureMode = 'move' | 'resize' | 'rotate' | 'point' | 'bend';
 
 /** A point of a path, polygon, polyline, or line, as the edit functions address it. */
 type PointRef =
@@ -253,6 +253,8 @@ interface Drag {
 	 * the handle across its anchor follows it; for handles pulled out of an
 	 * anchor, the path data they are pulled from. */
 	point: {ref: PointRef; from: Point; mode: HandleMode; pull: Pull | null} | null;
+	/** For a bend: the path data, the spot held, and where on screen it was. */
+	bend?: Pull & {t: number; from: Point};
 }
 
 /** Handles being pulled out of an anchor: the path data, a polygon's or
@@ -278,6 +280,8 @@ interface Gesture {
 	drags: Drag[];
 	/** The point a point gesture holds, by its place in the element's point list. */
 	point: number | null;
+	/** The spot on the outline a bend holds. */
+	spot?: Spot;
 	/** Set when a second finger turned the gesture into a pinch: what it did
 	 * stays on screen, and is written once every finger has lifted. */
 	held?: boolean;
@@ -978,6 +982,7 @@ class slick {
 		this.pressY = this.lastPanY = e.clientY;
 		// the open hand closes on the press, for the selection and the canvas alike
 		this.svgPreview.style.cursor = 'grabbing';
+		if (!this.pressToggle && this.pressOutline(e.clientX, e.clientY)) return;
 		if (this.onSelection(e.target) && !this.pressToggle) {
 			this.gesture = {mode: 'move', handle: null, fromHandle: false, toggle: false, startX: e.clientX, startY: e.clientY, targets: this.selectedElements(), drags: [], point: null};
 			return;
@@ -1021,7 +1026,9 @@ class slick {
 		this.pressX = this.lastPanX = e.touches[0].clientX;
 		this.pressY = this.lastPanY = e.touches[0].clientY;
 		const current = this.onSelection(e.target);
-		if (current) {
+		if (this.pressOutline(this.pressX, this.pressY)) {
+			this.isPanning = false;
+		} else if (current) {
 			this.gesture = {mode: 'move', handle: null, fromHandle: false, toggle: false, startX: this.pressX, startY: this.pressY, targets: this.selectedElements(), drags: [], point: null};
 			this.isPanning = false;
 		} else {
@@ -1746,6 +1753,17 @@ class slick {
 		return true;
 	}
 
+	/** A press on the outline of the element being edited, away from its
+	 * points, holds that spot: a drag bends the segment there, and a tap
+	 * picks it for the point tools. */
+	private pressOutline(x: number, y: number): boolean {
+		const el = this.pointMode ? this.selectedElement() : null;
+		const spot = el ? this.outlineNear(el, x, y) : null;
+		if (!el || !spot) return false;
+		this.gesture = {mode: 'bend', handle: null, fromHandle: false, toggle: false, startX: x, startY: y, targets: [el], drags: [], point: null, spot};
+		return true;
+	}
+
 	/** The press on an anchor pulls handles out of it from here on. */
 	private startPull(g: Gesture): void {
 		g.pull = true;
@@ -1854,6 +1872,7 @@ class slick {
 	/** The drag begins: find each element in the source and measure its frame. */
 	private beginDrag(g: Gesture): boolean {
 		const drags: Drag[] = [];
+		if (g.mode === 'bend') return this.beginBend(g);
 		if (g.mode === 'point') {
 			const target = g.targets[0];
 			const found = this.sourceFor(target);
@@ -1915,13 +1934,39 @@ class slick {
 		this.drawBox(this.hoverBox, null);
 		// the cursor keeps the shape of the drag wherever the pointer strays:
 		// a closed hand for a move, and a handle's own arrow for its resize
-		const shapes: Record<GestureMode, string> = {move: 'grabbing', rotate: 'move', point: 'move', resize: this.handleEls.get(g.handle ?? '')?.style.cursor ?? ''};
+		const shapes: Record<GestureMode, string> = {move: 'grabbing', rotate: 'move', point: 'move', bend: 'grabbing', resize: this.handleEls.get(g.handle ?? '')?.style.cursor ?? ''};
 		this.svgPreview.style.cursor = shapes[g.mode];
 		return true;
 	}
 
 	/** The gesture follows the pointer. Shift snaps a turn and swaps how a
 	 * handle resizes; Alt lets a curve handle go of the one across its anchor. */
+	/** A bend begins: the segment under the spot, in the path it is or will be. */
+	private beginBend(g: Gesture): boolean {
+		const target = g.targets[0];
+		const found = this.sourceFor(target);
+		const data = found ? pathDataOf(found.source) : null;
+		const ctm = target instanceof SVGGraphicsElement ? target.getScreenCTM() : null;
+		const toUnits = ctm ? invert(toMatrix(ctm)) : null;
+		if (!found || !data || !g.spot || !ctm || !toUnits) return false;
+		const segment = data.converted ? g.spot.edge + 1 : g.spot.edge;
+		const segments = parsePathData(data.d);
+		const seg = segments?.at(segment);
+		if (!segments || !seg || /^[ma]$/i.test(seg.letter)) {
+			this.announceError('An arc keeps its shape: make it straight first, then curve it.');
+			return false;
+		}
+		g.drags = [{
+			target, found, live: data.converted && target instanceof SVGElement ? new LivePath(target) : new LiveEdit(target), attrs: {}, toUnits,
+			decimals: decimalsFor(pixelsPerUnit(toMatrix(ctm))), bbox: {x: 0, y: 0, width: 0, height: 0}, minSize: 0,
+			center: {x: 0, y: 0}, screenCenter: {x: 0, y: 0}, point: null,
+			bend: {...data, segment, t: g.spot.t, from: pointOnSegment(seg, walkPath(segments)[segment], g.spot.t)},
+		}];
+		this.drawBox(this.hoverBox, null);
+		this.svgPreview.style.cursor = 'grabbing';
+		return true;
+	}
+
 	private gestureMove(x: number, y: number, shift: boolean, alt = false): void {
 		const g = this.gesture;
 		if (!g) return;
@@ -1938,7 +1983,11 @@ class slick {
 		}
 		for (const d of g.drags) {
 			let plan: EditPlan;
-			if (d.point) {
+			if (d.bend) {
+				const v = applyToVector(d.toUnits, sx, sy);
+				const bent = bendPathSegment(d.bend.d, d.bend.segment, d.bend.t, {x: d.bend.from.x + v.x, y: d.bend.from.y + v.y}, d.decimals);
+				plan = bent === null ? {ok: false, reason: 'This segment could not be bent.'} : {ok: true, attrs: {d: bent}};
+			} else if (d.point) {
 				const v = applyToVector(d.toUnits, sx, sy);
 				const to = {x: roundTo(d.point.from.x + v.x, d.decimals), y: roundTo(d.point.from.y + v.y, d.decimals)};
 				const pull = d.point.pull;
@@ -1999,7 +2048,7 @@ class slick {
 		const moved = g.drags.filter(d=>Object.keys(d.attrs).length > 0);
 		const sourceText = g.drags[0].found.sourceText;
 		const first = g.drags[0];
-		const pull = first.point?.pull ?? null;
+		const pull = first.point?.pull ?? first.bend ?? null;
 		// the preview re-renders from the new source, which replaces the live copies
 		const written = moved.length > 0 && (pull && first.attrs.d
 			? this.commitPathData(first.found, first.attrs.d, pull.converted)
@@ -2014,6 +2063,14 @@ class slick {
 			// handles came in before the anchor, so it is found again by where it is
 			this.selectAnchorAt(first.found.tag.ordinal, first.point.from);
 			this.announceAction('Handles pulled out');
+			return;
+		}
+		if (first.bend && this.pointMode) {
+			// the bent segment stays picked, for the tools that work on it
+			this.pointMode.selected = null;
+			this.pointMode.spot = {edge: first.bend.segment, t: first.bend.t};
+			this.refreshSelection();
+			this.announceAction('Segment bent');
 			return;
 		}
 		if (g.mode === 'point') this.selectPointInEditor();
