@@ -450,8 +450,9 @@ export function removePathPoint(d: string, segment: number, decimals: number): s
 			const afterW = walked.at(segment + 2);
 			if (after && afterW && /^[st]$/i.test(after.letter)) {
 				splices.push(...rewrite(after, explicitTarget(after, afterW), afterW.start, decimals));
-			} else if (after && after.letterAt === null && lower(next.letter) !== 'l') {
-				// it borrowed its letter from the segment that just went
+			} else if (after && after.letterAt === null && next.letter !== (seg.letter === 'M' ? 'L' : 'l')) {
+				// it borrowed its letter from the segment that just went, and the M
+				// reads a bare group as L or l by its own case
 				splices.push({start: after.start, end: after.start, text: next.letter});
 			}
 		}

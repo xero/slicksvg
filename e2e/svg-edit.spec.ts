@@ -3,6 +3,12 @@ import { test, expect, type Page, type Locator } from '@playwright/test';
 const getSource = (page: Page) =>
   page.evaluate(() => (window as any).svgEditor.editor.state.doc.toString() as string);
 
+const editorSelection = (page: Page) =>
+  page.evaluate(() => {
+    const state = (window as any).svgEditor.editor.state;
+    return state.doc.sliceString(state.selection.main.from, state.selection.main.to) as string;
+  });
+
 async function setContent(page: Page, content: string) {
   await page.evaluate((content) => {
     const view = (window as any).svgEditor.editor;
@@ -196,9 +202,11 @@ test.describe('SVG Editor Preview Editing', () => {
       return state.doc.sliceString(state.selection.main.from, state.selection.main.to) as string;
     })).toMatch(/^<rect id="box-copy"/);
 
-    // the keyboard does the same from the canvas, and the copy of a copy gets a fresh id
+    // the keyboard does the same from the canvas, once, and the copy of a copy gets a fresh id
+    await page.locator('.svg-preview-wrapper').focus();
     await page.keyboard.press('ControlOrMeta+d');
     expect(await getSource(page)).toContain('<rect id="box-copy-copy" x="40" y="40"');
+    expect((await getSource(page)).match(/<rect /g)).toHaveLength(3);
 
     await page.locator('#undo').click();
     await page.locator('#undo').click();
@@ -249,5 +257,57 @@ test.describe('SVG Editor Preview Editing', () => {
     expect(await getSource(page)).toBe('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">\n</svg>');
     await page.locator('#undo').click();
     expect(await getSource(page)).toBe(FIXTURE);
+  });
+
+  test('should move a group once when one of its children is selected with it', async ({ page }) => {
+    await setContent(page, `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+  <g id="grp">
+    <rect id="box" x="20" y="20" width="60" height="60" fill="#6291e0"/>
+    <circle id="dot" cx="150" cy="150" r="30" fill="#aa0000"/>
+  </g>
+  <rect id="other" x="5" y="170" width="20" height="20" fill="#888"/>
+</svg>`);
+    const rect = page.locator('.svg-container rect#box');
+    await rect.click();
+    expect(await editorSelection(page)).toBe('<g id="grp">');
+    await rect.click({ modifiers: ['ControlOrMeta'] });
+    await expect(page.locator('.select-overlay .select-more')).toBeVisible();
+
+    await page.locator('.svg-preview-wrapper').focus();
+    await page.keyboard.press('ArrowRight');
+    const source = await getSource(page);
+    expect(source).toContain('<g id="grp" transform="translate(1 0)">');
+    expect(source).toContain('<rect id="box" x="20" y="20"');
+  });
+
+  test('should not bring back an element that was let go when the selection is next edited', async ({ page }) => {
+    await page.locator('.svg-container rect').click();
+    await page.locator('.svg-container circle').click({ modifiers: ['ControlOrMeta'] });
+    await page.locator('.svg-container circle').click({ modifiers: ['ControlOrMeta'] });
+    await expect(page.locator('.select-overlay .select-more')).toBeHidden();
+
+    await page.locator('.svg-preview-wrapper').focus();
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('ArrowRight');
+    expect(await getSource(page)).toBe(FIXTURE.replace('x="20"', 'x="22"'));
+  });
+
+  test('should resize from a handle with a finger', async ({ page }) => {
+    await page.locator('.svg-container rect').click();
+    const handle = (await page.locator('[data-handle="e"]').boundingBox())!;
+    const x = handle.x + handle.width / 2;
+    const y = handle.y + handle.height / 2;
+    await page.evaluate(({ x, y }) => {
+      const el = document.elementFromPoint(x, y)!;
+      const touch = (cx: number) => new Touch({ identifier: 1, target: el, clientX: cx, clientY: y });
+      const fire = (type: string, cx: number, down: boolean) => el.dispatchEvent(new TouchEvent(type, {
+        bubbles: true, cancelable: true, touches: down ? [touch(cx)] : [], changedTouches: [touch(cx)],
+      }));
+      fire('touchstart', x, true);
+      fire('touchmove', x + 15, true);
+      fire('touchmove', x + 30, true);
+      fire('touchend', x + 30, false);
+    }, { x, y });
+    expect(await getSource(page)).toBe(FIXTURE.replace('width="60" height="60"', 'width="90" height="60"'));
   });
 });

@@ -149,6 +149,9 @@ describe('Removing a path point', () => {
     expect(removePathPoint('M0 0 L10 0 L20 0', 0, 0)).toBe('M10 0 L20 0');
     expect(removePathPoint('M0 0 C1 1 2 2 10 0 L20 0', 0, 0)).toBe('M10 0 L20 0');
     expect(removePathPoint('M0 0 L1 1 2 2', 0, 0)).toBe('M1 1 2 2');
+    // a bare group after the new M reads by the M's case, so a relative one keeps its letter
+    expect(removePathPoint('M0 0 l10 10 20 20', 0, 0)).toBe('M10 10 l20 20');
+    expect(removePathPoint('m0 0 L10 10 20 20', 0, 0)).toBe('m10 10 L20 20');
     expect(removePathPoint('M0 0 C1 1 2 2 3 3 4 4 5 5 6 6', 0, 0)).toBe('M3 3 C4 4 5 5 6 6');
   });
 

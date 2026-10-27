@@ -557,6 +557,9 @@ export function planResize(el: Element, req: ResizeRequest): EditPlan {
 
 const same = (a: number, b: number): boolean=>Math.abs(a - b) < 1e-6;
 
+/** What follows a transform function, less the comma that may separate it. */
+const afterFunction = (value: string, end: number): string=>value.slice(end).replace(/^\s*,/, '').trim();
+
 /** The centre of a local box in the element's PARENT units: where it sits
  * once the element's own transform has been applied. Null when the
  * transform cannot be read. */
@@ -584,7 +587,7 @@ export function planRotate(el: Element, degrees: number, center: Point, decimals
 	let angle = degrees;
 	if (first?.name === 'rotate' && first.args.length === 3 && same(first.args[1], center.x) && same(first.args[2], center.y)) {
 		angle += first.args[0];
-		rest = value.slice(first.end).trim();
+		rest = afterFunction(value, first.end);
 	}
 	angle = roundTo(((angle % 360) + 360) % 360, decimals);
 	const turn = angle === 0 ? '' : `rotate(${fmt(angle, decimals)} ${fmt(center.x, decimals)} ${fmt(center.y, decimals)})`;
@@ -611,7 +614,7 @@ export function planFlip(el: Element, axis: 'x' | 'y', center: Point, decimals =
 	if (first?.name === 'matrix') {
 		const m = fnMatrix(first);
 		if (same(m.a, mirror.a) && same(m.b, mirror.b) && same(m.c, mirror.c) && same(m.d, mirror.d) && same(m.e, mirror.e) && same(m.f, mirror.f)) {
-			const rest = value.slice(first.end).trim();
+			const rest = afterFunction(value, first.end);
 			return {ok: true, attrs: {transform: rest || null}};
 		}
 	}

@@ -122,15 +122,20 @@ test.describe('SVG Editor Point Editing', () => {
   });
 
   test('should show curve handles and move them without moving the anchors', async ({ page }) => {
-    await setContent(page, FIXTURE.replace('M20 20 L100 20 L100 100 Z', 'M20 100 C20 20 100 20 100 100'));
-    const path = page.locator('.svg-container path');
-    await path.click({ position: { x: 40, y: 60 } });
+    await setContent(page, FIXTURE.replace('M20 20 L100 20 L100 100 Z', 'M20 100 C20 20 100 20 100 100 S180 180 180 60'));
+    // inside the first lobe of the filled shape
+    const inside = await at(page, 60, 70);
+    await page.mouse.click(inside.x, inside.y);
     await page.keyboard.press('Enter');
-    await expect(page.locator('.points circle')).toHaveCount(2);
-    await expect(page.locator('.points line')).toHaveCount(2);
+    await expect(page.locator('.points circle')).toHaveCount(3);
+    await expect(page.locator('.points line')).toHaveCount(3);
 
     await dragPoint(page, 1, 10, 10);
-    expect(await getSource(page)).toContain('d="M20 100 C30 30 100 20 100 100"');
+    expect(await getSource(page)).toContain('d="M20 100 C30 30 100 20 100 100 S180 180 180 60"');
+
+    // an S segment writes only its second handle, so that is the pair the editor selects
+    await page.locator('.points [data-point="4"]').click();
+    expect(await editorSelection(page)).toBe('180 180');
   });
 
   test('should leave point editing when another element is selected', async ({ page }) => {
@@ -140,5 +145,37 @@ test.describe('SVG Editor Point Editing', () => {
     await page.locator('.svg-container polygon').click();
     await expect(page.locator('.points rect')).toHaveCount(0);
     await expect(page.locator('[data-handle="se"]')).toBeVisible();
+  });
+
+  test('should add a point to a path inside a group with a double-click', async ({ page }) => {
+    await setContent(page, `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+  <g id="grp">
+    <path id="p" d="M20 20 L100 20 L100 100 Z" fill="#6291e0"/>
+    <rect id="box" x="120" y="120" width="40" height="40" fill="#aa0000"/>
+  </g>
+  <circle id="far" cx="180" cy="20" r="8" fill="#888"/>
+</svg>`);
+    const path = page.locator('.svg-container path');
+    await path.click();
+    await path.click();
+    expect(await editorSelection(page)).toMatch(/^<path id="p"/);
+    await page.keyboard.press('Enter');
+    await expect(page.locator('.points rect')).toHaveCount(3);
+
+    const spot = await at(page, 60, 20);
+    await page.mouse.dblclick(spot.x, spot.y);
+    expect(await getSource(page)).toContain('d="M20 20 L60 20 L100 20 L100 100 Z"');
+    await expect(page.locator('.points rect')).toHaveCount(4);
+  });
+
+  test('should keep a line end\'s written precision when nudged', async ({ page }) => {
+    await setContent(page, FIXTURE.replace('<path id="p" d="M20 20 L100 20 L100 100 Z" fill="#6291e0"/>', '<line id="ln" x1="10.5" y1="40" x2="100" y2="40" stroke="#6291e0" stroke-width="8"/>'));
+    // a line has no area, so Playwright will not click it by locator; aim at its stroke
+    const middle = await at(page, 55, 40);
+    await page.mouse.click(middle.x, middle.y);
+    await page.keyboard.press('Enter');
+    await page.locator('.points [data-point="0"]').click();
+    await page.keyboard.press('ArrowRight');
+    expect(await getSource(page)).toContain('<line id="ln" x1="11.5" y1="40"');
   });
 });

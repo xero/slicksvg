@@ -285,6 +285,11 @@ describe('planRotate', () => {
     expect(planRotate(el('<rect transform="rotate(-30 50 50)"/>'), 30, c)).toEqual({ ok: true, attrs: { transform: null } });
   });
 
+  it('should drop the comma that followed a folded-away rotate', () => {
+    expect(planRotate(el('<rect transform="rotate(90 50 50),translate(10 10)"/>'), 270, c)).toEqual({ ok: true, attrs: { transform: 'translate(10 10)' } });
+    expect(planFlip(el('<rect transform="matrix(-1 0 0 1 100 0),scale(2)"/>'), 'x', c)).toEqual({ ok: true, attrs: { transform: 'scale(2)' } });
+  });
+
   it('should stack in front of a rotate about a different centre', () => {
     expect(planRotate(el('<rect transform="rotate(90 10 10)"/>'), 90, c)).toEqual({ ok: true, attrs: { transform: 'rotate(90 50 50) rotate(90 10 10)' } });
   });

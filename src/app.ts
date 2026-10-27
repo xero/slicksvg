@@ -7,11 +7,10 @@ import {tokyoNightDay} from '@fsegurai/codemirror-theme-tokyo-night-day';
 import {tokyoNightStorm} from '@fsegurai/codemirror-theme-tokyo-night-storm';
 import {linter, lintGutter, forceLinting} from '@codemirror/lint';
 import {findElementAtCursor, type ElementRef} from './xray';
-import {startTags, readAttribute, planAttributeEdits, applyChanges, stampSource, parseSource, elementExtent, removalRange, duplicateInsertion, SOURCE_ATTR, type StartTag, type TextChange} from './source-map';
+import {startTags, readAttribute, attributesOf, planAttributeEdits, applyChanges, stampSource, parseSource, elementExtent, removalRange, duplicateInsertion, SOURCE_ATTR, type StartTag, type TextChange} from './source-map';
 import {findSvgTarget, selectionChain, nextInChain, ordinalOf, boxCorners} from './select';
-import {planMove, planResize, planRotate, planFlip, parentCenter, invert, applyToVector, applyToPoint, pixelsPerUnit, decimalsFor, roundTo, fmt, type Matrix, type Point, type Rect, type Handle, type EditPlan} from './geometry';
+import {planMove, planResize, planRotate, planFlip, parentCenter, invert, applyToVector, applyToPoint, pixelsPerUnit, decimalsFor, roundTo, fmt, placesOf, type Matrix, type Point, type Rect, type Handle, type EditPlan} from './geometry';
 import {parsePathData, pathPoints, movePathPoint, insertPathPoint, removePathPoint, nearestPathSegment, polygonPoints, movePolygonPoint, insertPolygonPoint, removePolygonPoint, nearestPolygonEdge} from './path-data';
-import {attributesOf} from './source-map';
 import {undo, redo, undoDepth, redoDepth, isolateHistory} from '@codemirror/commands';
 
 // --- Constants
@@ -204,6 +203,15 @@ interface Found {sourceText: string; tag: StartTag; source: Element}
 /** Attribute changes planned for one element. */
 interface Planned {tag: StartTag; attrs: Record<string, string | null>}
 
+/** One parse of the source, shared by every element an operation touches. */
+interface Parsed {sourceText: string; elements: Element[]; tags: StartTag[]}
+
+/** The elements of a selection that are not inside another of them: an edit
+ * to a group carries its contents, so they are not edited again. */
+function topLevelOf(els: Element[]): Element[] {
+	return els.filter(el=>!els.some(other=>other !== el && other.contains(el)));
+}
+
 interface Drag {
 	target: Element;
 	found: Found;
@@ -218,7 +226,7 @@ interface Drag {
 	center: Point;
 	screenCenter: Point;
 	/** For a point drag: the point, where it started, and the attribute as it was. */
-	point: {ref: PointRef; from: Point; attr: string; original: string} | null;
+	point: {ref: PointRef; from: Point} | null;
 }
 
 interface Gesture {
@@ -294,16 +302,19 @@ function pointsOf(el: Element): EditPoint[] | null {
 }
 
 /** The attribute a point lives in, and the attribute changes that move it. */
-function movePoint(ref: PointRef, original: string, to: Point, decimals: number): Record<string, string | null> | null {
+function movePoint(ref: PointRef, source: Element, to: Point, decimals: number): Record<string, string | null> | null {
 	if (ref.type === 'path') {
-		const d = movePathPoint(original, ref, to, decimals);
+		const d = movePathPoint(source.getAttribute('d') ?? '', ref, to, decimals);
 		return d === null ? null : {d};
 	}
 	if (ref.type === 'poly') {
-		const points = movePolygonPoint(original, ref.index, to, decimals);
+		const points = movePolygonPoint(source.getAttribute('points') ?? '', ref.index, to, decimals);
 		return points === null ? null : {points};
 	}
-	return ref.index === 0 ? {x1: fmt(to.x, decimals), y1: fmt(to.y, decimals)} : {x2: fmt(to.x, decimals), y2: fmt(to.y, decimals)};
+	// a line's ends keep the precision they were written with, as a path's points do
+	const [nx, ny] = ref.index === 0 ? ['x1', 'y1'] : ['x2', 'y2'];
+	const write = (name: string, value: number): string=>fmt(value, Math.max(decimals, placesOf(parseFloat(source.getAttribute(name) ?? '0') || 0)));
+	return {[nx]: write(nx, to.x), [ny]: write(ny, to.y)};
 }
 
 const pointAttr = (ref: PointRef): string=>ref.type === 'path' ? 'd' : ref.type === 'poly' ? 'points' : ref.index === 0 ? 'x1' : 'x2';
@@ -426,7 +437,9 @@ class slick {
 							this.updateSVGPreview();
 							this.updateHistoryButtons();
 						}
-						if (update.selectionSet || update.docChanged) {
+						// only a cursor that moved: a change alone must not bring back an
+						// element the cursor still sits in after it was let go
+						if (update.selectionSet) {
 							this.syncSelectionFromCursor();
 						}
 						if (this.xray && (update.selectionSet || update.docChanged)) {
@@ -615,8 +628,11 @@ class slick {
 			else this.clearSelection();
 		});
 		this.svgPreview.addEventListener('touchstart', (e)=>this.handleTouchStart(e), {passive: false});
-		this.svgPreview.addEventListener('touchmove', (e)=>this.handleTouchMove(e), {passive: false});
-		this.svgPreview.addEventListener('touchend', (e)=>this.handleTouchEnd(e), {passive: false});
+		// a finger that pressed a handle in the overlay sends its moves to the handle,
+		// not the wrapper, so the rest of a touch gesture is read from the page
+		document.addEventListener('touchmove', (e)=>this.handleTouchMove(e), {passive: false});
+		document.addEventListener('touchend', (e)=>this.handleTouchEnd(e), {passive: false});
+		document.addEventListener('touchcancel', (e)=>this.handleTouchEnd(e));
 		this.svgPreview.addEventListener('mousemove', (e)=>this.hoverAt(e));
 		this.svgPreview.addEventListener('dblclick', (e)=>this.onDoubleClick(e));
 		this.svgPreview.addEventListener('mouseleave', ()=>this.drawBox(this.hoverBox, null));
@@ -930,6 +946,9 @@ class slick {
 	 * selection, or takes an element back out of it. */
 	private clickSelect(target: EventTarget | null, toggle = false): void {
 		this.svgPreview.focus({preventScroll: true});
+		// while its points are being edited, a click on the element keeps it rather
+		// than walking its group, so a double-click on the outline can add a point
+		if (this.pointMode && !toggle && this.onSelection(target)) return;
 		const pick = this.pickAt(target);
 		if (!pick) {
 			if (!toggle) this.clearSelection();
@@ -940,6 +959,10 @@ class slick {
 		if (toggle && this.selected.includes(ordinal)) {
 			this.selected = this.selected.filter(o=>o !== ordinal);
 			this.refreshSelection();
+			// the editor follows the new primary, so the cursor does not stay in the element just let go
+			const primary = this.selectedElement();
+			const primaryOrdinal = this.selected.at(-1);
+			if (primary && primaryOrdinal !== undefined) this.selectInEditor(primary, primaryOrdinal);
 			return;
 		}
 		this.selected = toggle ? [...this.selected, ordinal] : [ordinal];
@@ -949,9 +972,9 @@ class slick {
 		this.announceAction(`Selected ${pick.tagName.toLowerCase()}`);
 	}
 
-	private ordinalFor(el: Element): number | null {
+	private ordinalFor(el: Element, source = this.editor.state.doc.toString()): number | null {
 		const container = this.svgPreview.querySelector('.svg-container');
-		return container ? ordinalOf(el, container, this.editor.state.doc.toString()) : null;
+		return container ? ordinalOf(el, container, source) : null;
 	}
 
 	/** Select the element's start tag in the editor. */
@@ -1128,7 +1151,8 @@ class slick {
 		let span: [number, number] | null = null;
 		if (ref.type === 'path') {
 			const seg = parsePathData(value)?.at(ref.segment);
-			const k = seg ? (ref.slot === 'cp1' ? 0 : ref.slot === 'cp2' ? 2 : seg.args.length - 2) : -1;
+			// an S writes only its second handle, so that is its first pair
+			const k = seg ? (ref.slot === 'cp1' ? 0 : ref.slot === 'cp2' ? (/^s$/i.test(seg.letter) ? 0 : 2) : seg.args.length - 2) : -1;
 			const x = seg?.args.at(k);
 			const y = seg?.args.at(k + 1);
 			if (x && y) span = [at + x.start, at + y.end];
@@ -1195,7 +1219,7 @@ class slick {
 		if (!chosen || this.gesture?.drags.length) return;
 		const found = this.sourceFor(chosen.el);
 		if (!found) return;
-		const attrs = movePoint(chosen.point.ref, found.source.getAttribute(pointAttr(chosen.point.ref)) ?? '', {x: chosen.point.x + dx, y: chosen.point.y + dy}, 0);
+		const attrs = movePoint(chosen.point.ref, found.source, {x: chosen.point.x + dx, y: chosen.point.y + dy}, 0);
 		if (!attrs) return;
 		this.commitChanges(found.sourceText, [{tag: found.tag, attrs}], undefined, false);
 		this.selectPointInEditor();
@@ -1304,38 +1328,44 @@ class slick {
 			e.preventDefault();
 			if (this.pointMode) this.deletePoint();
 			else this.deleteSelected();
-		} else if (e.key.toLowerCase() === 'd' && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
-			e.preventDefault();
-			this.duplicateSelected();
 		}
 	}
 
 	/** The source behind a preview element, or null with a message when the
 	 * code does not parse or the element cannot be found in it. */
-	private sourceFor(el: Element): Found | null {
+	private sourceFor(el: Element, parsed = this.parseOnce()): Found | null {
+		if (!parsed) return null;
+		const ordinal = this.ordinalFor(el, parsed.sourceText);
+		const tag = ordinal === null ? undefined : parsed.tags.at(ordinal);
+		const source = ordinal === null ? undefined : parsed.elements.at(ordinal);
+		if (!tag || !source || source.tagName.toLowerCase() !== el.tagName.toLowerCase()) {
+			this.announceError('This element could not be found in the code, so it cannot be edited here.');
+			return null;
+		}
+		return {sourceText: parsed.sourceText, tag, source};
+	}
+
+	/** The source parsed once, for every element an operation touches; null,
+	 * with a message, when the code does not parse. */
+	private parseOnce(): Parsed | null {
 		const sourceText = this.editor.state.doc.toString();
 		const parsed = parseSource(sourceText);
 		if (!parsed) {
 			this.announceError('The code has an error, so this element cannot be edited here. Fix the code first.');
 			return null;
 		}
-		const ordinal = this.ordinalFor(el);
-		const tag = ordinal === null ? undefined : startTags(sourceText).at(ordinal);
-		const source = ordinal === null ? undefined : parsed.elements.at(ordinal);
-		if (!tag || !source || source.tagName.toLowerCase() !== el.tagName.toLowerCase()) {
-			this.announceError('This element could not be found in the code, so it cannot be edited here.');
-			return null;
-		}
-		return {sourceText, tag, source};
+		return {sourceText, elements: parsed.elements, tags: startTags(sourceText)};
 	}
 
 	/** A plan for each element, all made against one text of the source;
 	 * null, with a message, when any element cannot be edited. */
 	private plansFor(els: Element[], plan: (source: Element, bbox: Rect) => EditPlan): {sourceText: string; plans: Planned[]} | null {
-		const sourceText = this.editor.state.doc.toString();
+		const parsed = this.parseOnce();
+		if (!parsed) return null;
+		const sourceText = parsed.sourceText;
 		const plans: Planned[] = [];
-		for (const el of els) {
-			const found = this.sourceFor(el);
+		for (const el of topLevelOf(els)) {
+			const found = this.sourceFor(el, parsed);
 			const bbox = bboxOf(el);
 			if (!found || !bbox) return null;
 			const made = plan(found.source, bbox);
@@ -1369,17 +1399,18 @@ class slick {
 			const toUnits = ctm ? invert(toMatrix(ctm)) : null;
 			if (!found || !point || !ctm || !toUnits) return false;
 			const scale = pixelsPerUnit(toMatrix(ctm));
-			const attr = pointAttr(point.ref);
 			g.drags = [{
 				target, found, live: new LiveEdit(target), attrs: {}, toUnits, decimals: decimalsFor(scale),
 				bbox: {x: 0, y: 0, width: 0, height: 0}, minSize: 0, center: {x: 0, y: 0}, screenCenter: {x: 0, y: 0},
-				point: {ref: point.ref, from: {x: point.x, y: point.y}, attr, original: found.source.getAttribute(attr) ?? ''},
+				point: {ref: point.ref, from: {x: point.x, y: point.y}},
 			}];
 			this.drawBox(this.hoverBox, null);
 			return true;
 		}
-		for (const target of g.targets) {
-			const found = this.sourceFor(target);
+		const parsed = this.parseOnce();
+		if (!parsed) return false;
+		for (const target of topLevelOf(g.targets)) {
+			const found = this.sourceFor(target, parsed);
 			const bbox = bboxOf(target);
 			if (!found || !bbox) return false;
 			// a blocked element is refused before anything moves on screen
@@ -1434,7 +1465,7 @@ class slick {
 			if (d.point) {
 				const v = applyToVector(d.toUnits, sx, sy);
 				const to = {x: roundTo(d.point.from.x + v.x, d.decimals), y: roundTo(d.point.from.y + v.y, d.decimals)};
-				const attrs = movePoint(d.point.ref, d.point.original, to, d.decimals);
+				const attrs = movePoint(d.point.ref, d.found.source, to, d.decimals);
 				plan = attrs ? {ok: true, attrs} : {ok: false, reason: 'This point could not be moved.'};
 			} else if (g.mode === 'rotate') {
 				// the turn from where the handle was pressed to where it is now, measured in the parent's frame
@@ -1589,12 +1620,14 @@ class slick {
 	 * also selected goes with it. */
 	private deleteSelected(): void {
 		const els = this.selectedElements();
-		const tops = els.filter(el=>!els.some(other=>other !== el && other.contains(el)));
+		const tops = topLevelOf(els);
 		if (tops.length === 0) return;
-		const sourceText = this.editor.state.doc.toString();
+		const parsed = this.parseOnce();
+		if (!parsed) return;
+		const sourceText = parsed.sourceText;
 		const changes: TextChange[] = [];
 		for (const el of tops) {
-			const found = this.sourceFor(el);
+			const found = this.sourceFor(el, parsed);
 			if (!found) return;
 			const range = removalRange(sourceText, found.tag.ordinal);
 			if (!range) {
