@@ -7,7 +7,7 @@
 // Round corners and circles are drawn with cubic curves rather than arcs,
 // since every point tool can take hold of a cubic: four cubics draw a circle
 // to within 0.03% of its radius.
-import {fmt, placesOf} from './geometry';
+import {cssSets, fmt, placesOf} from './geometry';
 import {pointsAsPathData} from './path-data';
 import {attributesOf, planAttributeEdits, renameAttribute, renameElement, type StartTag, type TextChange} from './source-map';
 
@@ -29,6 +29,17 @@ export const GEOMETRY: Record<string, string[] | undefined> = {
 
 /** The elements that can be made paths. */
 export const SHAPES = Object.keys(GEOMETRY);
+
+/** Why a shape would not draw the same as a path, or null: CSS that sets its
+ * geometry, which the path would not have, or an animation of it, which
+ * would be left with nothing to animate. */
+export function conversionBlocked(el: Element): string | null {
+	const tag = el.tagName.toLowerCase();
+	const names = GEOMETRY[tag] ?? [];
+	if (names.some(name=>name !== 'points' && cssSets(el, name))) return `This ${tag}'s geometry is set by CSS, so it cannot be made a path here. Change its style in the code instead.`;
+	const animated = Array.from(el.children).some(c=>/^(animate|set)$/i.test(c.tagName) && names.includes(c.getAttribute('attributeName') ?? ''));
+	return animated ? `This ${tag}'s geometry is animated, so it cannot be made a path here.` : null;
+}
 
 /** A length written as a plain number, or in px, which a path can say as it is. */
 export function plainLength(text: string): Length | null {

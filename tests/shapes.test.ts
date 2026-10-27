@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { shapePathData, asPathChanges, plainLength, type Length } from '../src/shapes';
+import { shapePathData, asPathChanges, plainLength, conversionBlocked, type Length } from '../src/shapes';
 import { startTags, applyChanges } from '../src/source-map';
 import { parsePathData, pathPoints } from '../src/path-data';
 
@@ -85,5 +85,21 @@ describe('Making a shape a path', () => {
   it('should keep its quotes, and give a d the shape never drew with the new one', () => {
     expect(edit("<svg><polygon points='0,0 1,1' class='p'/></svg>", 1, 'M0,0 1,1Z')).toBe("<svg><path d='M0,0 1,1Z' class='p'/></svg>");
     expect(edit('<svg><rect d="M9 9" width="1" height="1"/></svg>', 1, 'M0 0Z')).toBe('<svg><path d="M0 0Z"/></svg>');
+  });
+});
+
+describe('Shapes that would not draw the same as paths', () => {
+  const first = (src: string, tag: string) => new DOMParser().parseFromString(src, 'image/svg+xml').getElementsByTagName(tag)[0];
+  const svg = (inner: string) => `<svg xmlns="http://www.w3.org/2000/svg">${inner}</svg>`;
+
+  it('should refuse a shape whose geometry CSS sets', () => {
+    expect(conversionBlocked(first(svg('<rect style="width: 50px" height="10"/>'), 'rect'))).toMatch(/set by CSS/);
+    expect(conversionBlocked(first(svg('<style>circle { r: 5px }</style><circle r="2"/>'), 'circle'))).toMatch(/set by CSS/);
+    expect(conversionBlocked(first(svg('<rect style="fill: red" width="5" height="5"/>'), 'rect'))).toBeNull();
+  });
+
+  it('should refuse a shape whose geometry is animated, but not one animated otherwise', () => {
+    expect(conversionBlocked(first(svg('<rect width="5" height="5"><animate attributeName="width" to="9" dur="1s"/></rect>'), 'rect'))).toMatch(/animated/);
+    expect(conversionBlocked(first(svg('<rect width="5" height="5"><animate attributeName="opacity" to="0" dur="1s"/></rect>'), 'rect'))).toBeNull();
   });
 });

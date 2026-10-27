@@ -8,7 +8,7 @@ import {tokyoNightStorm} from '@fsegurai/codemirror-theme-tokyo-night-storm';
 import {linter, lintGutter, forceLinting} from '@codemirror/lint';
 import {findElementAtCursor, type ElementRef} from './xray';
 import {startTags, readAttribute, attributesOf, planAttributeEdits, applyChanges, stampSource, parseSource, elementExtent, removalRange, duplicateInsertion, SOURCE_ATTR, type StartTag, type TextChange} from './source-map';
-import {GEOMETRY, SHAPES, plainLength, shapePathData, asPathChanges, type Length, type ShapePath} from './shapes';
+import {GEOMETRY, SHAPES, plainLength, shapePathData, asPathChanges, conversionBlocked, type Length, type ShapePath} from './shapes';
 import {findSvgTarget, selectionChain, nextInChain, ordinalOf, boxCorners, handleCursor} from './select';
 import {planMove, planResize, planRotate, planFlip, parentCenter, invert, applyToVector, applyToPoint, pixelsPerUnit, decimalsFor, roundTo, fmt, placesOf, type Matrix, type Point, type Rect, type Handle, type EditPlan} from './geometry';
 import {
@@ -428,9 +428,10 @@ function writtenLengths(el: Element, resolve?: (name: string) => number | null):
 	for (const name of GEOMETRY[el.tagName.toLowerCase()] ?? []) {
 		const text = el.getAttribute(name)?.trim() ?? '';
 		if (name === 'points' || text === '' || text === 'auto') continue;
-		const value = plainLength(text) ?? ((resolved)=>resolved === null ? null : {value: resolved, places: 3})(resolve?.(name) ?? null);
-		if (!value) return null;
-		lengths[name] = value;
+		const plain = plainLength(text);
+		const resolved = plain ? null : resolve?.(name) ?? null;
+		if (!plain && resolved === null) return null;
+		lengths[name] = plain ?? {value: resolved ?? 0, places: 3};
 	}
 	return lengths;
 }
@@ -1280,7 +1281,8 @@ class slick {
 		const pointsButton = this.get('points');
 		pointsButton.toggleAttribute('disabled', !(els.length === 1 && primary && POINT_ELEMENTS.test(primary.tagName.toLowerCase())));
 		pointsButton.setAttribute('aria-pressed', editing ? 'true' : 'false');
-		this.get('topath').toggleAttribute('disabled', this.shapesIn(els).length === 0);
+		const shape = SHAPES.join(',');
+		this.get('topath').toggleAttribute('disabled', !els.some(el=>el.matches(shape) || el.querySelector(shape)));
 		this.refreshPointTools(editing !== null);
 	}
 
@@ -1432,7 +1434,7 @@ class slick {
 		if (!current || ordinal === undefined || this.selected.length !== 1) return;
 		const tag = current.tagName.toLowerCase();
 		if (!POINT_ELEMENTS.test(tag)) {
-			if (SHAPES.includes(tag)) this.announceError(`A ${tag} has no points to edit until it is a path: use the to-path button first.`);
+			if (SHAPES.includes(tag)) this.announceError(`${/^[aeiou]/.test(tag) ? 'An' : 'A'} ${tag} has no points to edit until it is a path: use the to-path button first.`);
 			return;
 		}
 		if (!pointsOf(current)) {
@@ -1537,16 +1539,22 @@ class slick {
 	 * There is no way back but undo. */
 	private convertToPaths(): void {
 		const parsed = this.parseOnce();
-		const shapes = this.shapesIn(this.selectedElements());
+		const selected = this.selectedElements();
+		const shapes = this.shapesIn(selected);
 		if (!parsed || shapes.length === 0) return;
+		// Enter edits points only when the shape itself is what is selected
+		const one = selected.length === 1 && selected[0] === shapes[0] ? shapes[0].tagName.toLowerCase() : null;
 		const changes: TextChange[] = [];
 		let count = 0;
 		let refusal: string | null = null;
 		for (const el of shapes) {
 			const found = this.sourceFor(el, parsed);
 			if (!found) continue;
-			const lengths = writtenLengths(found.source, (name)=>resolvedLength(el, name));
-			const made: ShapePath = lengths ? shapePathData(found.tag.name, lengths, found.source.getAttribute('points')) : {ok: false, reason: `This ${found.tag.name}'s sizes could not be read, so it cannot be made a path here.`};
+			const blocked = conversionBlocked(found.source);
+			const lengths = blocked ? null : writtenLengths(found.source, (name)=>resolvedLength(el, name));
+			const made: ShapePath = blocked ? {ok: false, reason: blocked}
+				: lengths ? shapePathData(found.tag.name, lengths, found.source.getAttribute('points'))
+				: {ok: false, reason: `This ${found.tag.name}'s sizes could not be read, so it cannot be made a path here.`};
 			if (made.ok) {
 				changes.push(...asPathChanges(parsed.sourceText, found.tag, made.d));
 				count += 1;
@@ -1564,8 +1572,7 @@ class slick {
 			this.pointMode.spot = null;
 		}
 		if (!this.applyEdits(changes.sort((a, b)=>a.from - b.from), 'slick.topath')) return;
-		const one = shapes.length === 1 ? shapes[0].tagName.toLowerCase() : null;
-		this.announceAction(one && count === 1 ? `${one} made a path: press Enter to edit its points` : `${count} shapes made paths${refusal ? `; ${refusal}` : ''}`);
+		this.announceAction(one && count === 1 ? `${one} made a path: press Enter to edit its points` : `${count} ${count === 1 ? 'shape' : 'shapes'} made ${count === 1 ? 'a path' : 'paths'}${refusal ? `; ${refusal}` : ''}`);
 	}
 
 	/** Select the anchor at a place, after an edit that may have moved the
@@ -1711,7 +1718,10 @@ class slick {
 			// a line has two points: a third makes it a path
 			const data = pathDataOf(found.source);
 			const next = data ? insertPathPoint(data.d, spot.edge + 1, spot.t, decimals) : null;
-			if (next === null) return;
+			if (next === null) {
+				this.announceError('A point cannot be added to this line: its ends are written with units. Make it a path first.');
+				return;
+			}
 			attrs = {d: next};
 			select = points=>points.findIndex(p=>p.ref.type === 'path' && p.ref.segment === spot.edge + 1 && p.ref.slot === 'end');
 		}

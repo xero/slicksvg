@@ -220,7 +220,7 @@ export function cssRulesOverriding(doc: Document, elements: Element[], property:
 }
 
 /** Does CSS, the element's own style or a rule in the document, set this property? */
-function cssSets(el: Element, property: string): boolean {
+export function cssSets(el: Element, property: string): boolean {
 	const style = el.getAttribute('style');
 	if (style && new RegExp(`(^|;)\\s*${property}\\s*:`, 'i').test(style)) return true;
 	return cssRulesOverriding(el.ownerDocument, [el], property).length > 0;
