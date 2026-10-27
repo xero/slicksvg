@@ -330,35 +330,39 @@ describe('planFlip', () => {
 describe('planScaleAbout', () => {
   /** A scale by (kx, ky) about (ax, ay), as a matrix. */
   const about = (kx: number, ky: number, ax: number, ay: number) => ({ a: kx, b: 0, c: 0, d: ky, e: ax * (1 - kx), f: ay * (1 - ky) });
-  const box = { x: 0, y: 0, width: 0, height: 0 };
 
   it('should scale a box shape\'s own attributes about the group\'s point', () => {
-    expect(planScaleAbout(el('<rect x="10" y="10" width="20" height="10"/>'), about(2, 2, 0, 0), box, 1)).toEqual({ ok: true, attrs: { x: '20', y: '20', width: '40', height: '20' } });
-    expect(planScaleAbout(el('<circle cx="50" cy="50" r="10"/>'), about(0.5, 0.5, 100, 100), box, 1)).toEqual({ ok: true, attrs: { cx: '75', cy: '75', r: '5' } });
-    expect(planScaleAbout(el('<line x1="0" y1="0" x2="10" y2="0"/>'), about(3, 1, 10, 0), box, 1)).toEqual({ ok: true, attrs: { x1: '-20' } });
+    expect(planScaleAbout(el('<rect x="10" y="10" width="20" height="10"/>'), about(2, 2, 0, 0), 1)).toEqual({ ok: true, attrs: { x: '20', y: '20', width: '40', height: '20' } });
+    expect(planScaleAbout(el('<circle cx="50" cy="50" r="10"/>'), about(0.5, 0.5, 100, 100), 1)).toEqual({ ok: true, attrs: { cx: '75', cy: '75', r: '5' } });
+    expect(planScaleAbout(el('<line x1="0" y1="0" x2="10" y2="0"/>'), about(3, 1, 10, 0), 1)).toEqual({ ok: true, attrs: { x1: '-20' } });
+  });
+
+  it('should not round a small shape\'s size down to nothing', () => {
+    expect(planScaleAbout(el('<rect x="0" y="0" width="3" height="3"/>'), about(0.1, 0.1, 0, 0), 0)).toEqual({ ok: true, attrs: { width: '0.3', height: '0.3' } });
+    expect(planScaleAbout(el('<circle cx="100" cy="100" r="2"/>'), about(0.01, 0.01, 0, 0), 0)).toEqual({ ok: true, attrs: { cx: '1', cy: '1', r: '0.02' } });
   });
 
   it('should see the scale in an element\'s own units through its transform', () => {
     // a translated rect: the group's point is 5 units off in its own units
-    expect(planScaleAbout(el('<rect x="0" y="0" width="10" height="10" transform="translate(5 5)"/>'), about(2, 2, 5, 5), box, 1))
+    expect(planScaleAbout(el('<rect x="0" y="0" width="10" height="10" transform="translate(5 5)"/>'), about(2, 2, 5, 5), 1))
       .toEqual({ ok: true, attrs: { width: '20', height: '20' } });
   });
 
   it('should stretch a circle out of round, or a path, through its transform', () => {
-    expect(planScaleAbout(el('<circle cx="0" cy="0" r="10"/>'), about(2, 1, 0, 0), box, 1)).toEqual({ ok: true, attrs: { transform: 'scale(2 1)' } });
-    expect(planScaleAbout(el('<path d="M0 0 L10 10"/>'), about(2, 2, 10, 10), box, 1)).toEqual({ ok: true, attrs: { transform: 'translate(-10 -10) scale(2)' } });
+    expect(planScaleAbout(el('<circle cx="0" cy="0" r="10"/>'), about(2, 1, 0, 0), 1)).toEqual({ ok: true, attrs: { transform: 'scale(2 1)' } });
+    expect(planScaleAbout(el('<path d="M0 0 L10 10"/>'), about(2, 2, 10, 10), 1)).toEqual({ ok: true, attrs: { transform: 'translate(-10 -10) scale(2)' } });
   });
 
   it('should put a stretch across a turned element in front of its transform', () => {
-    expect(planScaleAbout(el('<rect width="10" height="10" transform="rotate(45)"/>'), about(2, 1, 0, 0), box, 1))
+    expect(planScaleAbout(el('<rect width="10" height="10" transform="rotate(45)"/>'), about(2, 1, 0, 0), 1))
       .toEqual({ ok: true, attrs: { transform: 'matrix(2 0 0 1 0 0) rotate(45)' } });
     // a uniform scale is a scale along any axes
-    expect(planScaleAbout(el('<rect width="10" height="10" transform="rotate(45)"/>'), about(2, 2, 0, 0), box, 1))
+    expect(planScaleAbout(el('<rect width="10" height="10" transform="rotate(45)"/>'), about(2, 2, 0, 0), 1))
       .toEqual({ ok: true, attrs: { width: '20', height: '20' } });
   });
 
   it('should refuse what a resize refuses', () => {
-    expect(planScaleAbout(el('<rect width="10" height="10" style="transform: scale(2)"/>'), about(2, 2, 0, 0), box, 1).ok).toBe(false);
-    expect(planScaleAbout(el('<svg width="10" height="10"/>'), about(2, 2, 0, 0), box, 1).ok).toBe(false);
+    expect(planScaleAbout(el('<rect width="10" height="10" style="transform: scale(2)"/>'), about(2, 2, 0, 0), 1).ok).toBe(false);
+    expect(planScaleAbout(el('<svg width="10" height="10"/>'), about(2, 2, 0, 0), 1).ok).toBe(false);
   });
 });

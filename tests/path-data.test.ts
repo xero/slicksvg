@@ -530,6 +530,22 @@ describe('Turning and scaling several points together', () => {
     expect(transformPathPoints(arc, [{ segment: 1, slot: 'end' }], turn90, 0)).toBe('M0 0 A10 5 0 0 1 0 20');
   });
 
+  it('should land each point where it will be written, so a relative path does not drift', () => {
+    const turn37 = { a: Math.cos(37 * Math.PI / 180), b: Math.sin(37 * Math.PI / 180), c: -Math.sin(37 * Math.PI / 180), d: Math.cos(37 * Math.PI / 180), e: 0, f: 0 };
+    const d = 'M0 0' + ' l10 3'.repeat(30);
+    const out = transformPathPoints(d, all(d), turn37, 0)!;
+    const ends = (s: string) => pathPoints(parsePathData(s)!).filter(p => p.slot === 'end');
+    const want = ends(d).map(p => ({ x: turn37.a * p.x + turn37.c * p.y, y: turn37.b * p.x + turn37.d * p.y }));
+    ends(out).forEach((p, i) => expect(Math.hypot(p.x - want[i].x, p.y - want[i].y)).toBeLessThan(1));
+  });
+
+  it('should keep an arc said as it was where the transform leaves it so', () => {
+    // a stretch along its minor axis grows that radius, not a quarter turn of the other
+    expect(transformPathPoints('M0 0 A10 5 0 0 1 20 0', all('M0 0 A10 5 0 0 1 20 0'), { a: 1, b: 0, c: 0, d: 3, e: 0, f: 0 }, 0)).toBe('M0 0 A10 15 0 0 1 20 0');
+    // an angle past 180 that comes out the same is left as written
+    expect(transformPathPoints('M0 0 A10 5 200 0 1 20 0', all('M0 0 A10 5 200 0 1 20 0'), { a: 2, b: 0, c: 0, d: 2, e: 0, f: 0 }, 0)).toBe('M0 0 A20 10 200 0 1 40 0');
+  });
+
   it('should turn polygon points', () => {
     expect(transformPolygonPoints('0,0 10,0 10,10', [0, 1, 2], { a: 0, b: 1, c: -1, d: 0, e: 10, f: 0 }, 0)).toBe('10,0 10,10 0,10');
   });

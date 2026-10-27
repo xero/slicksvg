@@ -12,9 +12,9 @@ import {GEOMETRY, SHAPES, plainLength, shapePathData, asPathChanges, conversionB
 import {findSvgTarget, selectionChain, nextInChain, ordinalOf, boxCorners, handleCursor} from './select';
 import {planMove, planResize, planScaleAbout, planRotate, planFlip, parentCenter, axisMaps, scaleMatrix, multiply, invert, applyToVector, applyToPoint, pixelsPerUnit, decimalsFor, roundTo, fmt, placesOf, IDENTITY, type Matrix, type Point, type Rect, type Handle, type EditPlan} from './geometry';
 import {
-	parsePathData, walkPath, pathPoints, pointOnSegment, movePathPoint, movePathPoints, transformPathPoints, insertPathPoint, removePathPoint, retractPathHandle, nearestPathSegment,
+	parsePathData, walkPath, pathPoints, pointOnSegment, movePathPoint, transformPathPoints, insertPathPoint, removePathPoint, retractPathHandle, nearestPathSegment,
 	smoothPathPoint, cornerPathPoint, symmetricPathPoint, anchorKind, curvePathSegment, straightenPathSegment, segmentCurved, handleMode, moveHandle, pullHandles, bendPathSegment, type HandleMode,
-	polygonPoints, movePolygonPoint, movePolygonPoints, transformPolygonPoints, insertPolygonPoint, removePolygonPoint, nearestPolygonEdge,
+	polygonPoints, movePolygonPoint, transformPolygonPoints, insertPolygonPoint, removePolygonPoint, nearestPolygonEdge,
 } from './path-data';
 import {undo, redo, undoDepth, redoDepth, isolateHistory} from '@codemirror/commands';
 import {ZOOM_STEP, zoomAbout, pinchView, wheelZoomFactor, wheelPan, type View, type Pinch} from './view';
@@ -443,9 +443,16 @@ function transformPoints(refs: PointRef[], source: Element, m: Matrix, decimals:
 
 /** A box's corners turned about its middle, as a turn of the things in it shows it. */
 function turnedCorners(corners: Point[], degrees: number): Point[] {
-	const c = {x: corners.reduce((s, p)=>s + p.x, 0) / corners.length, y: corners.reduce((s, p)=>s + p.y, 0) / corners.length};
-	const [cos, sin] = [Math.cos((degrees * Math.PI) / 180), Math.sin((degrees * Math.PI) / 180)];
-	return corners.map(p=>({x: c.x + (p.x - c.x) * cos - (p.y - c.y) * sin, y: c.y + (p.x - c.x) * sin + (p.y - c.y) * cos}));
+	const turn = turnAbout(degrees, {x: corners.reduce((s, p)=>s + p.x, 0) / corners.length, y: corners.reduce((s, p)=>s + p.y, 0) / corners.length});
+	return corners.map(p=>applyToPoint(turn, p.x, p.y));
+}
+
+/** The smallest upright box holding these points. */
+function boundsOf(points: Point[]): Rect {
+	const xs = points.map(p=>p.x);
+	const ys = points.map(p=>p.y);
+	const [l, t] = [Math.min(...xs), Math.min(...ys)];
+	return {x: l, y: t, width: Math.max(...xs) - l, height: Math.max(...ys) - t};
 }
 
 /** A turn by `degrees` about a point on screen, clockwise as the screen runs. */
@@ -454,27 +461,11 @@ function turnAbout(degrees: number, c: Point): Matrix {
 	return {a: cos, b: sin, c: -sin, d: cos, e: c.x - cos * c.x + sin * c.y, f: c.y - sin * c.x - cos * c.y};
 }
 
-/** The attribute changes that move several points of an element by one step. */
+/** The attribute changes that move several points of an element by one
+ * step, which each takes as rounded to what the zoom can show, keeping the
+ * precision it was written with. */
 function movePoints(refs: PointRef[], source: Element, by: Point, decimals: number): Record<string, string | null> | null {
-	const paths = refs.flatMap(ref=>ref.type === 'path' ? [{segment: ref.segment, slot: ref.slot}] : []);
-	if (paths.length > 0) {
-		const d = movePathPoints(source.getAttribute('d') ?? '', paths, by, decimals);
-		return d === null ? null : {d};
-	}
-	const polys = refs.flatMap(ref=>ref.type === 'poly' ? [ref.index] : []);
-	if (polys.length > 0) {
-		const points = movePolygonPoints(source.getAttribute('points') ?? '', polys, by, decimals);
-		return points === null ? null : {points};
-	}
-	// a line's ends each move as they do alone, keeping their written precision
-	const at = (name: string): number=>parseFloat(source.getAttribute(name) ?? '0') || 0;
-	const attrs: Record<string, string | null> = {};
-	for (const ref of refs) {
-		if (ref.type !== 'line') continue;
-		const [nx, ny] = ref.index === 0 ? ['x1', 'y1'] : ['x2', 'y2'];
-		Object.assign(attrs, movePoint(ref, source, {x: at(nx) + roundTo(by.x, decimals), y: at(ny) + roundTo(by.y, decimals)}, decimals));
-	}
-	return attrs;
+	return transformPoints(refs, source, {...IDENTITY, e: roundTo(by.x, decimals), f: roundTo(by.y, decimals)}, decimals);
 }
 
 /** The attribute a point lives in, and the attribute changes that move it.
@@ -1377,16 +1368,16 @@ class slick {
 		const els = this.selectedElements();
 		const primary = els.at(-1) ?? null;
 		const corners = this.drawBox(this.selectBox, primary);
-		// a box for each of the others; handles only when the selection is one element
+		// a box for each of the others
 		const others = els.slice(0, -1);
 		while (this.moreBoxes.length < others.length) this.moreBoxes.push(this.makeBox('select-more'));
-		this.moreBoxes.forEach((box, i)=>this.drawBox(box, others.at(i) ?? null));
+		const drawn = this.moreBoxes.map((box, i)=>this.drawBox(box, others.at(i) ?? null));
 		// point editing ends when its element is no longer the one selection
 		if (this.pointMode && (els.length !== 1 || this.selected[0] !== this.pointMode.ordinal)) this.pointMode = null;
 		const editing = this.pointMode && primary ? primary : null;
 		// several elements, or several points, have one box with handles round them all;
 		// while it turns, it turns with them rather than growing to hold them upright
-		const several = editing ? this.pointBox()?.corners ?? null : els.length > 1 ? this.groupBoxOf(els) : null;
+		const several = editing ? this.pointBox()?.corners ?? null : els.length > 1 ? this.groupBoxOf([...drawn, corners].flatMap(c=>c ?? [])) : null;
 		const turning = this.gesture?.box && this.gesture.drags.length > 0 && this.gesture.mode === 'rotate' ? this.gesture : null;
 		const shown = several && turning?.box ? turnedCorners(turning.box, turning.turn ?? 0) : several;
 		this.drawCorners(this.groupBox, shown);
@@ -1994,14 +1985,11 @@ class slick {
 		this.announceAction(handle ? 'Handle removed' : sel.chosen.length === 1 ? 'Point removed' : `${sel.chosen.length} points removed`);
 	}
 
-	/** The smallest upright box on the overlay holding the boxes of all these
-	 * elements. */
-	private groupBoxOf(els: Element[]): Point[] | null {
-		const all = els.flatMap(el=>boxCorners(el, this.overlay) ?? []);
+	/** The smallest upright box on the overlay holding all these corners. */
+	private groupBoxOf(all: Point[]): Point[] | null {
 		if (all.length === 0) return null;
-		const xs = all.map(p=>p.x);
-		const ys = all.map(p=>p.y);
-		const [l, t, r, b] = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+		const {x: l, y: t, width, height} = boundsOf(all);
+		const [r, b] = [l + width, t + height];
 		return [{x: l, y: t}, {x: r, y: t}, {x: r, y: b}, {x: l, y: b}];
 	}
 
@@ -2012,9 +2000,7 @@ class slick {
 		const sel = this.selectedPoints();
 		const ctm = sel?.el instanceof SVGGraphicsElement ? sel.el.getScreenCTM() : null;
 		if (!sel || sel.chosen.length < 2 || !ctm) return null;
-		const xs = sel.chosen.map(c=>c.point.x);
-		const ys = sel.chosen.map(c=>c.point.y);
-		const local = {x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys)};
+		const local = boundsOf(sel.chosen.map(c=>c.point));
 		const origin = this.overlay.getBoundingClientRect();
 		const on = (x: number, y: number): Point=>{
 			const q = new DOMPoint(x, y).matrixTransform(ctm);
@@ -2316,7 +2302,7 @@ class slick {
 		// several elements turn about the middle of the box round them all,
 		// and scale from its far side, in each one's parent's units
 		const origin = this.overlay.getBoundingClientRect();
-		const box = g.box ? {x: Math.min(...g.box.map(p=>p.x)) + origin.left, y: Math.min(...g.box.map(p=>p.y)) + origin.top, width: Math.max(...g.box.map(p=>p.x)) - Math.min(...g.box.map(p=>p.x)), height: Math.max(...g.box.map(p=>p.y)) - Math.min(...g.box.map(p=>p.y))} : null;
+		const box = g.box ? ((b)=>({...b, x: b.x + origin.left, y: b.y + origin.top}))(boundsOf(g.box)) : null;
 		const middle = box ? {x: box.x + box.width / 2, y: box.y + box.height / 2} : null;
 		if (g.mode === 'point') {
 			const target = g.targets[0];
@@ -2389,8 +2375,6 @@ class slick {
 		return true;
 	}
 
-	/** The gesture follows the pointer. Shift snaps a turn and swaps how a
-	 * handle resizes; Alt lets a curve handle go of the one across its anchor. */
 	/** A turn or a scale of several selected points begins, about the box
 	 * round them. */
 	private beginPointTransform(g: Gesture): boolean {
@@ -2442,6 +2426,8 @@ class slick {
 		return true;
 	}
 
+	/** The gesture follows the pointer. Shift snaps a turn and swaps how a
+	 * handle resizes; Alt lets a curve handle go of the one across its anchor. */
 	private gestureMove(x: number, y: number, shift: boolean, alt = false): void {
 		const g = this.gesture;
 		if (!g) return;
@@ -2484,7 +2470,7 @@ class slick {
 			} else if (d.group && g.mode === 'resize' && g.handle) {
 				// the scale on screen, seen in the element's parent's units
 				const onScreen = scaleMatrix(axisMaps(d.group.box, {handle: g.handle, dx: sx, dy: sy, keepAspect, minSize: 2}));
-				plan = planScaleAbout(d.found.source, multiply(d.toUnits, multiply(onScreen, d.group.toScreen)), d.bbox, d.decimals);
+				plan = planScaleAbout(d.found.source, multiply(d.toUnits, multiply(onScreen, d.group.toScreen)), d.decimals);
 			} else if (d.bend) {
 				const v = applyToVector(d.toUnits, sx, sy);
 				const bent = bendPathSegment(d.bend.d, d.bend.segment, d.bend.t, {x: d.bend.from.x + v.x, y: d.bend.from.y + v.y}, d.decimals);

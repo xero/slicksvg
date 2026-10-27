@@ -498,7 +498,9 @@ function scaledNatively(tag: string, v: Record<string, number[]>, box: Rect, map
 	const next = resizedBox(box, maps);
 	const attrs: Record<string, string | null> = {};
 	const set = (name: string, value: number): void=>{
-		const places = decimals === undefined ? 6 : Math.max(decimals, placesOf(v[name][0]));
+		let places = decimals === undefined ? 6 : Math.max(decimals, placesOf(v[name][0]));
+		// a size the scale left above nothing is not rounded down to it, which would draw nothing
+		if (/^(width|height|r|rx|ry)$/.test(name)) while (value > 0 && roundTo(value, places) === 0 && places < 6) places += 1;
 		if (roundTo(value, places) !== roundTo(v[name][0], places)) attrs[name] = fmt(value, places);
 	};
 	if (tag === 'ellipse' || tag === 'circle') {
@@ -573,7 +575,7 @@ function scaledByTransform(el: Element, list: TransformFn[], maps: {x: AxisMap; 
  * element turned against the group's axes cannot be stretched along them by
  * either, so the scale goes in front of its transform as a matrix.
  */
-export function planScaleAbout(el: Element, m: Matrix, bbox: Rect, decimals: number): EditPlan {
+export function planScaleAbout(el: Element, m: Matrix, decimals: number): EditPlan {
 	const blocked = originBlockedReason(el);
 	if (blocked) return {ok: false, reason: blocked};
 	const list = readTransform(el);

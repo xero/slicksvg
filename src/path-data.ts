@@ -534,7 +534,10 @@ export function transformPathPoints(d: string, points: {segment: number; slot: S
 			return null;
 		}
 	}
-	const through = (q: Point): Point=>applyToPoint(m, q.x, q.y);
+	// each point lands on the precision it will be written at, so a relative
+	// command's numbers, taken between two landed points, add up to where they are
+	const places = Math.max(decimals, sourcePlaces());
+	const through = (q: Point): Point=>((p)=>({x: roundTo(p.x, places), y: roundTo(p.y, places)}))(applyToPoint(m, q.x, q.y));
 	for (const key of moving) {
 		const [at, slot] = key.split(':');
 		const t = plan[Number(at)][0];
@@ -581,9 +584,20 @@ function arcThrough(seg: Segment, m: Matrix): number[] {
 	const nrx = Math.abs(Q + R);
 	const nry = Math.abs(Q - R);
 	const circle = Math.abs(nrx - nry) < 1e-9 * Math.max(nrx, 1);
-	const degrees = circle ? deg : ((roundTo((turn * 180) / Math.PI, 9) % 180) + 180) % 180;
 	const mirrored = m.a * m.d - m.b * m.c < 0;
-	return [nrx, nry, degrees, large, mirrored ? 1 - sweep : sweep];
+	const flags = [large, mirrored ? 1 - sweep : sweep];
+	if (circle) return [nrx, nry, deg, ...flags];
+	// the same ellipse can be said with its radii the other way round and its
+	// axis a quarter turn on: the one said is the one whose x axis lies nearest
+	// where the transform took the written one, so a scale along that axis
+	// changes one radius and a turn changes the angle, and an angle that
+	// comes out as it was is left as written
+	const norm = (a: number): number=>((roundTo(a, 9) % 180) + 180) % 180;
+	const apart = (a: number, b: number): number=>((d)=>Math.min(d, 180 - d))(Math.abs(norm(a) - norm(b)));
+	const axis = (Math.atan2(m.b * Math.cos(phi) + m.d * Math.sin(phi), m.a * Math.cos(phi) + m.c * Math.sin(phi)) * 180) / Math.PI;
+	const t = (turn * 180) / Math.PI;
+	const [rx2, ry2, t2] = apart(t + 90, axis) < apart(t, axis) ? [nry, nrx, t + 90] : [nrx, nry, t];
+	return [rx2, ry2, apart(t2, deg) < 1e-7 ? deg : norm(t2), ...flags];
 }
 
 const lerp = (a: Point, b: Point, t: number): Point=>({x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t});
@@ -1245,19 +1259,7 @@ export function movePolygonPoint(value: string, index: number, to: Point, decima
 
 /** Move several points of a polygon or polyline by one step together. */
 export function movePolygonPoints(value: string, indices: number[], by: Point, decimals: number): string | null {
-	const tokens = parsePoints(value);
-	if (!tokens) return null;
-	source = value;
-	const dx = roundTo(by.x, decimals);
-	const dy = roundTo(by.y, decimals);
-	const splices: Splice[] = [];
-	for (const index of new Set(indices)) {
-		const x = tokens.at(2 * index);
-		const y = tokens.at(2 * index + 1);
-		if (index < 0 || !x || !y) return null;
-		splices.push({start: x.start, end: x.end, text: num(x.value + dx, x, decimals)}, {start: y.start, end: y.end, text: num(y.value + dy, y, decimals)});
-	}
-	return splice(value, splices);
+	return transformPolygonPoints(value, indices, {a: 1, b: 0, c: 0, d: 1, e: roundTo(by.x, decimals), f: roundTo(by.y, decimals)}, decimals);
 }
 
 /** Put several polygon or polyline points through one transform. */
