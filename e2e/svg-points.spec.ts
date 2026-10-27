@@ -529,6 +529,45 @@ test.describe('SVG Editor Point Editing', () => {
     expect(await getSource(page)).toBe(FIXTURE);
   });
 
+  test('should turn and flip several picked points about the middle of their box from the toolbar', async ({ page }) => {
+    // the box round the two right-hand points has its middle at 100,62.5
+    await setContent(page, FIXTURE.replace('L100 100 Z', 'L100 105 Z'));
+    await page.locator('.svg-container path').click();
+    await page.keyboard.press('Enter');
+    await page.locator('#point-several').click();
+    for (const i of [1, 2]) await page.locator(`.points [data-point="${i}"]`).click();
+
+    await page.locator('#rotate').click();
+    expect(await getSource(page)).toContain('d="M20 20 L142.5 62.5 L57.5 62.5 Z"');
+    await expect(page.locator('#test-announcements')).toHaveText('2 points turned 90 degrees');
+    await expect(page.locator('.points rect.selected')).toHaveCount(2);
+    // the middle's half is kept, so four quarter turns come back to the start
+    for (let i = 0; i < 3; i++) await page.locator('#rotate').click();
+    expect(await getSource(page)).toContain('d="M20 20 L100 20 L100 105 Z"');
+
+    await page.locator('#flipx').click();
+    expect(await getSource(page)).toContain('d="M20 20 L100 20 L100 105 Z"');
+    await page.locator('#flipy').click();
+    expect(await getSource(page)).toContain('d="M20 20 L100 105 L100 20 Z"');
+    await expect(page.locator('#test-announcements')).toHaveText('2 points flipped vertically');
+    await expect(page.locator('.points rect.selected')).toHaveCount(2);
+
+    // a polygon's points too, and with one point picked the whole shape turns
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+    await page.locator('.svg-container polygon').click();
+    await page.keyboard.press('Enter');
+    await page.locator('#point-several').click();
+    for (const i of [0, 2]) await page.locator(`.points [data-point="${i}"]`).click();
+    await page.locator('#flipx').click();
+    expect(await getSource(page)).toContain('points="150,120 180,120 120,180"');
+    await page.locator('.points [data-point="0"]').click();
+    await page.locator('#point-several').click();
+    await page.locator('.points [data-point="0"]').click();
+    await page.locator('#rotate').click();
+    expect(await getSource(page)).toContain('points="150,120 180,120 120,180" fill="#aa0000" transform="rotate(90 150 150)"');
+  });
+
   test('should keep a line end\'s written precision when nudged', async ({ page }) => {
     await setContent(page, FIXTURE.replace('<path id="p" d="M20 20 L100 20 L100 100 Z" fill="#6291e0"/>', '<line id="ln" x1="10.5" y1="40" x2="100" y2="40" stroke="#6291e0" stroke-width="8"/>'));
     // a line has no area, so Playwright will not click it by locator; aim at its stroke

@@ -623,7 +623,10 @@ export function parentCenter(el: Element, bbox: Rect): Point | null {
  * a `rotate(a cx cy)` in front of its transform, which is where a turn about
  * a point in the parent's space belongs. A leading rotate about the same
  * centre, from an earlier turn, is updated rather than stacked, and a full
- * circle leaves nothing behind.
+ * circle leaves nothing behind. The same centre is the same to within a unit
+ * of the last place it is written to: a centre that was rounded as it was
+ * written is a little off the true one, and the turn about it moves the
+ * true one by as much again.
  */
 export function planRotate(el: Element, degrees: number, center: Point, decimals = 2): EditPlan {
 	const blocked = originBlockedReason(el);
@@ -632,14 +635,17 @@ export function planRotate(el: Element, degrees: number, center: Point, decimals
 	if (!list) return {ok: false, reason: UNREADABLE_TRANSFORM};
 	const value = el.getAttribute('transform') ?? '';
 	const first = list.at(0);
+	const near = (a: number, b: number): boolean=>Math.abs(a - b) <= 10 ** -decimals + 1e-9;
 	let rest = value.trim();
 	let angle = degrees;
-	if (first?.name === 'rotate' && first.args.length === 3 && same(first.args[1], center.x) && same(first.args[2], center.y)) {
+	let about = {x: fmt(center.x, decimals), y: fmt(center.y, decimals)};
+	if (first?.name === 'rotate' && first.args.length === 3 && near(first.args[1], center.x) && near(first.args[2], center.y)) {
 		angle += first.args[0];
 		rest = afterFunction(value, first.end);
+		about = {x: fmt(first.args[1]), y: fmt(first.args[2])};
 	}
 	angle = roundTo(((angle % 360) + 360) % 360, decimals);
-	const turn = angle === 0 ? '' : `rotate(${fmt(angle, decimals)} ${fmt(center.x, decimals)} ${fmt(center.y, decimals)})`;
+	const turn = angle === 0 ? '' : `rotate(${fmt(angle, decimals)} ${about.x} ${about.y})`;
 	const next = [turn, rest].filter(Boolean).join(' ');
 	if (next === value.trim()) return {ok: true, attrs: {}};
 	return {ok: true, attrs: {transform: next || null}};
@@ -651,22 +657,32 @@ export function planRotate(el: Element, degrees: number, center: Point, decimals
  * its transform. Mirroring across the same line again takes it back off.
  */
 export function planFlip(el: Element, axis: 'x' | 'y', center: Point, decimals = 2): EditPlan {
+	return planMirror(el, axis === 'x'
+		? {a: -1, b: 0, c: 0, d: 1, e: 2 * center.x, f: 0}
+		: {a: 1, b: 0, c: 0, d: -1, e: 0, f: 2 * center.y}, decimals);
+}
+
+/**
+ * Mirror an element by `m`, a reflection in its parent's units, which may be
+ * across a slanted line where the parent is turned against the screen: a
+ * matrix in front of its transform, its slant to six places and its shift to
+ * `decimals`. Mirroring by the same matrix again takes it back off.
+ */
+export function planMirror(el: Element, m: Matrix, decimals = 2): EditPlan {
 	const blocked = originBlockedReason(el);
 	if (blocked) return {ok: false, reason: blocked};
 	const list = readTransform(el);
 	if (!list) return {ok: false, reason: UNREADABLE_TRANSFORM};
 	const value = el.getAttribute('transform') ?? '';
-	const mirror: Matrix = axis === 'x'
-		? {a: -1, b: 0, c: 0, d: 1, e: roundTo(2 * center.x, decimals), f: 0}
-		: {a: 1, b: 0, c: 0, d: -1, e: 0, f: roundTo(2 * center.y, decimals)};
+	const written = [...[m.a, m.b, m.c, m.d].map(n=>roundTo(n, 6)), roundTo(m.e, decimals), roundTo(m.f, decimals)];
 	const first = list.at(0);
 	if (first?.name === 'matrix') {
-		const m = fnMatrix(first);
-		if (same(m.a, mirror.a) && same(m.b, mirror.b) && same(m.c, mirror.c) && same(m.d, mirror.d) && same(m.e, mirror.e) && same(m.f, mirror.f)) {
+		const at = fnMatrix(first);
+		if ([at.a, at.b, at.c, at.d, at.e, at.f].every((n, i)=>same(n, written[i]))) {
 			const rest = afterFunction(value, first.end);
 			return {ok: true, attrs: {transform: rest || null}};
 		}
 	}
-	const text = `matrix(${[mirror.a, mirror.b, mirror.c, mirror.d, mirror.e, mirror.f].map(n=>fmt(n, decimals)).join(' ')})`;
+	const text = `matrix(${written.join(' ')})`;
 	return {ok: true, attrs: {transform: [text, value.trim()].filter(Boolean).join(' ')}};
 }

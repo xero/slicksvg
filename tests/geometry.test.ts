@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   parseTransform, listMatrix, multiply, invert, applyToPoint, decimalsFor, fmt, shifted,
-  planMove, planResize, planScaleAbout, axisMaps, resizedBox, planRotate, planFlip, parentCenter,
+  planMove, planResize, planScaleAbout, axisMaps, resizedBox, planRotate, planFlip, planMirror, parentCenter,
   type ResizeRequest, type Rect,
 } from '../src/geometry';
 
@@ -292,6 +292,16 @@ describe('planRotate', () => {
 
   it('should stack in front of a rotate about a different centre', () => {
     expect(planRotate(el('<rect transform="rotate(90 10 10)"/>'), 90, c)).toEqual({ ok: true, attrs: { transform: 'rotate(90 50 50) rotate(90 10 10)' } });
+    expect(planRotate(el('<rect transform="rotate(90 50.02 50)"/>'), 90, c)).toEqual({ ok: true, attrs: { transform: 'rotate(90 50 50) rotate(90 50.02 50)' } });
+  });
+
+  it('should take a centre rounded as it was written, and moved by its own turn, as the same centre', () => {
+    // a box centred on 17.125, 10.125 turned about 17.13, 10.13 has its centre at 17.135, 10.125
+    expect(planRotate(el('<rect transform="rotate(90 17.13 10.13)"/>'), 90, { x: 17.135, y: 10.125 }))
+      .toEqual({ ok: true, attrs: { transform: 'rotate(180 17.13 10.13)' } });
+    // the centre is kept as it was written, to the places it was written to
+    expect(planRotate(el('<rect transform="rotate(90 17.1234 10)"/>'), 90, { x: 17.12, y: 10 }))
+      .toEqual({ ok: true, attrs: { transform: 'rotate(180 17.1234 10)' } });
   });
 
   it('should write the centre and angle to the given precision', () => {
@@ -318,6 +328,15 @@ describe('planFlip', () => {
     expect(planFlip(el('<rect transform="matrix(-1 0 0 1 100 0) scale(2)"/>'), 'x', c)).toEqual({ ok: true, attrs: { transform: 'scale(2)' } });
     expect(planFlip(el('<rect transform="matrix(-1 0 0 1 100 0)"/>'), 'y', c))
       .toEqual({ ok: true, attrs: { transform: 'matrix(1 0 0 -1 0 100) matrix(-1 0 0 1 100 0)' } });
+  });
+
+  it('should mirror across a slanted line, and take that mirror back off', () => {
+    // across the line at 30 degrees through 10, 0, as a flip on screen is seen in a parent turned 30 degrees
+    const [cos, sin] = [Math.cos(Math.PI / 3), Math.sin(Math.PI / 3)];
+    const m = { a: cos, b: sin, c: sin, d: -cos, e: 10 - cos * 10, f: -sin * 10 };
+    expect(planMirror(el('<rect/>'), m)).toEqual({ ok: true, attrs: { transform: 'matrix(0.5 0.866025 0.866025 -0.5 5 -8.66)' } });
+    expect(planMirror(el('<rect transform="matrix(0.5 0.866025 0.866025 -0.5 5 -8.66) scale(2)"/>'), m)).toEqual({ ok: true, attrs: { transform: 'scale(2)' } });
+    expect(planMirror(el('<rect style="transform: scale(2)"/>'), m).ok).toBe(false);
   });
 
   it('should keep the mirror a true mirror: the centre stays put', () => {

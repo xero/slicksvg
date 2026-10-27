@@ -16,6 +16,14 @@ async function setContent(page: Page, content: string) {
   }, content);
 }
 
+/** Where a point in an element's own units is on the page. */
+const onPage = (page: Page, selector: string, x: number, y: number) =>
+  page.evaluate(([selector, x, y]) => {
+    const el = document.querySelector(selector) as SVGGraphicsElement;
+    const p = new DOMPoint(x, y).matrixTransform(el.getScreenCTM()!);
+    return { x: p.x, y: p.y };
+  }, [selector, x, y] as [string, number, number]);
+
 /** Press at a locator's centre (or an offset from it), travel, release. */
 async function drag(page: Page, from: Locator, dx: number, dy: number, opts: { shift?: boolean; offset?: { x: number; y: number }; cancel?: boolean } = {}) {
   const box = (await from.boundingBox())!;
@@ -272,9 +280,11 @@ test.describe('SVG Editor Preview Editing', () => {
     expect(await getSource(page)).toBe(FIXTURE.replace('x="20"', 'x="21"').replace('cx="150"', 'cx="151"'));
     await page.locator('#undo').click();
 
+    // the two turn as one, about the middle of the box round them both
     await page.locator('#rotate').click();
-    expect(await getSource(page)).toContain('fill="#6291e0" transform="rotate(90 50 50)"');
-    expect(await getSource(page)).toContain('fill="#aa0000" transform="rotate(90 150 150)"');
+    expect(await getSource(page)).toContain('fill="#6291e0" transform="rotate(90 100 100)"');
+    expect(await getSource(page)).toContain('fill="#aa0000" transform="rotate(90 100 100)"');
+    await expect(page.locator('#test-announcements')).toHaveText('2 elements rotated 90 degrees');
     await page.locator('#undo').click();
 
     await page.locator('.svg-preview-wrapper').focus();
@@ -282,6 +292,51 @@ test.describe('SVG Editor Preview Editing', () => {
     expect(await getSource(page)).toBe('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">\n</svg>');
     await page.locator('#undo').click();
     expect(await getSource(page)).toBe(FIXTURE);
+  });
+
+  test('should flip a multiple selection together across the middle of the box round them', async ({ page }) => {
+    await page.locator('.svg-container rect').click();
+    await page.locator('.svg-container circle').click({ modifiers: ['ControlOrMeta'] });
+    // the box runs from 20,20 to 180,180: the two change places across 100
+    await page.locator('#flipx').click();
+    expect(await getSource(page)).toContain('fill="#6291e0" transform="matrix(-1 0 0 1 200 0)"');
+    expect(await getSource(page)).toContain('fill="#aa0000" transform="matrix(-1 0 0 1 200 0)"');
+    await expect(page.locator('#test-announcements')).toHaveText('2 elements flipped horizontally');
+    const box = (await page.locator('.svg-container rect').boundingBox())!;
+    const svg = (await page.locator('.svg-container svg').boundingBox())!;
+    expect(box.x - svg.x).toBeCloseTo(120, 0);
+    // the same flip again takes the mirrors back off
+    await page.locator('#flipx').click();
+    expect(await getSource(page)).toBe(FIXTURE);
+
+    await page.locator('#flipy').click();
+    expect(await getSource(page)).toContain('fill="#6291e0" transform="matrix(1 0 0 -1 0 200)"');
+    expect(await getSource(page)).toContain('fill="#aa0000" transform="matrix(1 0 0 -1 0 200)"');
+    await page.locator('#undo').click();
+    expect(await getSource(page)).toBe(FIXTURE);
+  });
+
+  test('should turn and flip the selection as the screen shows it in a drawing turned or flipped itself', async ({ page }) => {
+    // the drawing is turned a quarter, so the rect's level is upright on screen
+    await setContent(page, FIXTURE.replace('viewBox="0 0 200 200"', 'viewBox="0 0 200 200" transform="rotate(90)"'));
+    await page.locator('.svg-container rect').click();
+    const [corner, middle] = [await onPage(page, '#box', 20, 20), await onPage(page, '#box', 50, 50)];
+    await page.locator('#flipx').click();
+    expect(await getSource(page)).toContain('fill="#6291e0" transform="matrix(1 0 0 -1 0 100)"');
+    // flipped across the upright line through its middle on screen
+    const flipped = await onPage(page, '#box', 20, 20);
+    expect(flipped.x).toBeCloseTo(2 * middle.x - corner.x, 1);
+    expect(flipped.y).toBeCloseTo(corner.y, 1);
+
+    // a mirrored drawing turns the other way round in its own units, and clockwise on screen
+    await setContent(page, FIXTURE.replace('viewBox="0 0 200 200"', 'viewBox="0 0 200 200" transform="matrix(-1 0 0 1 0 0)"'));
+    await page.locator('.svg-container rect').click();
+    const [start, centre] = [await onPage(page, '#box', 20, 20), await onPage(page, '#box', 50, 50)];
+    await page.locator('#rotate').click();
+    expect(await getSource(page)).toContain('fill="#6291e0" transform="rotate(270 50 50)"');
+    const turned = await onPage(page, '#box', 20, 20);
+    expect(turned.x).toBeCloseTo(centre.x - (start.y - centre.y), 1);
+    expect(turned.y).toBeCloseTo(centre.y + (start.x - centre.x), 1);
   });
 
   test('should move a group once when one of its children is selected with it', async ({ page }) => {

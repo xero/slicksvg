@@ -10,7 +10,7 @@ import {findElementAtCursor, type ElementRef} from './xray';
 import {startTags, readAttribute, attributesOf, planAttributeEdits, applyChanges, stampSource, parseSource, elementExtent, removalRange, duplicateInsertion, SOURCE_ATTR, type StartTag, type TextChange} from './source-map';
 import {GEOMETRY, SHAPES, plainLength, shapePathData, asPathChanges, conversionBlocked, type Length, type ShapePath} from './shapes';
 import {findSvgTarget, selectionChain, nextInChain, ordinalOf, boxCorners, handleCursor} from './select';
-import {planMove, planResize, planScaleAbout, planRotate, planFlip, parentCenter, axisMaps, scaleMatrix, multiply, invert, applyToVector, applyToPoint, pixelsPerUnit, decimalsFor, roundTo, fmt, placesOf, IDENTITY, type Matrix, type Point, type Rect, type Handle, type EditPlan} from './geometry';
+import {planMove, planResize, planScaleAbout, planRotate, planMirror, parentCenter, axisMaps, scaleMatrix, multiply, invert, applyToVector, applyToPoint, pixelsPerUnit, decimalsFor, roundTo, fmt, placesOf, IDENTITY, type Matrix, type Point, type Rect, type Handle, type EditPlan} from './geometry';
 import {
 	parsePathData, walkPath, pathPoints, pointOnSegment, movePathPoint, transformPathPoints, insertPathPoint, removePathPoint, retractPathHandle, nearestPathSegment,
 	smoothPathPoint, cornerPathPoint, symmetricPathPoint, anchorKind, curvePathSegment, straightenPathSegment, segmentCurved, handleMode, moveHandle, pullHandles, bendPathSegment, type HandleMode,
@@ -459,6 +459,20 @@ function boundsOf(points: Point[]): Rect {
 function turnAbout(degrees: number, c: Point): Matrix {
 	const [cos, sin] = [Math.cos((degrees * Math.PI) / 180), Math.sin((degrees * Math.PI) / 180)];
 	return {a: cos, b: sin, c: -sin, d: cos, e: c.x - cos * c.x + sin * c.y, f: c.y - sin * c.x - cos * c.y};
+}
+
+/** A mirror across the vertical (axis "x") or horizontal (axis "y") line through a point on screen. */
+function mirrorAbout(axis: 'x' | 'y', c: Point): Matrix {
+	return axis === 'x' ? {a: -1, b: 0, c: 0, d: 1, e: 2 * c.x, f: 0} : {a: 1, b: 0, c: 0, d: -1, e: 0, f: 2 * c.y};
+}
+
+/** A transform's slant, less the float noise that took it off whole
+ * numbers, with the shift that keeps `c` where it is. A quarter turn or a
+ * flip seen in upright units is then exact. */
+function holding(m: Matrix, c: Point): Matrix {
+	const whole = (n: number): number=>Math.abs(n - Math.round(n)) < 1e-9 ? Math.round(n) : n;
+	const [a, b, cc, d] = [m.a, m.b, m.c, m.d].map(whole);
+	return {a, b, c: cc, d, e: c.x - a * c.x - cc * c.y, f: c.y - b * c.x - d * c.y};
 }
 
 /** The attribute changes that move several points of an element by one
@@ -2265,7 +2279,7 @@ class slick {
 
 	/** A plan for each element, all made against one text of the source;
 	 * null, with a message, when any element cannot be edited. */
-	private plansFor(els: Element[], plan: (source: Element, bbox: Rect) => EditPlan): {sourceText: string; plans: Planned[]} | null {
+	private plansFor(els: Element[], plan: (source: Element, bbox: Rect, el: Element) => EditPlan): {sourceText: string; plans: Planned[]} | null {
 		const parsed = this.parseOnce();
 		if (!parsed) return null;
 		const sourceText = parsed.sourceText;
@@ -2274,7 +2288,7 @@ class slick {
 			const found = this.sourceFor(el, parsed);
 			const bbox = bboxOf(el);
 			if (!found || !bbox) return null;
-			const made = plan(found.source, bbox);
+			const made = plan(found.source, bbox, el);
 			if (!made.ok) {
 				this.announceError(made.reason);
 				return null;
@@ -2632,29 +2646,84 @@ class slick {
 		if (made) this.commitChanges(made.sourceText, made.plans, undefined, false);
 	}
 
-	/** Turn each selected element by `degrees` about its own centre. */
+	/** Turn the selection clockwise by `degrees`, as the screen shows it,
+	 * about the middle of the box round it: several selected points about
+	 * theirs, and several elements about the one round them all, so they
+	 * turn as one. */
 	private turnSelection(degrees: number): void {
+		const turn = (middle: Point): Matrix=>turnAbout(degrees, middle);
+		if (this.transformSelectedPoints(turn, `turned ${degrees} degrees`)) return;
 		const els = this.selectedElements();
-		const made = this.plansFor(els, (source, bbox)=>{
-			const center = parentCenter(source, bbox);
-			return center ? planRotate(source, degrees, center) : {ok: false, reason: 'This element\'s transform could not be read, so it cannot be rotated here.'};
-		});
+		// the turn as it runs in each one's parent, which a flip there runs the other way round
+		const made = this.plansAbout(els, turn, (source, m, center)=>planRotate(source, (Math.atan2(m.b, m.a) * 180) / Math.PI, center));
 		if (made && this.commitChanges(made.sourceText, made.plans, 'slick.rotate')) {
 			this.announceAction(els.length > 1 ? `${els.length} elements rotated ${degrees} degrees` : `${els[0].tagName.toLowerCase()} rotated ${degrees} degrees`);
 		}
 	}
 
-	/** Mirror each selected element across the line through its own centre. */
+	/** Mirror the selection across the upright (axis "x") or level (axis
+	 * "y") line, as the screen shows it, through the middle of the box round
+	 * it, as a turn goes about it. */
 	private flipSelection(axis: 'x' | 'y'): void {
+		const way = axis === 'x' ? 'horizontally' : 'vertically';
+		const mirror = (middle: Point): Matrix=>mirrorAbout(axis, middle);
+		if (this.transformSelectedPoints(mirror, `flipped ${way}`)) return;
 		const els = this.selectedElements();
-		const made = this.plansFor(els, (source, bbox)=>{
-			const center = parentCenter(source, bbox);
-			return center ? planFlip(source, axis, center) : {ok: false, reason: 'This element\'s transform could not be read, so it cannot be flipped here.'};
-		});
+		const made = this.plansAbout(els, mirror, (source, m)=>planMirror(source, m));
 		if (made && this.commitChanges(made.sourceText, made.plans, 'slick.flip')) {
-			const way = axis === 'x' ? 'horizontally' : 'vertically';
 			this.announceAction(els.length > 1 ? `${els.length} elements flipped ${way}` : `${els[0].tagName.toLowerCase()} flipped ${way}`);
 		}
+	}
+
+	/**
+	 * A plan for each element from one transform on screen about the middle
+	 * of the box round them all. `plan` is given it as it runs in that
+	 * element's parent's units, about the point it holds there: for one
+	 * element its own centre, which its box gives exactly.
+	 */
+	private plansAbout(els: Element[], onScreen: (middle: Point) => Matrix, plan: (source: Element, m: Matrix, center: Point) => EditPlan): {sourceText: string; plans: Planned[]} | null {
+		const corners = els.flatMap(el=>boxCorners(el, this.overlay) ?? []);
+		if (corners.length === 0) return null;
+		const origin = this.overlay.getBoundingClientRect();
+		const box = boundsOf(corners);
+		const middle = {x: origin.left + box.x + box.width / 2, y: origin.top + box.y + box.height / 2};
+		const one = topLevelOf(els).length === 1;
+		return this.plansFor(els, (source, bbox, el)=>{
+			const ctm = el.parentElement instanceof SVGGraphicsElement ? el.parentElement.getScreenCTM() : null;
+			const toUnits = ctm ? invert(toMatrix(ctm)) : null;
+			const center = one ? parentCenter(source, bbox) : toUnits && applyToPoint(toUnits, middle.x, middle.y);
+			if (!ctm || !toUnits || !center) return {ok: false, reason: 'This element\'s transform could not be read, so it cannot be turned or flipped here.'};
+			return plan(source, holding(multiply(toUnits, multiply(onScreen(middle), toMatrix(ctm))), center), center);
+		});
+	}
+
+	/** Put two or more selected points through a transform on screen about
+	 * the middle of the box round them, as one step, and keep them selected.
+	 * False when there are not several to transform. */
+	private transformSelectedPoints(onScreen: (middle: Point) => Matrix, done: string): boolean {
+		const sel = this.selectedPoints();
+		const box = this.pointBox();
+		const ctm = sel?.el instanceof SVGGraphicsElement ? sel.el.getScreenCTM() : null;
+		const toUnits = ctm ? invert(toMatrix(ctm)) : null;
+		if (!sel || sel.chosen.length < 2 || !box || !ctm || !toUnits) return false;
+		const found = this.sourceFor(sel.el);
+		if (!found) return true;
+		const center = {x: box.local.x + box.local.width / 2, y: box.local.y + box.local.height / 2};
+		const toScreen = toMatrix(ctm);
+		const m = holding(multiply(toUnits, multiply(onScreen(applyToPoint(toScreen, center.x, center.y)), toScreen)), center);
+		// a quarter turn or a flip in upright units lands on the places of the
+		// middle, which are then kept, so that four turns come back to the start
+		const exact = [m.a, m.b, m.c, m.d].every(Number.isInteger);
+		const decimals = Math.max(this.decimalsAt(sel.el), exact ? Math.max(placesOf(roundTo(center.x, 6)), placesOf(roundTo(center.y, 6))) : 0);
+		const attrs = transformPoints(sel.chosen.map(c=>c.point.ref), found.source, m, decimals);
+		if (!attrs) {
+			this.announceError('These points could not be moved.');
+			return true;
+		}
+		if (!this.commitChanges(found.sourceText, [{tag: found.tag, attrs}], 'slick.point')) return true;
+		this.selectPointsAt(found.tag.ordinal, sel.chosen.map(c=>({...applyToPoint(m, c.point.x, c.point.y), kind: c.point.kind, index: c.index})), 10 ** -decimals);
+		this.announceAction(`${sel.chosen.length} points ${done}`);
+		return true;
 	}
 
 	/** Put a copy of the primary selection right after it in the code,
