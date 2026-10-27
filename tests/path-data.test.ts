@@ -308,6 +308,8 @@ describe('Smooth and corner anchors', () => {
     expect(cornerPathPoint('M0 0 C10 0 23 -7 30 0 C37 7 30 20 30 30', 1, 0)).toBe('M0 0 L30 0 L30 30');
     expect(cornerPathPoint('M0 0 C0 10 10 10 10 0 S20 -10 20 0', 1, 0)).toBe('M0 0 C0 10 10 0 10 0 S20 -10 20 0');
     expect(cornerPathPoint('M0 0 L10 0 L10 10', 1, 0)).toBeNull();
+    // a side whose handle is already in is left as it was written
+    expect(cornerPathPoint('M0 0 Q10 0 10 0 C10 10 20 10 20 0', 1, 0)).toBe('M0 0 Q10 0 10 0 C10 0 20 10 20 0');
   });
 
   it('should tell a smooth anchor from a corner', () => {
@@ -318,6 +320,8 @@ describe('Smooth and corner anchors', () => {
     expect(anchorKind('M0 0 L10 0 C20 0 20 10 20 20', 1)).toBe('smooth');
     expect(anchorKind('M0 0 L10 0', 1)).toBeNull();
     expect(anchorKind('M0 0 C4 -9 20 0 30 0 L30 30 C20 20 -5 13 0 0 Z', 0)).toBe('smooth');
+    // a subpath that follows a Z with no M of its own closes with its own Z
+    expect(anchorKind('M0 0 L10 0 L10 10 Z L-10 0 L-10 -10 Z', 5)).toBe('corner');
   });
 });
 
@@ -372,6 +376,13 @@ describe('Handle modes', () => {
     expect(moveHandle(d, { segment: 1, slot: 'cp2' }, { x: 4, y: 4 }, 'independent', 0)).toBe('M0 0 C0 10 4 4 10 0 C10 -10 20 -10 20 0');
   });
 
+  it('should keep a T reflecting the quadratic before it, unless let go', () => {
+    const d = 'M0 0 Q5 10 10 0 T20 0';
+    expect(handleMode(d, { segment: 1, slot: 'cp1' })).toBe('mirrored');
+    expect(moveHandle(d, { segment: 1, slot: 'cp1' }, { x: 5, y: 20 }, 'mirrored', 0)).toBe('M0 0 Q5 20 10 0 T20 0');
+    expect(moveHandle(d, { segment: 1, slot: 'cp1' }, { x: 5, y: 20 }, 'independent', 0)).toBe('M0 0 Q5 20 10 0 Q15 -10 20 0');
+  });
+
   it('should go round a closed subpath to the handle across its first point', () => {
     const d = 'M0 0 C0 -10 10 -10 10 0 C10 10 0 10 0 0 Z';
     expect(handleMode(d, { segment: 1, slot: 'cp1' })).toBe('mirrored');
@@ -384,6 +395,8 @@ describe('Polygons as paths', () => {
     expect(pointsAsPathData('0,0 10,0 10,10', true)).toBe('M0,0 10,0 10,10Z');
     expect(pointsAsPathData(' 0 0 10 0 ', false)).toBe('M0 0 10 0');
     expect(pointsAsPathData('0,0 10', true)).toBeNull();
+    // a separator at either end would stand against a letter
+    expect(pointsAsPathData(',0,0 10,0 10,10,', true)).toBe('M0,0 10,0 10,10Z');
   });
 });
 
@@ -415,6 +428,10 @@ describe('Bending a segment', () => {
   it('should keep a smooth join smooth, and leave a corner be', () => {
     expect(bendPathSegment('M0 0 C0 10 10 10 10 0 C10 -10 20 -10 20 0', 1, 0.5, { x: 5, y: 12 }, 1)).toBe('M0 0 C0 16 10 16 10 0 C10 -16 20 -10 20 0');
     expect(bendPathSegment('M0 0 C0 10 10 10 10 0 C20 0 20 -10 20 0', 1, 0.5, { x: 5, y: 12 }, 1)).toBe('M0 0 C0 16 10 16 10 0 C20 0 20 -10 20 0');
+    // a closing line ends on the subpath's first point, whose join stays smooth too
+    const bent = bendPathSegment('M0 0 C-5 0 -5 10 5 10 L10 0 Z', 3, 0.5, { x: 5, y: -5 }, 0);
+    expect(bent).toBe('M0 0 C-2 4 -5 10 5 10 L10 0 C7 -7 3 -7 0 0 Z');
+    expect(anchorKind(bent ?? '', 0)).toBe('smooth');
   });
 
   it('should refuse an arc and an M', () => {

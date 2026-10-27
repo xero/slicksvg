@@ -335,6 +335,7 @@ class LiveEdit implements Live {
  */
 class LivePath implements Live {
 	private stand: SVGPathElement | null = null;
+	private display = '';
 	constructor(private el: SVGElement) {}
 
 	show(attrs: Record<string, string | null>): void {
@@ -342,6 +343,7 @@ class LivePath implements Live {
 			this.stand = document.createElementNS(SVG_NS, 'path');
 			for (const attr of Array.from(this.el.attributes)) if (attr.name !== 'points') this.stand.setAttribute(attr.name, attr.value);
 			this.el.before(this.stand);
+			this.display = this.el.style.display;
 			this.el.style.display = 'none';
 		}
 		this.stand.setAttribute('d', attrs.d ?? '');
@@ -350,7 +352,7 @@ class LivePath implements Live {
 	revert(): void {
 		this.stand?.remove();
 		this.stand = null;
-		this.el.style.display = '';
+		this.el.style.display = this.display;
 	}
 }
 
@@ -1277,7 +1279,8 @@ class slick {
 		const segments = data && segment !== null ? parsePathData(data.d) : null;
 		const curved = data && segment !== null ? segmentCurved(data.d, segment) : false;
 		const curve = this.get('point-curve');
-		curve.toggleAttribute('disabled', !segments || segment === null || /^[ma]$/i.test(segments[segment].letter));
+		// an arc cannot be curved, but it can be made straight
+		curve.toggleAttribute('disabled', !segments || segment === null || /^m$/i.test(segments[segment].letter));
 		curve.setAttribute('aria-pressed', curved ? 'true' : 'false');
 		this.get('point-add').toggleAttribute('disabled', !segments || segment === null || /^[ma]$/i.test(segments[segment].letter));
 	}
@@ -1316,15 +1319,22 @@ class slick {
 				return {x: q.x - origin.left, y: q.y - origin.top};
 			};
 			const size = HANDLE_SIZE - 1;
+			// handles pulled out of an anchor come before it in the list, so once
+			// the drag is under way the anchor is found by where it is
+			const pull = this.gesture?.pull ? this.gesture : null;
+			const from = pull?.drags[0]?.point?.from ?? null;
+			const held = (point: EditPoint, i: number): boolean=>from
+				? point.kind === 'anchor' && Math.hypot(point.x - from.x, point.y - from.y) < 1e-6
+				: pull?.point === i;
 			points.forEach((point, i)=>{
 				const at = onScreen(point);
 				for (const anchor of point.anchors) {
 					const a = onScreen(anchor);
 					shapes.push({tag: 'line', attrs: {x1: `${at.x}`, y1: `${at.y}`, x2: `${a.x}`, y2: `${a.y}`}, selected: false, pulling: false});
 				}
-				const selected = this.pointMode?.selected === i;
+				const selected = from ? held(point, i) : this.pointMode?.selected === i;
 				// an anchor a finger is holding shows that handles will come out of it
-				const pulling = this.gesture?.pull === true && this.gesture.point === i;
+				const pulling = pull !== null && held(point, i);
 				shapes.push(point.kind === 'anchor'
 					? {tag: 'rect', attrs: {x: `${at.x - size / 2}`, y: `${at.y - size / 2}`, width: `${size}`, height: `${size}`, 'data-point': `${i}`}, selected, pulling}
 					: {tag: 'circle', attrs: {cx: `${at.x}`, cy: `${at.y}`, r: `${size / 2}`, 'data-point': `${i}`}, selected, pulling});
@@ -1646,13 +1656,7 @@ class slick {
 		if (this.pointMode) this.pointMode.selected = null;
 		if (!this.commitChanges(found.sourceText, [{tag: found.tag, attrs}], 'slick.point')) return;
 		const anchor = chosen.point.anchors.at(0);
-		if (handle && anchor && this.pointMode) {
-			const made = this.elementForOrdinal(found.tag.ordinal);
-			const index = (made ? pointsOf(made) : null)?.findIndex(p=>p.kind === 'anchor' && Math.hypot(p.x - anchor.x, p.y - anchor.y) < 1e-6) ?? -1;
-			this.pointMode.selected = index < 0 ? null : index;
-			this.refreshSelection();
-			this.selectPointInEditor();
-		}
+		if (handle && anchor) this.selectAnchorAt(found.tag.ordinal, anchor);
 		this.announceAction(handle ? 'Handle removed' : 'Point removed');
 	}
 
@@ -1962,6 +1966,9 @@ class slick {
 			center: {x: 0, y: 0}, screenCenter: {x: 0, y: 0}, point: null,
 			bend: {...data, segment, t: g.spot.t, from: pointOnSegment(seg, walkPath(segments)[segment], g.spot.t)},
 		}];
+		// a spot picked before is not the one bent, and a polygon's edges are
+		// numbered apart from the path it shows as, so it is let go
+		if (this.pointMode) this.pointMode.spot = null;
 		this.drawBox(this.hoverBox, null);
 		this.svgPreview.style.cursor = 'grabbing';
 		return true;

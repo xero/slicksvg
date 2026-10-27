@@ -576,6 +576,8 @@ export function removePathPoint(d: string, segment: number, decimals: number): s
 	return write(d, e, decimals);
 }
 
+const lineTo = (seg: Segment, end: Point): Target=>({letter: isRelative(seg.letter) ? 'l' : 'L', cp1: null, cp2: null, end});
+
 /** Whether a cubic's handles both lie on the line from its start to its end,
  * so that it draws that line. */
 function straightCubic(start: Point, cp1: Point, cp2: Point, end: Point, reach: number): boolean {
@@ -602,12 +604,11 @@ export function retractPathHandle(d: string, point: {segment: number; slot: 'cp1
 	const w = e.walked[point.segment];
 	const t = e.plan[point.segment][0];
 	const kind = lower(seg.letter);
-	const line = {letter: isRelative(seg.letter) ? 'l' : 'L', cp1: null, cp2: null, end: w.end};
 	if (kind === 'q' && point.slot === 'cp1') t.cp1 = w.start;
 	else if (kind === 'c' && point.slot === 'cp1') t.cp1 = w.start;
 	else if ((kind === 'c' || kind === 's') && point.slot === 'cp2') t.cp2 = w.end;
 	else return null;
-	if (kind === 'q' || (t.cp1 && t.cp2 && straightCubic(w.start, t.cp1, t.cp2, w.end, reachOf(e.segments)))) e.plan[point.segment] = [line];
+	if (kind === 'q' || (t.cp1 && t.cp2 && straightCubic(w.start, t.cp1, t.cp2, w.end, reachOf(e.segments)))) e.plan[point.segment] = [lineTo(seg, w.end)];
 	return write(d, e, decimals);
 }
 
@@ -697,8 +698,9 @@ function unit(p: Point): Point | null {
 export function anchorSides(segments: Segment[], walked: Walked[], segment: number): {into: number | null; out: number | null} {
 	const seg = segments.at(segment);
 	if (!seg || lower(seg.letter) === 'z') return {into: null, out: null};
+	// the subpath begins at its M, or after a Z when it has no M of its own
 	let m = segment;
-	while (m > 0 && lower(segments[m].letter) !== 'm') m -= 1;
+	while (m > 0 && !/^[mz]$/i.test(segments[m].letter)) m -= 1;
 	let z: number | null = null;
 	for (let i = m + 1; i < segments.length && lower(segments[i].letter) !== 'm'; i++) {
 		if (lower(segments[i].letter) === 'z') {
@@ -793,8 +795,6 @@ function cubicIn(e: Edit, i: number): Target | null {
 	return c;
 }
 
-const lineTo = (seg: Segment, end: Point): Target=>({letter: isRelative(seg.letter) ? 'l' : 'L', cp1: null, cp2: null, end});
-
 /** Whether the path runs straight on through the anchor at the end of
  * `segment` with a curve on at least one side: a smooth point. A corner is
  * any other anchor with a segment on both sides; null for an open end. */
@@ -868,9 +868,14 @@ export function cornerPathPoint(d: string, segment: number, decimals: number): s
 	const reach = reachOf(segments);
 	const retract = (i: number | null, slot: 'cp1' | 'cp2'): boolean=>{
 		if (i === null || !/^[csqt]$/i.test(plan[i][0].letter)) return false;
+		const was = plan[i];
 		const c = cubicIn(e, i);
 		const h = c?.[slot];
-		if (!c || !h || size(sub(h, P)) <= reach) return false;
+		if (!c || !h || size(sub(h, P)) <= reach) {
+			// a side whose handle is already in stays as it was written
+			plan[i] = was;
+			return false;
+		}
 		c[slot] = P;
 		if (c.cp1 && c.cp2 && straightCubic(walked[i].start, c.cp1, c.cp2, c.end, reach)) plan[i] = [lineTo(segments[i], c.end)];
 		return true;
@@ -968,11 +973,14 @@ export function bendPathSegment(d: string, segment: number, t: number, at: Point
 	const feel = u <= 1 / 6 ? 0 : u <= 0.5 ? ((6 * u - 1) / 2) ** 3 / 2 : u <= 5 / 6 ? (1 - ((6 * (1 - u) - 1) / 2) ** 3) / 2 + 0.5 : 1;
 	c.cp1 = add(c.cp1, times(delta, (1 - feel) / (3 * u * (1 - u) ** 2)));
 	c.cp2 = add(c.cp2, times(delta, feel / (3 * u * u * (1 - u))));
+	// a Z ends on its subpath's first point, the anchor of its M
+	let endAnchor = segment;
+	if (kind === 'z') while (endAnchor > 0 && lower(segments[endAnchor].letter) !== 'm') endAnchor -= 1;
 	const follow = (slot: 'cp1' | 'cp2'): void=>{
 		const start = slot === 'cp1';
 		const anchor = start ? w.start : w.end;
 		const way = start ? leaves : arrives;
-		const side = start ? anchorSides(segments, walked, segment - 1).into : anchorSides(segments, walked, segment).out;
+		const side = start ? anchorSides(segments, walked, segment - 1).into : anchorSides(segments, walked, endAnchor).out;
 		const across = start ? 'cp2' : 'cp1';
 		const other = side === null ? null : walked[side][across];
 		const h = c[slot];
@@ -1022,7 +1030,10 @@ export function handleMode(d: string, point: {segment: number; slot: 'cp1' | 'cp
 	const e = begin(d);
 	const seg = e?.segments.at(point.segment);
 	const h = e && seg ? e.walked[point.segment][point.slot] : null;
-	if (!e || !h) return null;
+	if (!e || !seg || !h) return null;
+	// a T after a quadratic reflects its handle by the letter's own meaning
+	const next = e.segments.at(point.segment + 1);
+	if (lower(seg.letter) === 'q' && next && lower(next.letter) === 't') return 'mirrored';
 	const o = oppositeOf(e, point);
 	if (!o) return 'independent';
 	if (o.implied) return 'mirrored';
@@ -1149,10 +1160,11 @@ export function polygonPoints(value: string): Point[] | null {
 }
 
 /** A polygon's or polyline's points as path data, every number and
- * separator as written: an M, the rest as the lines it implies, and a Z to
- * close a polygon. Null when the points do not pair up. */
+ * separator as written but for any at either end: an M, the rest as the
+ * lines it implies, and a Z to close a polygon. Null when the points do not
+ * pair up. */
 export function pointsAsPathData(points: string, closed: boolean): string | null {
 	const tokens = parsePoints(points);
 	if (!tokens || tokens.length < 2) return null;
-	return `M${points.trim()}${closed ? 'Z' : ''}`;
+	return `M${points.replace(/^[\s,]+|[\s,]+$/g, '')}${closed ? 'Z' : ''}`;
 }
