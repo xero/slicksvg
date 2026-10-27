@@ -370,7 +370,12 @@ export interface ResizeRequest {
 }
 
 /** One axis of a resize: x' = anchor + (x − anchor) · k. */
-interface AxisMap {anchor: number; k: number}
+export interface AxisMap {anchor: number; k: number}
+
+/** A resize's two axes as one matrix. */
+export function scaleMatrix(maps: {x: AxisMap; y: AxisMap}): Matrix {
+	return {a: maps.x.k, b: 0, c: 0, d: maps.y.k, e: maps.x.anchor * (1 - maps.x.k), f: maps.y.anchor * (1 - maps.y.k)};
+}
 
 /**
  * Where each axis is pinned and how far it stretches, for a handle dragged
@@ -482,39 +487,47 @@ export function planResize(el: Element, req: ResizeRequest): EditPlan {
 	// stretches it through its transform like a path
 	const corner = req.handle.length === 2;
 	if (native && !(tag === 'circle' && !corner && !req.keepAspect)) {
-		const maps = axisMaps(native.box, {...req, keepAspect: req.keepAspect || tag === 'circle'});
-		const next = resizedBox(native.box, maps);
-		const v = native.values;
-		const attrs: Record<string, string | null> = {};
-		const set = (name: string, value: number): void=>{
-			if (roundTo(value, 6) !== roundTo(v[name][0], 6)) attrs[name] = fmt(value);
-		};
-		if (tag === 'ellipse' || tag === 'circle') {
-			set('cx', next.x + next.width / 2);
-			set('cy', next.y + next.height / 2);
-			if (tag === 'circle') {
-				set('r', next.width / 2);
-			} else {
-				set('rx', next.width / 2);
-				set('ry', next.height / 2);
-			}
-		} else if (tag === 'line') {
-			set('x1', mapAxis(maps.x, v.x1[0]));
-			set('y1', mapAxis(maps.y, v.y1[0]));
-			set('x2', mapAxis(maps.x, v.x2[0]));
-			set('y2', mapAxis(maps.y, v.y2[0]));
-		} else {
-			set('x', next.x);
-			set('y', next.y);
-			set('width', next.width);
-			set('height', next.height);
-			if ('rx' in v) set('rx', v.rx[0] * Math.abs(maps.x.k));
-			if ('ry' in v) set('ry', v.ry[0] * Math.abs(maps.y.k));
-		}
-		return {ok: true, attrs};
+		return scaledNatively(tag, native.values, native.box, axisMaps(native.box, {...req, keepAspect: req.keepAspect || tag === 'circle'}));
 	}
+	return scaledByTransform(el, list, axisMaps(native ? native.box : req.bbox, req), req.decimals);
+}
 
-	const maps = axisMaps(native ? native.box : req.bbox, req);
+/** A box shape's own attributes, after a scale along each axis, written
+ * to `decimals` places or as finely as each was, when given. */
+function scaledNatively(tag: string, v: Record<string, number[]>, box: Rect, maps: {x: AxisMap; y: AxisMap}, decimals?: number): EditPlan {
+	const next = resizedBox(box, maps);
+	const attrs: Record<string, string | null> = {};
+	const set = (name: string, value: number): void=>{
+		const places = decimals === undefined ? 6 : Math.max(decimals, placesOf(v[name][0]));
+		if (roundTo(value, places) !== roundTo(v[name][0], places)) attrs[name] = fmt(value, places);
+	};
+	if (tag === 'ellipse' || tag === 'circle') {
+		set('cx', next.x + next.width / 2);
+		set('cy', next.y + next.height / 2);
+		if (tag === 'circle') {
+			set('r', next.width / 2);
+		} else {
+			set('rx', next.width / 2);
+			set('ry', next.height / 2);
+		}
+	} else if (tag === 'line') {
+		set('x1', mapAxis(maps.x, v.x1[0]));
+		set('y1', mapAxis(maps.y, v.y1[0]));
+		set('x2', mapAxis(maps.x, v.x2[0]));
+		set('y2', mapAxis(maps.y, v.y2[0]));
+	} else {
+		set('x', next.x);
+		set('y', next.y);
+		set('width', next.width);
+		set('height', next.height);
+		if ('rx' in v) set('rx', v.rx[0] * Math.abs(maps.x.k));
+		if ('ry' in v) set('ry', v.ry[0] * Math.abs(maps.y.k));
+	}
+	return {ok: true, attrs};
+}
+
+/** An element's transform, after a scale along each of its own axes. */
+function scaledByTransform(el: Element, list: TransformFn[], maps: {x: AxisMap; y: AxisMap}, decimals: number): EditPlan {
 	const local: Matrix = {
 		a: maps.x.k, b: 0, c: 0, d: maps.y.k,
 		e: maps.x.anchor * (1 - maps.x.k),
@@ -537,7 +550,7 @@ export function planResize(el: Element, req: ResizeRequest): EditPlan {
 	// offset moves by an amount rounded to what the zoom can show, keeping the
 	// digits it had. The scale is rounded to significant digits, so a glyph's
 	// scale(0.00048828125) is not cut to 0.00049, a 0.35% jump at the first pixel.
-	const offset = (was: number, now: number): string=>shifted(was, roundTo(now - was, req.decimals + 1));
+	const offset = (was: number, now: number): string=>shifted(was, roundTo(now - was, decimals + 1));
 	const e = offset(before.e, run.e);
 	const f = offset(before.f, run.f);
 	const sx = maps.x.k === 1 ? before.a : Number(run.a.toPrecision(6));
@@ -549,6 +562,40 @@ export function planResize(el: Element, req: ResizeRequest): EditPlan {
 	const next = [prefix, ...parts].filter(Boolean).join(' ');
 	if (next === value.trim()) return {ok: true, attrs: {}};
 	return {ok: true, attrs: {transform: next || null}};
+}
+
+/**
+ * Scale an element as one of several scaled together: `m` is the scale, in
+ * the element's PARENT units, about the point the group is scaled from. Seen
+ * from the element's own units it is most often still a scale along its own
+ * axes, which a box shape takes into its attributes and anything else into
+ * the translate and scale at the end of its transform, as a resize does. An
+ * element turned against the group's axes cannot be stretched along them by
+ * either, so the scale goes in front of its transform as a matrix.
+ */
+export function planScaleAbout(el: Element, m: Matrix, bbox: Rect, decimals: number): EditPlan {
+	const blocked = originBlockedReason(el);
+	if (blocked) return {ok: false, reason: blocked};
+	const list = readTransform(el);
+	if (!list) return {ok: false, reason: UNREADABLE_TRANSFORM};
+	const tag = el.tagName.toLowerCase();
+	if (tag === 'svg') return {ok: false, reason: NESTED_SVG};
+	const own = listMatrix(list);
+	const inverse = invert(own);
+	if (!inverse) return {ok: false, reason: UNREADABLE_TRANSFORM};
+	const local = multiply(inverse, multiply(m, own));
+	if (Math.abs(local.b) < 1e-9 && Math.abs(local.c) < 1e-9) {
+		// x' = k·x + e is a scale by k about e / (1 − k)
+		const axis = (k: number, e: number): AxisMap=>({k, anchor: Math.abs(1 - k) < 1e-12 ? 0 : e / (1 - k)});
+		const maps = {x: axis(local.a, local.e), y: axis(local.d, local.f)};
+		const native = nativeBox(el);
+		if (native && (tag !== 'circle' || same(Math.abs(local.a), Math.abs(local.d)))) return scaledNatively(tag, native.values, native.box, maps, decimals);
+		return scaledByTransform(el, list, maps, decimals);
+	}
+	const value = el.getAttribute('transform') ?? '';
+	const linear = [m.a, m.b, m.c, m.d].map(n=>String(Number(n.toPrecision(6))));
+	const text = `matrix(${[...linear, fmt(m.e, decimals + 1), fmt(m.f, decimals + 1)].join(' ')})`;
+	return {ok: true, attrs: {transform: [text, value.trim()].filter(Boolean).join(' ')}};
 }
 
 // ---------------------------------------------------------------------------

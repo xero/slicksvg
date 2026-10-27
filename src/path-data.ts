@@ -5,7 +5,7 @@
 // relative stays relative, separators stay put, and a number is rewritten
 // only when its value moves. An `H` or `V` becomes an `L` only when the
 // point it reaches can no longer be said with one number.
-import {fmt, placesOf, roundTo, type Point} from './geometry';
+import {applyToPoint, fmt, placesOf, roundTo, type Matrix, type Point} from './geometry';
 
 export interface NumberToken {
 	start: number;
@@ -291,6 +291,8 @@ interface Target {
 	cp1: Point | null;
 	cp2: Point | null;
 	end: Point;
+	/** An arc's radii, the turn of its x axis, and its two flags, when they change. */
+	arc?: number[];
 }
 
 /** The numbers a segment wrote for one of its points, x and y. An H or V
@@ -326,7 +328,7 @@ function emitNumbers(seg: Segment, target: Target, start: Point, decimals: numbe
 		case 'c': return [...pair(target.cp1 ?? start, 'cp1'), ...pair(target.cp2 ?? target.end, 'cp2'), ...pair(target.end, 'end')];
 		case 's': return [...pair(target.cp2 ?? target.end, 'cp2'), ...pair(target.end, 'end')];
 		case 'q': return [...pair(target.cp1 ?? start, 'cp1'), ...pair(target.end, 'end')];
-		case 'a': return [...seg.args.slice(0, 5).map(sliceOf), ...pair(target.end, 'end')];
+		case 'a': return [...(target.arc ? target.arc.map((v, k)=>k < 3 ? num(v, seg.args.at(k) ?? null, decimals) : String(v)) : seg.args.slice(0, 5).map(sliceOf)), ...pair(target.end, 'end')];
 		default: return pair(target.end, 'end');
 	}
 }
@@ -408,7 +410,7 @@ function write(d: string, {segments, walked, plan}: Edit, decimals: number): str
 			const w = walked[i];
 			const start = starts[i][0];
 			const cpsMoved = ((kind === 'c' || kind === 'q') && !samePoint(t.cp1, w.cp1)) || ((kind === 'c' || kind === 's') && !samePoint(t.cp2, w.cp2));
-			if (samePoint(t.end, w.end) && !cpsMoved && !(isRelative(seg.letter) && !samePoint(start, w.start))) return;
+			if (samePoint(t.end, w.end) && !cpsMoved && !t.arc && !(isRelative(seg.letter) && !samePoint(start, w.start))) return;
 			const numbers = emitNumbers(seg, t, start, decimals);
 			splices.push(...seg.args.map((a, k)=>({start: a.start, end: a.end, text: numbers[k]})));
 		} else if (targets.length > 0) {
@@ -495,10 +497,21 @@ export function movePathPoint(d: string, point: {segment: number; slot: Slot}, a
  * it ends on does. A subpath's first point brings the end that closes onto it.
  */
 export function movePathPoints(d: string, points: {segment: number; slot: Slot}[], by: Point, decimals: number): string | null {
+	return transformPathPoints(d, points, {a: 1, b: 0, c: 0, d: 1, e: roundTo(by.x, decimals), f: roundTo(by.y, decimals)}, decimals);
+}
+
+/**
+ * Put several points of a path through one transform, `m`, in the path's own
+ * units: the points that move together as `movePathPoints` moves them, so a
+ * turn or a scale takes each anchor's handles with it and keeps its curves'
+ * shape. An arc whose two ends both go through it is turned and stretched as
+ * they are: its radii and the turn of its axis are those of the ellipse the
+ * transform makes of its own, and a mirror reverses its sweep.
+ */
+export function transformPathPoints(d: string, points: {segment: number; slot: Slot}[], m: Matrix, decimals: number): string | null {
 	const e = begin(d);
 	if (!e) return null;
 	const {segments, walked, plan} = e;
-	const delta = {x: roundTo(by.x, decimals), y: roundTo(by.y, decimals)};
 	const moving = new Set<string>();
 	const anchor = (i: number): void=>{
 		const kind = lower(segments[i].letter);
@@ -512,7 +525,7 @@ export function movePathPoints(d: string, points: {segment: number; slot: Slot}[
 		if (kind === 'z') return null;
 		if (p.slot === 'end') {
 			anchor(p.segment);
-			for (const [end, m] of closing) if (m === p.segment) anchor(end);
+			for (const [end, at] of closing) if (at === p.segment) anchor(end);
 			// the handle leaving it, written or implied
 			if (/^[cst]$/i.test(segments.at(p.segment + 1)?.letter ?? '')) moving.add(`${p.segment + 1}:cp1`);
 		} else if ((p.slot === 'cp1' && (kind === 'c' || kind === 'q')) || (p.slot === 'cp2' && (kind === 'c' || kind === 's'))) {
@@ -521,14 +534,56 @@ export function movePathPoints(d: string, points: {segment: number; slot: Slot}[
 			return null;
 		}
 	}
+	const through = (q: Point): Point=>applyToPoint(m, q.x, q.y);
 	for (const key of moving) {
 		const [at, slot] = key.split(':');
 		const t = plan[Number(at)][0];
-		if (slot === 'end') t.end = add(t.end, delta);
-		else if (slot === 'cp1' && t.cp1) t.cp1 = add(t.cp1, delta);
-		else if (slot === 'cp2' && t.cp2) t.cp2 = add(t.cp2, delta);
+		if (slot === 'end') t.end = through(t.end);
+		else if (slot === 'cp1' && t.cp1) t.cp1 = through(t.cp1);
+		else if (slot === 'cp2' && t.cp2) t.cp2 = through(t.cp2);
+	}
+	const linear = m.a !== 1 || m.b !== 0 || m.c !== 0 || m.d !== 1;
+	if (linear) {
+		// the anchor an arc starts from: the one before it, or after a Z its subpath's first
+		let first = 0;
+		segments.forEach((seg, i)=>{
+			const kind = lower(seg.letter);
+			if (kind === 'm') first = i;
+			const from = i > 0 && lower(segments[i - 1].letter) === 'z' ? first : i - 1;
+			if (kind === 'a' && moving.has(`${i}:end`) && moving.has(`${from}:end`)) plan[i][0].arc = arcThrough(seg, m);
+		});
 	}
 	return write(d, e, decimals);
+}
+
+/**
+ * An arc's radii, axis turn, and flags once its ellipse has been through a
+ * transform's linear part: the ellipse is a circle stretched by its radii and
+ * turned, and that stretch followed by the transform is split, as any 2x2
+ * matrix can be, into a turn, a stretch along two axes, and a turn (Blinn's
+ * closed form). A circle keeps the turn it was written with.
+ */
+function arcThrough(seg: Segment, m: Matrix): number[] {
+	const [rx, ry, deg, large, sweep] = seg.args.map(a=>a.value);
+	const phi = (deg * Math.PI) / 180;
+	// the transform's linear part times the ellipse's: a turn of phi, then rx and ry
+	const p = m.a * Math.cos(phi) * rx + m.c * Math.sin(phi) * rx;
+	const r = m.b * Math.cos(phi) * rx + m.d * Math.sin(phi) * rx;
+	const q = -m.a * Math.sin(phi) * ry + m.c * Math.cos(phi) * ry;
+	const s = -m.b * Math.sin(phi) * ry + m.d * Math.cos(phi) * ry;
+	const E = (p + s) / 2;
+	const F = (p - s) / 2;
+	const G = (r + q) / 2;
+	const H = (r - q) / 2;
+	const Q = Math.hypot(E, H);
+	const R = Math.hypot(F, G);
+	const turn = (Math.atan2(G, F) + Math.atan2(H, E)) / 2;
+	const nrx = Math.abs(Q + R);
+	const nry = Math.abs(Q - R);
+	const circle = Math.abs(nrx - nry) < 1e-9 * Math.max(nrx, 1);
+	const degrees = circle ? deg : ((roundTo((turn * 180) / Math.PI, 9) % 180) + 180) % 180;
+	const mirrored = m.a * m.d - m.b * m.c < 0;
+	return [nrx, nry, degrees, large, mirrored ? 1 - sweep : sweep];
 }
 
 const lerp = (a: Point, b: Point, t: number): Point=>({x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t});
@@ -1201,6 +1256,22 @@ export function movePolygonPoints(value: string, indices: number[], by: Point, d
 		const y = tokens.at(2 * index + 1);
 		if (index < 0 || !x || !y) return null;
 		splices.push({start: x.start, end: x.end, text: num(x.value + dx, x, decimals)}, {start: y.start, end: y.end, text: num(y.value + dy, y, decimals)});
+	}
+	return splice(value, splices);
+}
+
+/** Put several polygon or polyline points through one transform. */
+export function transformPolygonPoints(value: string, indices: number[], m: Matrix, decimals: number): string | null {
+	const tokens = parsePoints(value);
+	if (!tokens) return null;
+	source = value;
+	const splices: Splice[] = [];
+	for (const index of new Set(indices)) {
+		const x = tokens.at(2 * index);
+		const y = tokens.at(2 * index + 1);
+		if (index < 0 || !x || !y) return null;
+		const to = applyToPoint(m, x.value, y.value);
+		splices.push({start: x.start, end: x.end, text: num(to.x, x, decimals)}, {start: y.start, end: y.end, text: num(to.y, y, decimals)});
 	}
 	return splice(value, splices);
 }

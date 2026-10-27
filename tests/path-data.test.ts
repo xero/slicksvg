@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   parsePathData, walkPath, pathPoints, movePathPoint, insertPathPoint, removePathPoint, retractPathHandle, nearestPathSegment,
-  smoothPathPoint, cornerPathPoint, anchorKind, curvePathSegment, straightenPathSegment, segmentCurved, handleMode, moveHandle, pointsAsPathData, pullHandles, bendPathSegment, symmetricPathPoint, movePathPoints,
-  parsePoints, polygonPoints, movePolygonPoint, movePolygonPoints, insertPolygonPoint, removePolygonPoint, nearestPolygonEdge,
+  smoothPathPoint, cornerPathPoint, anchorKind, curvePathSegment, straightenPathSegment, segmentCurved, handleMode, moveHandle, pointsAsPathData, pullHandles, bendPathSegment, symmetricPathPoint, movePathPoints, transformPathPoints,
+  parsePoints, polygonPoints, movePolygonPoint, movePolygonPoints, transformPolygonPoints, insertPolygonPoint, removePolygonPoint, nearestPolygonEdge,
 } from '../src/path-data';
 
 const letters = (d: string) => parsePathData(d)!.map(s => s.letter + (s.letterAt === null ? '*' : ''));
@@ -500,5 +500,37 @@ describe('Moving several points together', () => {
   it('should move several polygon points in the attribute\'s own style', () => {
     expect(movePolygonPoints('0,0 10,0 10.5,10', [0, 2, 2], { x: 1, y: -1 }, 0)).toBe('1,-1 10,0 11.5,9');
     expect(movePolygonPoints('0,0 10,0', [3], { x: 1, y: 1 }, 0)).toBeNull();
+  });
+});
+
+describe('Turning and scaling several points together', () => {
+  const turn90 = { a: 0, b: 1, c: -1, d: 0, e: 0, f: 0 };
+  const all = (d: string) => pathPoints(parsePathData(d)!).filter(p => p.slot === 'end').map(p => ({ segment: p.segment, slot: p.slot }));
+
+  it('should turn anchors with their handles, so curves keep their shape', () => {
+    expect(transformPathPoints('M0 0 C0 10 10 10 10 0', all('M0 0 C0 10 10 10 10 0'), turn90, 0)).toBe('M0 0 C-10 0 -10 10 0 10');
+    // about the middle of a square, its corners trade places
+    const square = 'M0 0 L10 0 L10 10 L0 10 Z';
+    expect(transformPathPoints(square, all(square), { a: 0, b: 1, c: -1, d: 0, e: 10, f: 0 }, 0)).toBe('M10 0 L10 10 L0 10 L0 0 Z');
+  });
+
+  it('should scale about a point, and write an H or V that leaves its line as an L', () => {
+    expect(transformPathPoints('M0 0 C0 10 10 10 10 0', all('M0 0 C0 10 10 10 10 0'), { a: 2, b: 0, c: 0, d: 2, e: 0, f: 0 }, 0)).toBe('M0 0 C0 20 20 20 20 0');
+    expect(transformPathPoints('M0 0 H10 V10', all('M0 0 H10 V10'), turn90, 0)).toBe('M0 0 L0 10 L-10 10');
+  });
+
+  it('should turn, scale, and mirror an arc whose ends both go through it', () => {
+    const arc = 'M0 0 A10 5 0 0 1 20 0';
+    expect(transformPathPoints(arc, all(arc), turn90, 0)).toBe('M0 0 A10 5 90 0 1 0 20');
+    expect(transformPathPoints(arc, all(arc), { a: 2, b: 0, c: 0, d: 2, e: 0, f: 0 }, 0)).toBe('M0 0 A20 10 0 0 1 40 0');
+    expect(transformPathPoints(arc, all(arc), { a: -1, b: 0, c: 0, d: 1, e: 20, f: 0 }, 0)).toBe('M20 0 A10 5 0 0 0 0 0');
+    // a circle's arc keeps the turn it was written with
+    expect(transformPathPoints('M0 0 A10 10 30 0 1 20 0', all('M0 0 A10 10 30 0 1 20 0'), turn90, 0)).toBe('M0 0 A10 10 30 0 1 0 20');
+    // one end alone moves the end, and the arc is left as written
+    expect(transformPathPoints(arc, [{ segment: 1, slot: 'end' }], turn90, 0)).toBe('M0 0 A10 5 0 0 1 0 20');
+  });
+
+  it('should turn polygon points', () => {
+    expect(transformPolygonPoints('0,0 10,0 10,10', [0, 1, 2], { a: 0, b: 1, c: -1, d: 0, e: 10, f: 0 }, 0)).toBe('10,0 10,10 0,10');
   });
 });

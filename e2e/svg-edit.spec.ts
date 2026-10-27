@@ -221,7 +221,8 @@ test.describe('SVG Editor Preview Editing', () => {
     await page.locator('.svg-container circle').click({ modifiers: ['ControlOrMeta'] });
     await expect(more).toHaveCount(1);
     await expect(more).toBeVisible();
-    await expect(page.locator('[data-handle="se"]')).toBeHidden();
+    // the handles go round them both
+    await expect(page.locator('.select-overlay .group-box')).toBeVisible();
     expect(await page.evaluate(() => {
       const state = (window as any).svgEditor.editor.state;
       return state.doc.sliceString(state.selection.main.from, state.selection.main.to) as string;
@@ -229,7 +230,31 @@ test.describe('SVG Editor Preview Editing', () => {
 
     await page.locator('.svg-container circle').click({ modifiers: ['ControlOrMeta'] });
     await expect(more).toBeHidden();
+    await expect(page.locator('.select-overlay .group-box')).toBeHidden();
     await expect(page.locator('[data-handle="se"]')).toBeVisible();
+  });
+
+  test('should scale a multiple selection together from the far side of the box round them', async ({ page }) => {
+    await page.locator('.svg-container rect').click();
+    await page.locator('.svg-container circle').click({ modifiers: ['ControlOrMeta'] });
+    // the box runs from 20,20 to 180,180, so 16 pixels more at a corner is ten percent
+    await drag(page, page.locator('[data-handle="se"]'), 16, 16);
+    expect(await getSource(page)).toBe(FIXTURE.replace('width="60" height="60"', 'width="66" height="66"').replace('cx="150" cy="150" r="30"', 'cx="163" cy="163" r="33"'));
+    await expect(page.locator('#test-announcements')).toHaveText('2 elements resized');
+    await page.locator('#undo').click();
+    expect(await getSource(page)).toBe(FIXTURE);
+  });
+
+  test('should turn a multiple selection together about the middle of the box round them', async ({ page }) => {
+    await page.locator('.svg-container rect').click();
+    await page.locator('.svg-container circle').click({ modifiers: ['ControlOrMeta'] });
+    // from above the middle, at 100,100, round to its right: a quarter turn, to the nearest fifteen degrees with Shift
+    await drag(page, page.locator('[data-handle="rotate"]'), 104, 104, { shift: true });
+    const source = await getSource(page);
+    expect(source).toContain('fill="#6291e0" transform="rotate(90 100 100)"');
+    expect(source).toContain('fill="#aa0000" transform="rotate(90 100 100)"');
+    await page.locator('#undo').click();
+    expect(await getSource(page)).toBe(FIXTURE);
   });
 
   test('should move, nudge, rotate, and delete a multiple selection together', async ({ page }) => {

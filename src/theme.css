@@ -292,6 +292,11 @@
         stroke-width: 1.5;
         stroke-dasharray: 5 3;
       }
+      /* one box round several selected elements or points, which its handles turn and scale together */
+      .group-box {
+        stroke-width: 1;
+        stroke-dasharray: 1 3;
+      }
       .hover-box {
         stroke-width: 1;
         stroke-dasharray: 2 3;

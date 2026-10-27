@@ -491,6 +491,44 @@ test.describe('SVG Editor Point Editing', () => {
     await expect(page.locator('.points rect.selected')).toHaveCount(0);
   });
 
+  test('should scale and turn several picked points with the box round them', async ({ page }) => {
+    await page.locator('.svg-container path').click();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('[data-handle="e"]')).toBeHidden();
+    await page.locator('#point-several').click();
+    for (const i of [0, 1, 2]) await page.locator(`.points [data-point="${i}"]`).click();
+    await expect(page.locator('.select-overlay .group-box')).toBeVisible();
+
+    // the box runs from 20 to 100 across, so 40 more from the right side is half as wide again
+    const right = (await page.locator('[data-handle="e"]').boundingBox())!;
+    await page.mouse.move(right.x + right.width / 2, right.y + right.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(right.x + right.width / 2 + 20, right.y + right.height / 2, { steps: 4 });
+    await page.mouse.move(right.x + right.width / 2 + 40, right.y + right.height / 2, { steps: 4 });
+    await page.mouse.up();
+    expect(await getSource(page)).toBe(FIXTURE.replace('M20 20 L100 20 L100 100 Z', 'M20 20 L140 20 L140 100 Z'));
+    await expect(page.locator('#test-announcements')).toHaveText('3 points scaled');
+    await expect(page.locator('.points rect.selected')).toHaveCount(3);
+
+    // a quarter turn about the middle of the box, at 80,60, snapped with Shift
+    const turn = (await page.locator('[data-handle="rotate"]').boundingBox())!;
+    const [x, y] = [turn.x + turn.width / 2, turn.y + turn.height / 2];
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.keyboard.down('Shift');
+    await page.mouse.move(x + 40, y + 30, { steps: 4 });
+    await page.mouse.move(x + 76, y + 76, { steps: 4 });
+    await page.keyboard.up('Shift');
+    await page.mouse.up();
+    expect(await getSource(page)).toBe(FIXTURE.replace('M20 20 L100 20 L100 100 Z', 'M120 0 L120 120 L40 120 Z'));
+    await expect(page.locator('#test-announcements')).toHaveText('3 points turned 90 degrees');
+    await expect(page.locator('.points rect.selected')).toHaveCount(3);
+
+    await page.locator('#undo').click();
+    await page.locator('#undo').click();
+    expect(await getSource(page)).toBe(FIXTURE);
+  });
+
   test('should keep a line end\'s written precision when nudged', async ({ page }) => {
     await setContent(page, FIXTURE.replace('<path id="p" d="M20 20 L100 20 L100 100 Z" fill="#6291e0"/>', '<line id="ln" x1="10.5" y1="40" x2="100" y2="40" stroke="#6291e0" stroke-width="8"/>'));
     // a line has no area, so Playwright will not click it by locator; aim at its stroke
