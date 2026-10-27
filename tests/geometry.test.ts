@@ -213,6 +213,11 @@ describe('planResize', () => {
       .toEqual({ ok: true, attrs: { cx: '55', rx: '25' } });
     expect(planResize(el('<circle cx="50" cy="50" r="10"/>'), req({ handle: 'se', dx: 10, dy: 0 })))
       .toEqual({ ok: true, attrs: { cx: '55', cy: '55', r: '15' } });
+    // a side handle with the ratio held still writes r; without it the circle goes oval through a transform
+    expect(planResize(el('<circle cx="50" cy="50" r="10"/>'), req({ handle: 'e', dx: 10, keepAspect: true })))
+      .toEqual({ ok: true, attrs: { cx: '55', r: '15' } });
+    expect(planResize(el('<circle cx="50" cy="50" r="10"/>'), req({ handle: 'e', dx: 10 })))
+      .toEqual({ ok: true, attrs: { transform: 'translate(-20 0) scale(1.5 1)' } });
     expect(planResize(el('<line x1="0" y1="0" x2="10" y2="10"/>'), req({ handle: 'se', dx: 10, dy: 0 })))
       .toEqual({ ok: true, attrs: { x2: '20' } });
   });

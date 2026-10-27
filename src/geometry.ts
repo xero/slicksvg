@@ -460,7 +460,8 @@ function nativeBox(el: Element): {box: Rect; values: Record<string, number[]>} |
  * Resize an element by dragging one of its eight handles.
  *
  * Shapes defined by a box (rect, image, ellipse, circle, line) get their own
- * attributes rewritten. Everything else (paths, polygons, text, groups) is
+ * attributes rewritten, except a circle pulled out of round, which has no
+ * attribute for that. Everything else (paths, polygons, text, groups) is
  * scaled by its transform: the scale-and-shift is folded into a trailing
  * `translate(…) scale(…)` so repeated resizes keep one pair rather than
  * stacking a new one each time. A stroke scales along with the shape it
@@ -477,7 +478,10 @@ export function planResize(el: Element, req: ResizeRequest): EditPlan {
 	if (tag === 'svg') return {ok: false, reason: NESTED_SVG};
 
 	const native = nativeBox(el);
-	if (native) {
+	// a circle's r cannot say "oval": a corner keeps it round, and a side handle
+	// stretches it through its transform like a path
+	const corner = req.handle.length === 2;
+	if (native && !(tag === 'circle' && !corner && !req.keepAspect)) {
 		const maps = axisMaps(native.box, {...req, keepAspect: req.keepAspect || tag === 'circle'});
 		const next = resizedBox(native.box, maps);
 		const v = native.values;
@@ -510,7 +514,7 @@ export function planResize(el: Element, req: ResizeRequest): EditPlan {
 		return {ok: true, attrs};
 	}
 
-	const maps = axisMaps(req.bbox, req);
+	const maps = axisMaps(native ? native.box : req.bbox, req);
 	const local: Matrix = {
 		a: maps.x.k, b: 0, c: 0, d: maps.y.k,
 		e: maps.x.anchor * (1 - maps.x.k),

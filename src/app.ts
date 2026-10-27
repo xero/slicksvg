@@ -1448,9 +1448,11 @@ class slick {
 				const v = applyToVector(d.toUnits, sx, sy);
 				const dx = roundTo(v.x, d.decimals);
 				const dy = roundTo(v.y, d.decimals);
+				// a corner keeps the shape's proportions and a side stretches one axis; Shift does the opposite
+				const keepAspect = g.handle !== null && g.handle.length === 2 ? !shift : shift;
 				plan = g.mode === 'move' || !g.handle
 					? planMove(d.found.source, dx, dy)
-					: planResize(d.found.source, {handle: g.handle, dx, dy, keepAspect: shift, bbox: d.bbox, minSize: d.minSize, decimals: d.decimals});
+					: planResize(d.found.source, {handle: g.handle, dx, dy, keepAspect, bbox: d.bbox, minSize: d.minSize, decimals: d.decimals});
 			}
 			if (!plan.ok) {
 				this.announceError(plan.reason);

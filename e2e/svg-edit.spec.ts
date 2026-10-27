@@ -95,15 +95,33 @@ test.describe('SVG Editor Preview Editing', () => {
     expect(await getSource(page)).toBe(FIXTURE);
   });
 
-  test('should resize from a corner handle, and keep the aspect ratio with Shift from a side', async ({ page }) => {
+  test('should keep the proportions from a corner and stretch one axis from a side, with Shift the other way round', async ({ page }) => {
     await page.locator('.svg-container rect').click();
     await expect(page.locator('[data-handle="se"]')).toBeVisible();
     await drag(page, page.locator('[data-handle="se"]'), 20, 10);
+    expect(await getSource(page)).toBe(FIXTURE.replace('width="60" height="60"', 'width="80" height="80"'));
+
+    await page.locator('#undo').click();
+    await drag(page, page.locator('[data-handle="se"]'), 20, 10, { shift: true });
     expect(await getSource(page)).toBe(FIXTURE.replace('width="60" height="60"', 'width="80" height="70"'));
+
+    await page.locator('#undo').click();
+    await drag(page, page.locator('[data-handle="e"]'), 30, 0);
+    expect(await getSource(page)).toBe(FIXTURE.replace('width="60" height="60"', 'width="90" height="60"'));
 
     await page.locator('#undo').click();
     await drag(page, page.locator('[data-handle="e"]'), 30, 0, { shift: true });
     expect(await getSource(page)).toBe(FIXTURE.replace('x="20" y="20" width="60" height="60"', 'x="20" y="5" width="90" height="90"'));
+  });
+
+  test('should pull a circle out of round from a side handle, and keep it round from a corner', async ({ page }) => {
+    await page.locator('.svg-container circle').click();
+    await drag(page, page.locator('[data-handle="e"]'), 30, 0);
+    expect(await getSource(page)).toContain('<circle id="dot" cx="150" cy="150" r="30" fill="#aa0000" transform="translate(-60 0) scale(1.5 1)"/>');
+
+    await page.locator('#undo').click();
+    await drag(page, page.locator('[data-handle="se"]'), 30, 0);
+    expect(await getSource(page)).toContain('<circle id="dot" cx="165" cy="165" r="45" fill="#aa0000"/>');
   });
 
   test('should turn the selection with the rotate handle', async ({ page }) => {
