@@ -1,6 +1,38 @@
 {
   "name": "slicksvg",
-  "version": "1.0.0",
+  "version": "2.0.0",
+  "description": "A split-screen SVG editor for the browser: edit the code on one side and draw on the live preview on the other, with a mouse, a finger, or a pencil",
+  "keywords": [
+    "svg",
+    "svg-editor",
+    "vector-graphics",
+    "drawing",
+    "editor",
+    "split-view",
+    "live-preview",
+    "codemirror",
+    "pen-tool",
+    "bezier",
+    "path-editing",
+    "shapes",
+    "svg-optimizer",
+    "touch",
+    "ipad",
+    "apple-pencil",
+    "dark-mode",
+    "single-file",
+    "vanilla-typescript"
+  ],
+  "homepage": "https://xero.github.io/slicksvg/",
+  "bugs": {
+    "url": "https://github.com/xero/slicksvg/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xero/slicksvg.git"
+  },
+  "license": "CC0-1.0",
+  "author": "xero (https://x-e.ro)",
   "private": true,
   "type": "module",
   "scripts": {
