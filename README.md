@@ -14,6 +14,8 @@ A **Node.js**-based, web SVG editor written in **TypeScript**, with no frontend 
 
 **Features**: Real-time editing • Resizable split view • Xray mode highlighting • Dark/light themes • SVG optimization • Transform tools • Mobile / Touch support • Comprehensive testing
 
+## [Open SlickSVG in your browser](https://xero.github.io/slicksvg/)
+
 ## Screenshots
 
 **Light Mode with an Error in the Code:**
