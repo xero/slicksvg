@@ -21,6 +21,13 @@ test.describe('SVG Editor', () => {
     await expect(page.locator('.svg-container svg path')).toHaveCount(4);
   });
 
+  test('should offer the drawing\'s own size to change, read from its root, not a stroke-width inside it', async ({ page }) => {
+    // the light bulb has no width or height, only a viewBox, and strokes with widths
+    await pressMenuItem(page, 'resolution');
+    await expect(page.locator('dialog #width')).toHaveValue('110');
+    await expect(page.locator('dialog #height')).toHaveValue('135');
+  });
+
   test('should update SVG preview when code changes', async ({ page }) => {
     await useHello(page);
     // Get the initial color

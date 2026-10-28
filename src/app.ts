@@ -1,4 +1,4 @@
-import {EditorView, GutterMarker, gutterLineClass} from '@codemirror/view';
+import {EditorView, GutterMarker, lineNumberMarkers} from '@codemirror/view';
 import {EditorState, EditorSelection, Compartment, RangeSet, StateField} from '@codemirror/state';
 import {keymap} from '@codemirror/view';
 import {xml} from '@codemirror/lang-xml';
@@ -161,11 +161,12 @@ const errorLines = StateField.define<RangeSet<GutterMarker>>({
 			if (!effect.is(setDiagnosticsEffect)) continue;
 			const doc = tr.state.doc;
 			const starts = new Set(effect.value.map(d=>doc.lineAt(Math.min(d.from, doc.length)).from));
-			return RangeSet.of([...starts].sort((a, b)=>a - b).map(from=>errorLine.range(from)));
+			return RangeSet.of([...starts].map(from=>errorLine.range(from)), true);
 		}
 		return lines.map(tr.changes);
 	},
-	provide: (field)=>gutterLineClass.from(field),
+	// on the numbers alone, not the fold gutter's cell beside them too
+	provide: (field)=>lineNumberMarkers.from(field),
 });
 
 // --- Utility functions
@@ -4185,14 +4186,17 @@ class slick {
 
 	private showResolutionModal(): void {
 		const svgCode = this.editor.state.doc.toString();
-		const widthMatch = svgCode.match(/width="([^"]+)"/);
-		const heightMatch = svgCode.match(/height="([^"]+)"/);
-		let currentWidth = widthMatch ? parseInt(widthMatch[1]) : null;
-		let currentHeight = heightMatch ? parseInt(heightMatch[1]) : null;
+		// the root's own, not the first stroke-width="..." or any child's
+		const root = this.rootTag(svgCode);
+		const read = (name: string)=>root ? readAttribute(svgCode, root, name) : null;
+		const width = read('width');
+		const height = read('height');
+		let currentWidth = width === null ? null : parseInt(width);
+		let currentHeight = height === null ? null : parseInt(height);
 		if (currentWidth === null || currentHeight === null) {
-			const viewBoxMatch = svgCode.match(/viewBox="([^"]+)"/);
-			if (viewBoxMatch) {
-				const viewBoxValues = viewBoxMatch[1].split(/\s+/);
+			const viewBox = read('viewBox');
+			if (viewBox) {
+				const viewBoxValues = viewBox.trim().split(/[\s,]+/);
 				if (viewBoxValues.length >= 4) {
 					if (currentWidth === null) currentWidth = parseInt(viewBoxValues[2]);
 					if (currentHeight === null) currentHeight = parseInt(viewBoxValues[3]);

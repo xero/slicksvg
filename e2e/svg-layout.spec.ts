@@ -220,6 +220,8 @@ test.describe('SVG Editor gutter and grip', () => {
     const marked = page.locator('.cm-lineNumbers .cm-error-line');
     await expect(marked).toHaveText('3');
     await expect(marked).toHaveCSS('color', 'rgb(255, 255, 255)');
+    // the number alone, not the fold gutter's cell beside it
+    await expect(page.locator('.cm-error-line')).toHaveCount(1);
   });
 
   test('should put a grip in the middle of the bar between the panes, in a colour of its own, turned with the layout', async ({ page }) => {
@@ -234,11 +236,13 @@ test.describe('SVG Editor gutter and grip', () => {
     });
     for (const dark of [false, true]) {
       if (dark) await pressMenuItem(page, 'dark');
-      // the colour change fades in
-      await page.waitForTimeout(300);
       const g = await grip();
       expect([g.width, g.height, g.radius]).toEqual(['10px', '50px', '0px']);
-      for (const other of [g.bar, g.editor, g.preview]) expect(g.color).not.toBe(other);
+      // read again until the theme's colours have faded in
+      await expect.poll(async () => {
+        const now = await grip();
+        return [now.bar, now.editor, now.preview].filter((other) => other === now.color).length;
+      }).toBe(0);
     }
     await pressMenuItem(page, 'flip');
     const g = await grip();
