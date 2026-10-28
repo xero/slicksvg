@@ -23,17 +23,34 @@ export const byPoints = (kind: ShapeKind): kind is PointKind=>kind === 'polyline
 /** The fewest points a shape drawn a point at a time can be written with. */
 export const pointsNeeded = (kind: PointKind): number=>kind === 'polygon' ? 3 : 2;
 
-/** The colour a new shape is painted with: a grey that shows on a light
- * preview and a dark one alike, and on the colours of the drawing. */
+/** The colour a new shape is filled with until another is picked: a grey
+ * that shows on a light preview and a dark one alike, and on the colours
+ * of the drawing. */
 export const NEW_SHAPE_COLOR = '#999';
 
-/** How a new shape is painted. One that closes round an area is filled; a
- * line, a polyline, or a path left open is stroked instead, and not filled,
- * which a polyline or path would be by default. */
-export function paintOf(kind: ShapeKind, closed: boolean, strokeWidth: string): Record<string, string> {
-	if (kind === 'line') return {stroke: NEW_SHAPE_COLOR, 'stroke-width': strokeWidth};
-	const open = kind === 'polyline' || (kind === 'path' && !closed);
-	return open ? {fill: 'none', stroke: NEW_SHAPE_COLOR, 'stroke-width': strokeWidth} : {fill: NEW_SHAPE_COLOR};
+/** What new shapes are painted with: the fill and the stroke last picked,
+ * each a colour or "none", and the stroke's width. */
+export interface Pen {
+	fill: string;
+	stroke: string;
+	width: string;
+}
+
+/** How a new shape is painted with the pen. One that closes round an area
+ * is filled, and stroked as well while the pen has a stroke; a line, a
+ * polyline, or a path left open is only stroked, and not filled, which a
+ * polyline or path would be by default. No shape is drawn unseen: an open
+ * one is stroked in the fill's colour while the pen has no stroke, and a
+ * closed one with neither is stroked in the grey. */
+export function paintOf(kind: ShapeKind, closed: boolean, pen: Pen): Record<string, string> {
+	const stroke = pen.stroke === 'none' ? null : pen.stroke;
+	const open = kind === 'line' || kind === 'polyline' || (kind === 'path' && !closed);
+	if (open) {
+		const seen = stroke ?? (pen.fill === 'none' ? NEW_SHAPE_COLOR : pen.fill);
+		return kind === 'line' ? {stroke: seen, 'stroke-width': pen.width} : {fill: 'none', stroke: seen, 'stroke-width': pen.width};
+	}
+	if (stroke) return {fill: pen.fill, stroke, 'stroke-width': pen.width};
+	return pen.fill === 'none' ? {fill: 'none', stroke: NEW_SHAPE_COLOR, 'stroke-width': pen.width} : {fill: pen.fill};
 }
 
 /** A stroke a hundredth as wide as a drawing `size` across, to one figure,

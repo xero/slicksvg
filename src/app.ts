@@ -9,9 +9,10 @@ import {linter, lintGutter} from '@codemirror/lint';
 import {findElementAtCursor, type ElementRef} from './xray';
 import {startTags, readAttribute, attributesOf, planAttributeEdits, applyChanges, stampSource, parseSource, elementExtent, removalRange, duplicateInsertion, childInsertion, SOURCE_ATTR, type StartTag, type TextChange} from './source-map';
 import {
-	SHAPE_KINDS, SHAPE_NAMES, byPoints, pointsNeeded, paintOf, strokeWidthFor, snapAngle, drawnShape, placedShape, pointsList, draggedAnchor, penPathData, shapeMarkup, spacedClose,
-	type ShapeKind, type PointKind, type Anchor,
+	SHAPE_KINDS, SHAPE_NAMES, NEW_SHAPE_COLOR, byPoints, pointsNeeded, paintOf, strokeWidthFor, snapAngle, drawnShape, placedShape, pointsList, draggedAnchor, penPathData, shapeMarkup, spacedClose,
+	type ShapeKind, type PointKind, type Anchor, type Pen,
 } from './draw';
+import {paintFrom, setStyleProperty, widthRange, writtenWidth, type Paint} from './paint';
 import {GEOMETRY, SHAPES, plainLength, shapePathData, asPathChanges, conversionBlocked, type Length, type ShapePath} from './shapes';
 import {findSvgTarget, selectionChain, nextInChain, ordinalOf, boxCorners, handleCursor} from './select';
 import {planMove, planResize, planScaleAbout, planRotate, planMatrix, mirrorAbout, parentCenter, simplestTransform, parseTransform, listMatrix, commaIn, axisMaps, scaleMatrix, multiply, invert, applyToVector, applyToPoint, pixelsPerUnit, decimalsFor, roundTo, fmt, placesOf, IDENTITY, type Matrix, type Point, type Rect, type Handle, type EditPlan} from './geometry';
@@ -402,6 +403,64 @@ function paintDraft(el: Element, paint: Record<string, string>): void {
 	}
 }
 
+/** What the paint tools set. */
+type PaintProp = 'fill' | 'stroke' | 'stroke-width';
+
+/** A value for each paint no drawing uses, to try where a paint shows. */
+const PAINT_PROBE: Record<PaintProp, string> = {fill: 'rgb(1, 2, 3)', stroke: 'rgb(1, 2, 3)', 'stroke-width': '1234.5px'};
+/** What inside a group takes its paint from the group, unless it paints itself. */
+const PAINTED = 'g, a, switch, path, rect, circle, ellipse, line, polyline, polygon, text, tspan, textPath, use';
+/** What a group holds that it does not paint: what is drawn only when used elsewhere. */
+const UNPAINTED = 'defs, clipPath, mask, marker, pattern, symbol';
+/** A paint this soon after the last joins its history step, as a picker or slider is moved. */
+const PAINT_JOIN = 500;
+
+/** Whether an element is painted with a value, as the browser computed it. */
+function paintedWith(el: Element, prop: PaintProp, value: string): boolean {
+	const now = getComputedStyle(el).getPropertyValue(prop).trim();
+	return prop === 'stroke-width' ? parseFloat(now) === parseFloat(value) : now === value;
+}
+
+/** Whether a paint written as an attribute shows on an element: neither its
+ * own style nor a style sheet's rule sets the property over it. */
+function attributeShows(el: Element, prop: PaintProp): boolean {
+	const was = el.getAttribute(prop);
+	el.setAttribute(prop, PAINT_PROBE[prop]);
+	const shows = paintedWith(el, prop, PAINT_PROBE[prop]);
+	if (was === null) el.removeAttribute(prop);
+	else el.setAttribute(prop, was);
+	return shows;
+}
+
+/** The elements a paint on a selection goes on, and whether it goes in each
+ * one's style, where an attribute would not show: every selected element,
+ * and inside a group each element that paints itself otherwise than the
+ * group would have it, so the whole of what was selected takes the paint.
+ * They are found by painting the preview's copies with a probe for a moment. */
+function paintTargets(els: Element[], prop: PaintProp): {el: Element; inStyle: boolean}[] {
+	const found: Element[] = [];
+	for (const top of topLevelOf(els)) {
+		found.push(top);
+		const styles = new Map<Element, string | null>();
+		const probe = (el: Element): void=>{
+			styles.set(el, el.getAttribute('style'));
+			if (el instanceof SVGElement) el.style.setProperty(prop, PAINT_PROBE[prop]);
+		};
+		probe(top);
+		// in document order, so what is inside an element that paints itself takes the probe from it
+		for (const inner of top.querySelectorAll(PAINTED)) {
+			if (inner.parentElement?.closest(UNPAINTED) || paintedWith(inner, prop, PAINT_PROBE[prop])) continue;
+			found.push(inner);
+			probe(inner);
+		}
+		for (const [el, style] of styles) {
+			if (style === null) el.removeAttribute('style');
+			else el.setAttribute('style', style);
+		}
+	}
+	return found.map(el=>({el, inStyle: !attributeShows(el, prop)}));
+}
+
 /** What each shape tool says it does, when it is taken up. */
 function toolHint(kind: ShapeKind): string {
 	if (kind === 'polyline') return 'Tap to place each point of the polyline, then tap the last again or press Done to finish it';
@@ -693,6 +752,13 @@ class slick {
 	/** The shape under way, drawn a point at a time. */
 	private sketch: Sketch | null = null;
 	private sketchGroup!: SVGGElement;
+	/** What new shapes are painted with; a width not picked yet goes by the drawing's size. */
+	private pen: {fill: string; stroke: string; width: string | null} = {fill: NEW_SHAPE_COLOR, stroke: 'none', width: null};
+	/** The picker or slider the last paint written came from, and when, which
+	 * a quick next one from it joins; null for a paint that joins nothing. */
+	private lastPaint: {run: string | null; at: number} | null = null;
+	/** The places the width slider writes to, for the drawing it was set for. */
+	private widthDecimals = 1;
 	/** The app's one message line, in the code's strip: what was just said,
 	 * and until when it keeps the standing hint away. */
 	private message!: HTMLElement;
@@ -1048,8 +1114,11 @@ class slick {
 			['point-delete', ()=>this.pointTool(()=>this.deletePoint())],
 			...SHAPE_KINDS.map((kind): [string, () => void]=>[`draw-${kind}`, ()=>this.armShape(kind)]),
 			['draw-back', ()=>this.backSketch()],
-			['draw-done', ()=>this.endSketch()]
+			['draw-done', ()=>this.endSketch()],
+			['no-fill', ()=>this.toggleNone('fill')],
+			['no-stroke', ()=>this.toggleNone('stroke')]
 		]);
+		this.setupPaint();
 		document.addEventListener('keydown', this.handleHistoryKeys);
 		this.updateHistoryButtons();
 		this.svgPreview.addEventListener('mousedown', (e)=>this.onPress(e));
@@ -1165,14 +1234,15 @@ class slick {
 		}
 	}
 
-	/** The app bar's menus. A menu opens under its button, one at a time, and
-	 * closes when one of its items is pressed, its button is pressed again, or
-	 * Escape is pressed, which gives its button the keys back. A press
-	 * anywhere else only closes it, so it presses or draws nothing. The arrow
-	 * keys move along its items. */
+	/** The bars' menus, and Width's slider. One opens from its button, one at
+	 * a time, and closes when its button is pressed again or Escape is
+	 * pressed, which gives its button the keys back, and a menu when one of
+	 * its items is pressed. A press anywhere else only closes it, so it
+	 * presses or draws nothing. The arrow keys move along a menu's items. */
 	private setupMenus(): void {
-		for (const trigger of document.querySelectorAll<HTMLElement>('[aria-haspopup="menu"]')) {
+		for (const trigger of document.querySelectorAll<HTMLElement>('[aria-haspopup]')) {
 			const menu = this.get(trigger.getAttribute('aria-controls') ?? '');
+			const isMenu = menu.getAttribute('role') === 'menu';
 			trigger.addEventListener('click', (e)=>{
 				if (this.openMenu?.menu === menu) this.closeMenu();
 				// opened from the keys, the first item takes them
@@ -1189,6 +1259,7 @@ class slick {
 				const to = e.relatedTarget;
 				if (this.openMenu?.menu === menu && to instanceof Node && !menu.contains(to) && !trigger.contains(to)) this.closeMenu();
 			});
+			if (!isMenu) continue;
 			menu.addEventListener('click', (e)=>{
 				// an item pressed from the keys gives them back to the menu's button,
 				// unless the item moved them elsewhere, as Size does to its dialog
@@ -1232,16 +1303,19 @@ class slick {
 
 	private showMenu(menu: HTMLElement, trigger: HTMLElement, focusFirst: boolean): void {
 		this.closeMenu();
+		if (menu.id === 'width-pop') this.readyWidth();
 		menu.showPopover();
 		const r = trigger.getBoundingClientRect();
-		// under its button, hung from the edge below the bar rather than over
-		// it, its outline in line with the button's side, and kept on the screen
+		// under its button, hung from the edge below the app bar rather than
+		// over it, or over a strip at the foot of a pane, clear of its edge; its
+		// outline in line with the button's side, and kept on the screen
+		const strip = trigger.closest('.strip');
 		const bar = trigger.closest('#appbar')?.getBoundingClientRect().bottom ?? r.bottom;
-		menu.style.top = `${bar + MENU_DROP}px`;
+		menu.style.top = strip ? `${strip.getBoundingClientRect().top - MENU_DROP - menu.offsetHeight}px` : `${bar + MENU_DROP}px`;
 		menu.style.left = `${Math.max(0, Math.min(r.left - 1, window.innerWidth - menu.offsetWidth))}px`;
 		trigger.setAttribute('aria-expanded', 'true');
 		this.openMenu = {menu, trigger};
-		if (focusFirst) menu.querySelector<HTMLElement>('button')?.focus();
+		if (focusFirst) menu.querySelector<HTMLElement>('button, input')?.focus();
 	}
 
 	private closeMenu(focusTrigger = false): void {
@@ -1851,6 +1925,7 @@ class slick {
 		this.get('topath').toggleAttribute('disabled', !els.some(el=>el.matches(shape) || el.querySelector(shape)));
 		this.refreshPointTools(editing !== null);
 		this.placeSketch();
+		this.refreshPaintTools();
 	}
 
 	/** The mode's buttons and the drawing's tools for it: the selection's in
@@ -2768,7 +2843,7 @@ class slick {
 	}
 
 	/** Write the planned attribute changes to the source as one history step. */
-	private commitChanges(sourceText: string, plans: Planned[], userEvent: string | undefined, isolate = true): boolean {
+	private commitChanges(sourceText: string, plans: Planned[], userEvent: string | undefined, isolate: boolean | 'before' = true): boolean {
 		if (this.editor.state.doc.toString() !== sourceText) {
 			this.announceError('The code changed meanwhile, so the edit was not applied.');
 			return false;
@@ -3328,7 +3403,7 @@ class slick {
 		// the drawing's size, which a shape placed with a tap and the width of a stroke go by
 		const box = root.getBoundingClientRect();
 		draft.size = Math.min(box.width, box.height) * pixelsPerUnit(draft.toUnits);
-		paintDraft(el, paintOf(kind, false, strokeWidthFor(draft.size)));
+		paintDraft(el, paintOf(kind, false, this.penFor(draft.size)));
 		return draft;
 	}
 
@@ -3373,7 +3448,7 @@ class slick {
 			return;
 		}
 		const geometry = g.to ? draft.attrs : placedShape(kind, draft.from, draft.size / 4, draft.decimals);
-		this.addShape(kind, {...geometry, ...paintOf(kind, false, strokeWidthFor(draft.size))});
+		this.addShape(kind, {...geometry, ...paintOf(kind, false, this.penFor(draft.size))});
 	}
 
 	/** Write a new shape as the drawing's last child, select it, and give the canvas the keys. */
@@ -3497,7 +3572,7 @@ class slick {
 	 * precision a point of it was placed at. */
 	private sketchAttrs(s: Sketch, closed: boolean): Record<string, string> {
 		const geometry: Record<string, string> = s.kind === 'path' ? {d: penPathData(s.anchors, closed, s.decimals)} : {points: pointsList(s.anchors, s.decimals)};
-		return {...geometry, ...paintOf(s.kind, closed, strokeWidthFor(s.draft.size))};
+		return {...geometry, ...paintOf(s.kind, closed, this.penFor(s.draft.size))};
 	}
 
 	/** Write the shape drawn a point at a time, when it has points enough,
@@ -3569,7 +3644,7 @@ class slick {
 		}
 		const [name, value] = s.kind === 'path' ? ['d', penPathData(anchors, closed, s.decimals)] : ['points', pointsList(anchors, s.decimals)];
 		s.draft.el.setAttribute(name, value);
-		paintDraft(s.draft.el, paintOf(s.kind, closed, strokeWidthFor(s.draft.size)));
+		paintDraft(s.draft.el, paintOf(s.kind, closed, this.penFor(s.draft.size)));
 		// a press reads out what it does; between presses, the hint says what to do next
 		if (s.press) this.readOut(`${s.kind} ${name}="${clipped(value)}"`);
 		else this.restoreHint();
@@ -3628,11 +3703,167 @@ class slick {
 	private refreshSketchTools(): void {
 		const s = this.sketch;
 		this.get('sketch-tools').classList.toggle('hide', !s);
+		// a shape under way is painted with the pen it was begun with
+		this.get('paint-tools').classList.toggle('hide', s !== null);
 		for (const kind of SHAPE_KINDS) this.get(`draw-${kind}`).classList.toggle('hide', s !== null && kind !== s.kind);
 		this.get('draw-done').toggleAttribute('disabled', !s || s.anchors.length < pointsNeeded(s.kind));
 		this.updateHistoryButtons();
 		// the hint follows the tools: a shape under way, or points edited, coming or going
 		this.restoreHint();
+	}
+
+	// --- Paint
+	/** The paint tools: Fill and Stroke open the browser's own colour picker
+	 * on a press, laid over them unseen, and Width a slider and a field. A
+	 * picker or the slider gives values as it is moved, and each is written
+	 * as it comes; once one settles, what it did is said. */
+	private setupPaint(): void {
+		for (const prop of ['fill', 'stroke'] as const) {
+			const picker = this.getTyped<HTMLInputElement>(`#${prop}-color`);
+			picker.addEventListener('input', ()=>this.applyPaint(prop, picker.value, false, picker.id));
+			picker.addEventListener('change', ()=>this.applyPaint(prop, picker.value, true, picker.id));
+		}
+		const range = this.getTyped<HTMLInputElement>('#width-range');
+		const field = this.getTyped<HTMLInputElement>('#width-value');
+		// the slider writes to its own steps, and a typed width as it was typed,
+		// each width a step of its own
+		const width = (from: HTMLInputElement, settled: boolean): void=>{
+			const value = writtenWidth(parseFloat(from.value), from === range ? this.widthDecimals : 6);
+			if (value === null) return;
+			if (from === range) field.value = value;
+			else {
+				if (Number(value) > Number(range.max)) range.max = value;
+				range.value = value;
+			}
+			this.applyPaint('stroke-width', value, settled, from === range ? range.id : null);
+		};
+		range.addEventListener('input', ()=>width(range, false));
+		range.addEventListener('change', ()=>width(range, true));
+		field.addEventListener('change', ()=>width(field, true));
+	}
+
+	/** What a new shape drawn across a drawing `size` wide is painted with. */
+	private penFor(size: number): Pen {
+		return {fill: this.pen.fill, stroke: this.pen.stroke, width: this.pen.width ?? strokeWidthFor(size)};
+	}
+
+	/** The drawing's size in its own units, the shorter side of its <svg>,
+	 * which the width of a new stroke goes by. */
+	private drawingSize(): number {
+		const root = this.svgPreview.querySelector('.svg-container svg');
+		const ctm = root instanceof SVGSVGElement ? root.getScreenCTM() : null;
+		const toUnits = ctm ? invert(toMatrix(ctm)) : null;
+		if (!root || !toUnits) return 0;
+		const box = root.getBoundingClientRect();
+		return Math.min(box.width, box.height) * pixelsPerUnit(toUnits);
+	}
+
+	/** The paint the tools show: the primary selection's, as the browser
+	 * paints it, or with nothing selected, or a shape under way, the pen's. */
+	private paintNow(): {fill: Paint; stroke: Paint; width: number} {
+		const el = this.sketch ? null : this.selectedElement();
+		if (el) {
+			const css = getComputedStyle(el);
+			return {fill: paintFrom(css.getPropertyValue('fill')), stroke: paintFrom(css.getPropertyValue('stroke')), width: parseFloat(css.getPropertyValue('stroke-width')) || 0};
+		}
+		return {fill: paintFrom(this.pen.fill), stroke: paintFrom(this.pen.stroke), width: Number(this.pen.width ?? strokeWidthFor(this.drawingSize()))};
+	}
+
+	/** Show the paint now on the tools: each swatch in its colour, struck
+	 * through for none, or left empty for a gradient or pattern; each picker
+	 * opening on it; and No fill and No stroke pressed for none. */
+	private refreshPaintTools(): void {
+		const now = this.paintNow();
+		for (const prop of ['fill', 'stroke'] as const) {
+			const paint = now[prop];
+			const tool = this.get(prop);
+			tool.classList.toggle('none', paint.kind === 'none');
+			tool.classList.toggle('other', paint.kind === 'other');
+			const picker = this.getTyped<HTMLInputElement>(`#${prop}-color`);
+			if (paint.kind === 'color') {
+				tool.style.setProperty('--swatch', paint.hex);
+				if (picker.value !== paint.hex) picker.value = paint.hex;
+			}
+			const name = prop === 'fill' ? 'Fill' : 'Stroke';
+			picker.setAttribute('aria-label', `${name} colour, ${paint.kind === 'color' ? paint.hex : paint.kind === 'none' ? 'none' : 'a gradient or pattern'}`);
+			this.get(`no-${prop}`).setAttribute('aria-pressed', paint.kind === 'none' ? 'true' : 'false');
+		}
+		this.get('stroke-width').setAttribute('aria-label', `Stroke width, ${fmt(now.width, 3)}`);
+	}
+
+	/** No fill, or No stroke: pressed, the paint goes; pressed again, it comes
+	 * back in the colour on its picker. */
+	private toggleNone(prop: 'fill' | 'stroke'): void {
+		const none = this.paintNow()[prop].kind === 'none';
+		this.applyPaint(prop, none ? this.getTyped<HTMLInputElement>(`#${prop}-color`).value : 'none', true);
+	}
+
+	/** Set the width slider for the drawing and the width now, the
+	 * selection's or the pen's, as Width opens it. */
+	private readyWidth(): void {
+		const range = this.getTyped<HTMLInputElement>('#width-range');
+		const field = this.getTyped<HTMLInputElement>('#width-value');
+		const now = this.paintNow().width;
+		const {min, max, step, decimals} = widthRange(this.drawingSize(), now);
+		this.widthDecimals = decimals;
+		range.min = String(min);
+		range.max = String(max);
+		range.step = String(step);
+		range.value = String(now);
+		field.value = fmt(now, 6);
+	}
+
+	/** Paint the selection with a fill, a stroke, or a stroke's width, and
+	 * take it up for the shapes drawn next. With nothing selected, only those
+	 * take it; a shape under way, drawn a point at a time, takes it as it is
+	 * drawn. A value given while a picker or the slider is still moving is
+	 * read out; a settled one is said. Values from the same picker or slider
+	 * (`run`) in quick succession are one history step. */
+	private applyPaint(prop: PaintProp, value: string, settled: boolean, run: string | null = null): void {
+		if (prop === 'fill') this.pen.fill = value;
+		else if (prop === 'stroke') this.pen.stroke = value;
+		else this.pen.width = value;
+		if (this.sketch) this.showSketch();
+		const els = this.sketch ? [] : this.selectedElements();
+		if (els.length === 0) {
+			this.refreshPaintTools();
+			if (settled) this.announceAction(prop === 'stroke-width' ? `New strokes are ${value} wide` : value === 'none' ? `New shapes have no ${prop}${prop === 'stroke' ? ', and lines take the fill\'s colour' : ''}` : `New shapes are ${prop === 'fill' ? 'filled' : 'stroked'} ${value}`);
+			return;
+		}
+		if (this.paintElements(els, prop, value, run) === null) return;
+		if (!settled) {
+			this.say(`${prop}="${value}"`);
+			return;
+		}
+		const what = els.length > 1 ? `${els.length} elements` : els[0].tagName.toLowerCase();
+		const has = els.length > 1 ? 'have' : 'has';
+		const did = prop === 'stroke-width' ? `stroke width ${value}` : value === 'none' ? `${has} no ${prop}` : `${prop === 'fill' ? 'filled' : 'stroked'} ${value}`;
+		// a width shows only on a stroke
+		const unseen = prop === 'stroke-width' && this.selectedElements().every(el=>getComputedStyle(el).getPropertyValue('stroke') === 'none');
+		this.announceAction(unseen ? `${what} ${did}, with no stroke to show it: pick a Stroke colour` : `${what} ${did}`);
+	}
+
+	/** Write a paint on elements, where it shows on each, and on what inside
+	 * them paints itself otherwise. A paint from a picker or the slider
+	 * quickly after the last from it joins its history step, so one moved
+	 * is one step. False when every element was painted so already; null,
+	 * with a message, when the code cannot take it. */
+	private paintElements(els: Element[], prop: PaintProp, value: string, run: string | null): boolean | null {
+		const parsed = this.parseOnce();
+		if (!parsed) return null;
+		const plans: Planned[] = [];
+		for (const {el, inStyle} of paintTargets(els, prop)) {
+			const found = this.sourceFor(el, parsed);
+			if (!found) return null;
+			const attrs = inStyle ? {style: setStyleProperty(found.source.getAttribute('style') ?? '', prop, value)} : {[prop]: value};
+			if (Object.entries(attrs).every(([name, v])=>found.source.getAttribute(name) === v)) continue;
+			plans.push({tag: found.tag, attrs});
+		}
+		if (plans.length === 0) return false;
+		const last = this.lastPaint;
+		const joins = run !== null && last?.run === run && Date.now() - last.at < PAINT_JOIN;
+		this.lastPaint = {run, at: Date.now()};
+		return this.commitChanges(parsed.sourceText, plans, undefined, joins ? false : 'before');
 	}
 
 	/** Remove the selection from the code, each element with the line it sat
@@ -3692,10 +3923,13 @@ class slick {
 		return startTags(source).find(tag=>tag.name === 'svg') ?? null;
 	}
 
-	/** Splice changes into the source as one undo step of its own. */
-	private applyEdits(changes: TextChange[], userEvent: string | undefined, isolate = true): boolean {
+	/** Splice changes into the source as one undo step of its own. A run of
+	 * quick changes is one step: the first is isolated only from what came
+	 * before it, with "before", and the rest are not isolated, so each joins it. */
+	private applyEdits(changes: TextChange[], userEvent: string | undefined, isolate: boolean | 'before' = true): boolean {
 		if (changes.length === 0) return false;
-		this.editor.dispatch({changes, annotations: isolate ? isolateHistory.of('full') : [], userEvent});
+		const annotations = isolate === false ? [] : isolateHistory.of(isolate === true ? 'full' : isolate);
+		this.editor.dispatch({changes, annotations, userEvent});
 		return true;
 	}
 

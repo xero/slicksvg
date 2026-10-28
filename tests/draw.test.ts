@@ -131,11 +131,28 @@ describe('Drawing a shape a point at a time', () => {
 
 describe('New shape paint', () => {
   it('should fill a shape that closes round an area, and stroke a line or an open shape without a fill', () => {
-    for (const kind of ['rect', 'circle', 'ellipse', 'polygon'] as const) expect(paintOf(kind, false, '2')).toEqual({ fill: NEW_SHAPE_COLOR });
-    expect(paintOf('path', true, '2')).toEqual({ fill: NEW_SHAPE_COLOR });
-    expect(paintOf('line', false, '2')).toEqual({ stroke: NEW_SHAPE_COLOR, 'stroke-width': '2' });
-    expect(paintOf('polyline', true, '0.2')).toEqual({ fill: 'none', stroke: NEW_SHAPE_COLOR, 'stroke-width': '0.2' });
-    expect(paintOf('path', false, '3')).toEqual({ fill: 'none', stroke: NEW_SHAPE_COLOR, 'stroke-width': '3' });
+    // the pen to begin with: the grey fill, and no stroke
+    const grey = (width: string) => ({ fill: NEW_SHAPE_COLOR, stroke: 'none', width });
+    for (const kind of ['rect', 'circle', 'ellipse', 'polygon'] as const) expect(paintOf(kind, false, grey('2'))).toEqual({ fill: NEW_SHAPE_COLOR });
+    expect(paintOf('path', true, grey('2'))).toEqual({ fill: NEW_SHAPE_COLOR });
+    expect(paintOf('line', false, grey('2'))).toEqual({ stroke: NEW_SHAPE_COLOR, 'stroke-width': '2' });
+    expect(paintOf('polyline', true, grey('0.2'))).toEqual({ fill: 'none', stroke: NEW_SHAPE_COLOR, 'stroke-width': '0.2' });
+    expect(paintOf('path', false, grey('3'))).toEqual({ fill: 'none', stroke: NEW_SHAPE_COLOR, 'stroke-width': '3' });
+  });
+
+  it('should fill and stroke a new shape with the pen, and stroke a line or an open shape only', () => {
+    const pen = { fill: '#ff0000', stroke: '#0000ff', width: '4' };
+    expect(paintOf('rect', false, pen)).toEqual({ fill: '#ff0000', stroke: '#0000ff', 'stroke-width': '4' });
+    expect(paintOf('path', true, pen)).toEqual({ fill: '#ff0000', stroke: '#0000ff', 'stroke-width': '4' });
+    expect(paintOf('line', false, pen)).toEqual({ stroke: '#0000ff', 'stroke-width': '4' });
+    expect(paintOf('path', false, pen)).toEqual({ fill: 'none', stroke: '#0000ff', 'stroke-width': '4' });
+    expect(paintOf('circle', false, { ...pen, fill: 'none' })).toEqual({ fill: 'none', stroke: '#0000ff', 'stroke-width': '4' });
+  });
+
+  it('should draw no shape unseen: an open one in the fill\'s colour with no stroke, a closed one with neither in the grey', () => {
+    expect(paintOf('line', false, { fill: '#ff0000', stroke: 'none', width: '1' })).toEqual({ stroke: '#ff0000', 'stroke-width': '1' });
+    expect(paintOf('polyline', false, { fill: 'none', stroke: 'none', width: '1' })).toEqual({ fill: 'none', stroke: NEW_SHAPE_COLOR, 'stroke-width': '1' });
+    expect(paintOf('rect', false, { fill: 'none', stroke: 'none', width: '1' })).toEqual({ fill: 'none', stroke: NEW_SHAPE_COLOR, 'stroke-width': '1' });
   });
 
   it('should stroke a hundredth of the drawing\'s size, to one figure', () => {

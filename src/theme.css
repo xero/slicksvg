@@ -271,7 +271,7 @@
     &::-webkit-scrollbar {
       @apply hidden;
     }
-    &.compact button > span {
+    &.compact :is(button, .picker) > span {
       @apply sr-only;
     }
     &.more-end {
@@ -292,9 +292,86 @@
   #context-bar nav > div:not(.hide) ~ div:not(.hide) {
     @apply border-l border-divider;
   }
-  /* the last of them closed off too, where the message begins */
+  /* the bar closed off at its end, after the paint tools */
   #context-bar nav {
     @apply pr-0 border-r border-divider;
+  }
+  /* the paint tools at the end, in every mode, where they stay put as the
+     mode's tools come and go; the mode's last group is closed off where the
+     gap before them begins, with a line the paint tools' own edge covers
+     when the gap closes up */
+  #paint-tools {
+    @apply ml-auto;
+  }
+  #context-bar nav > div:not(.hide, #paint-tools):not(:has(~ div:not(.hide, #paint-tools))) {
+    box-shadow: 1px 0 0 var(--color-divider);
+  }
+  /* Fill and Stroke: a swatch of the paint, with the browser's own colour
+     picker laid over it, unseen, for a press to open. No paint is a swatch
+     struck through, and a gradient or pattern an empty one with a dashed edge */
+  nav .picker {
+    @apply relative flex flex-col shrink-0 items-center justify-center gap-1 px-2 min-w-11 cursor-pointer text-nav-txt whitespace-nowrap;
+    font-size: 0.6875rem;
+    line-height: 1;
+    input {
+      @apply absolute inset-0 w-full h-full m-0 p-0 border-0 opacity-0 cursor-pointer;
+    }
+    svg {
+      @apply w-6 h-6 shrink-0 fill-none stroke-nav-txt;
+      stroke-width: 1.5;
+    }
+    .chip {
+      fill: var(--swatch, transparent);
+    }
+    .edge {
+      stroke-width: 1;
+    }
+    .slash {
+      @apply hidden stroke-err;
+      stroke-width: 2;
+      stroke-linecap: round;
+    }
+    &#stroke .chip {
+      @apply fill-none;
+      stroke: var(--swatch, transparent);
+      stroke-width: 3.5;
+    }
+    &.none .slash {
+      @apply inline;
+    }
+    &.none .chip, &.other .chip {
+      @apply fill-none;
+    }
+    &#stroke.none .chip {
+      stroke: none;
+    }
+    &.other .chip, &#stroke.other .chip {
+      @apply stroke-nav-txt;
+      stroke-width: 1.5;
+      stroke-dasharray: 2 2;
+    }
+    &:hover, &:active {
+      @apply bg-nav-hover;
+    }
+    &:has(input:focus-visible) {
+      outline: 2px solid var(--color-active) !important;
+      outline-offset: -2px;
+    }
+  }
+  /* the stroke's width: a slider over the widths that suit the drawing, and
+     the width itself to type, at a size iOS does not zoom in to */
+  #width-pop:popover-open {
+    @apply flex-row items-center gap-3 p-3;
+  }
+  #width-pop {
+    input[type="range"] {
+      @apply w-48 h-11 m-0;
+      accent-color: var(--color-active);
+    }
+    input[type="number"] {
+      @apply w-24 h-11 px-2 text-base bg-menu-alt text-nav-txt rounded-sm;
+      box-shadow: inset 0 0 0 1px var(--color-divider);
+    }
   }
   /* the app's menus, and Clean and X-ray, at the start of its bar, closed off
      on both sides; the modes, Undo and Redo, and the zoom at the end. A bar too narrow for both
@@ -369,9 +446,9 @@
   #preview {
 		@apply relative flex-1 flex flex-col overflow-hidden min-w-[9%] min-h-[9%];
   }
-  /* the drawing's tools keep their width, and shrink to scroll when they must */
+  /* the drawing's tools fill their strip, and scroll when they must */
   #context-bar nav {
-    flex: 0 1 auto;
+    flex: 1 1 auto;
     min-width: 0;
   }
   /* the code's strip: whether the code draws, as an icon in the colour for
@@ -585,6 +662,11 @@
 			--current-color: var(--color-svg);
       @apply flex items-center justify-center
 						 border-4 border-dashed border-bounds;
+      /* the drawing's colours change at once, as it is painted, not with the
+         app's own fade, which a paint read back mid-change would catch */
+      * {
+        transition: none;
+      }
     }
     /* the drawing's own error, not the strip's message, which is in the pane too */
     .svg-preview-wrapper > .error {
