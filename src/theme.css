@@ -41,7 +41,6 @@
 	--color-err: #fb2c36;
 	--color-err-bg: #fef2f2;
 	--color-err-fg:#9f0712;
-	--color-err-br: #ffe7e7;
 	/* code that draws: a green that reads on the bar, 4.2:1 here */
 	--color-ok: #2f6f33;
   --color-svg: #151b2c;
@@ -75,7 +74,6 @@
 	--color-dragbar: #565f89;
 	--color-err-bg:#82181a;
 	--color-err-fg: #ffc9c9;
-	--color-err-br: #8b060f;
 	--color-ok: #9ece6a;
 	--color-selection: rgba(125, 207, 255, 0.35);
 }

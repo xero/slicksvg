@@ -5,7 +5,7 @@ import {xml} from '@codemirror/lang-xml';
 import {basicSetup} from 'codemirror';
 import {tokyoNightDay} from '@fsegurai/codemirror-theme-tokyo-night-day';
 import {tokyoNightStorm} from '@fsegurai/codemirror-theme-tokyo-night-storm';
-import {linter, lintGutter, forceLinting} from '@codemirror/lint';
+import {linter, lintGutter} from '@codemirror/lint';
 import {findElementAtCursor, type ElementRef} from './xray';
 import {startTags, readAttribute, attributesOf, planAttributeEdits, applyChanges, stampSource, parseSource, elementExtent, removalRange, duplicateInsertion, childInsertion, SOURCE_ATTR, type StartTag, type TextChange} from './source-map';
 import {
@@ -650,6 +650,9 @@ class slick {
 	private modal!: HTMLDialogElement;
 	/** The code's state, as an icon and its colour, which a screen reader hears as words. */
 	private codeStatus!: HTMLElement;
+	/** The code's strip and the drawing's, where the message is said. */
+	private codeBar!: HTMLElement;
+	private contextBar!: HTMLElement;
 	private code: {state: CodeState; message: string} = {state: 'valid', message: 'SVG valid'};
 	private isVerticalLayout = false;
 	private isDarkMode = false;
@@ -725,6 +728,8 @@ class slick {
 	constructor() {
 		this.modal = this.getTyped('dialog');
 		this.codeStatus = this.get('svg-status');
+		this.codeBar = this.get('code-bar');
+		this.contextBar = this.get('context-bar');
 		this.message = this.get('message');
 		this.zoomShown = this.getTyped('#zoom-reset > span');
 		statusBarUpdateCallback = this.updateStatusBar.bind(this);
@@ -989,10 +994,9 @@ class slick {
 	/** Take the code check's finding: its icon, the words a screen reader
 	 * hears for it, and the message, which shows an error first. */
 	public updateStatusBar(state: CodeState, message: string): void {
-		const same = this.code.state === state && this.code.message === message;
+		if (this.code.state === state && this.code.message === message) return;
 		this.code = {state, message};
-		if (same) return;
-		for (const each of ['valid', 'empty', 'error'] as const) this.codeStatus.classList.toggle(each, each === state);
+		this.codeStatus.className = state;
 		const words = this.codeStatus.querySelector('span');
 		if (words) words.textContent = message;
 		this.showMessage();
@@ -1111,27 +1115,33 @@ class slick {
 		for (const nav of document.querySelectorAll('nav')) this.fitBar(nav);
 		this.guardBarsFromPalm();
 		this.setupMenus();
-		const sizes = new ResizeObserver(()=>this.placeMessage());
-		sizes.observe(this.get('code-bar'));
-		sizes.observe(this.codeStatus);
+		// the panes, as their bar is dragged: the code's strip goes with its pane's width
+		const panes = new ResizeObserver(()=>this.placeMessage());
+		panes.observe(this.get('editor'));
+		panes.observe(this.previewContainer);
 	}
 
 	/** The message sits in the code's strip, beside the code's icon, on three
-	 * lines at most. One longer than that rises above the strip, whole; and
-	 * with the code pane squeezed too narrow to say anything in, it goes over
-	 * the foot of the drawing instead, where the eye is. */
+	 * lines at most. One longer than that, or any with the code pane squeezed
+	 * too narrow to say it in, rises over the foot of a pane, whole: the
+	 * drawing's, where the eye is, unless the code's has more room above its
+	 * strip. The code's own error stays in its strip, cut to three lines,
+	 * rather than stand over the code it is about until it is fixed. */
 	private placeMessage(): void {
 		const el = this.message;
-		const strip = this.get('code-bar');
-		const home = strip.clientWidth - this.codeStatus.offsetWidth < STATUS_ROOM ? this.get('context-bar') : strip;
-		if (el.parentElement !== home) home.appendChild(el);
-		if (home !== strip) {
-			el.classList.add('above');
-			return;
+		const strip = this.codeBar;
+		const codeError = this.code.state === 'error' && this.said?.error !== true;
+		let raised = strip.clientWidth - this.codeStatus.offsetWidth < STATUS_ROOM;
+		if (!raised && !codeError) {
+			if (el.parentElement !== strip) strip.appendChild(el);
+			el.classList.remove('above');
+			// held to three lines, a message with more has some hidden below them
+			raised = el.scrollHeight > el.clientHeight + 1;
 		}
-		el.classList.remove('above');
-		// held to three lines, a message with more has some hidden below them
-		if (el.scrollHeight > el.clientHeight + 1) el.classList.add('above');
+		// each strip sits at the foot of its pane, so its top is the room above it
+		const home = !raised ? strip : this.contextBar.offsetTop >= strip.offsetTop ? this.contextBar : strip;
+		if (el.parentElement !== home) home.appendChild(el);
+		el.classList.toggle('above', raised);
 	}
 
 	/** A hand drawing with a pencil rests on the screen, and iPadOS lets the
@@ -3047,7 +3057,6 @@ class slick {
 		if (!written) {
 			for (const d of g.drags) d.live.revert();
 			this.refreshSelection();
-			forceLinting(this.editor);
 			return;
 		}
 		if (pull && first.point) {
@@ -3102,10 +3111,7 @@ class slick {
 		this.placeMarquee(null);
 		this.svgPreview.style.cursor = this.drawTool ? 'crosshair' : '';
 		if (this.heldUntil === Infinity) this.restoreHint(true);
-		if (g?.draft) {
-			g.draft.el.remove();
-			forceLinting(this.editor);
-		}
+		g?.draft?.el.remove();
 		// a press on a shape under way is taken back, and the shape stays
 		if (g?.mode === 'draw' && this.sketch) {
 			this.sketch.press = null;
@@ -3115,8 +3121,6 @@ class slick {
 		for (const d of g.drags) d.live.revert();
 		this.tapTarget = null;
 		this.refreshSelection();
-		// the code's check is run again, for the message
-		forceLinting(this.editor);
 	}
 
 	/** Move the selection by whole units of its parent, from the keyboard.
@@ -3544,7 +3548,6 @@ class slick {
 		s.draft.el.remove();
 		this.placeSketch();
 		this.refreshSketchTools();
-		forceLinting(this.editor);
 	}
 
 	/** Show the shape under way as it would be written, with what the press

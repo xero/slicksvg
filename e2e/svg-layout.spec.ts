@@ -117,13 +117,39 @@ test.describe('SVG Editor layout', () => {
     await expect(status).not.toHaveClass(/above/);
   });
 
-  test('should raise a message longer than three lines above the code\'s strip', async ({ page }) => {
+  test('should raise a message longer than three lines over the foot of the drawing, or of the code when it has more room', async ({ page }) => {
     await page.setViewportSize({ width: 700, height: 720 });
     const status = page.locator('#message');
-    await page.evaluate(() => (window as any).svgEditor.say('The code has an error, so this element cannot be edited here. Fix the code first, then try again, and once more after that if it still will not go.'));
-    await expect(status).toHaveClass(/above/);
-    const said = await box(page, '#message');
+    // more than three lines across a strip the width of the page
+    const long = 'The code has an error, so this element cannot be edited here. Fix the code first, then try again, and once more after that if it still will not go. '.repeat(3);
+    await page.evaluate((long) => (window as any).svgEditor.say(long), long);
+    await expect(page.locator('#context-bar #message')).toHaveClass(/above/);
+    let said = await box(page, '#message');
+    expect(said.y + said.height).toBeLessThanOrEqual((await box(page, '#context-bar')).y);
+    // stacked, with the drawing squeezed short, the code's pane has the room
+    await pressMenuItem(page, 'flip');
+    const dragbar = await box(page, '#dragbar');
+    await page.mouse.move(dragbar.x + dragbar.width / 2, dragbar.y + dragbar.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(dragbar.x + dragbar.width / 2, 700, { steps: 4 });
+    await page.mouse.up();
+    await page.evaluate((long) => (window as any).svgEditor.say(long), long);
+    await expect(page.locator('#code-bar #message')).toHaveClass(/above/);
+    said = await box(page, '#message');
+    expect(said.y).toBeGreaterThanOrEqual((await box(page, '#editor')).y);
     expect(said.y + said.height).toBeLessThanOrEqual((await box(page, '#code-bar')).y);
+  });
+
+  test('should keep the code\'s own error in its strip, cut to three lines, not over the code it is about', async ({ page }) => {
+    await page.setViewportSize({ width: 700, height: 720 });
+    await page.evaluate(() => (window as any).svgEditor.updateStatusBar('error', 'SVG error: Opening and ending tag mismatch: rect line 1 and svg, and a good deal more besides, which goes on and on past three lines of the strip'));
+    const status = page.locator('#code-bar #message');
+    await expect(status).toHaveClass(/error/);
+    await expect(status).not.toHaveClass(/above/);
+    const said = await box(page, '#message');
+    const strip = await box(page, '#code-bar');
+    expect(said.y).toBeGreaterThanOrEqual(strip.y);
+    expect(said.y + said.height).toBeLessThanOrEqual(strip.y + strip.height);
   });
 
   test('should say a message over the foot of the drawing while the code pane is squeezed too narrow for it, and let presses through', async ({ page }) => {
