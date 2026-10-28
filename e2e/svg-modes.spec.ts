@@ -288,10 +288,26 @@ test.describe('SVG Editor zoom control', () => {
 test.describe('SVG Editor app bar on a portrait tablet', () => {
   test.use({ viewport: { width: 820, height: 1180 }, hasTouch: true, isMobile: true });
 
-  test('should fit every button of the app bar with its name', async ({ page }) => {
+  test('should fit every button of the app bar with its name, the menus at its start and the tools at its end', async ({ page }) => {
     await page.goto('/index.html');
     await expect(page.locator('.svg-container svg')).toBeVisible();
-    await expect(page.locator('#appbar nav')).not.toHaveClass(/compact/);
-    await expect(page.locator('#appbar nav')).not.toHaveClass(/more-end/);
+    const bar = page.locator('#appbar nav');
+    await expect(bar).not.toHaveClass(/compact/);
+    await expect(bar).not.toHaveClass(/more-end/);
+    const box = async (s: string) => (await page.locator(s).boundingBox())!;
+    const [nav, file, view, history, zoom] = [await box('#appbar nav'), await box('#file-menu'), await box('#view-menu'), await box('#history'), await box('#zoom')];
+    expect(file.x - nav.x).toBeLessThan(20);
+    expect(nav.x + nav.width - (zoom.x + zoom.width)).toBeLessThan(20);
+    // the gap is in the middle, between the menus and the tools
+    expect(history.x - (view.x + view.width)).toBeGreaterThan(100);
+  });
+
+  test('should close up the gap when the bar is too narrow for it', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/index.html');
+    await expect(page.locator('.svg-container svg')).toBeVisible();
+    await expect(page.locator('#appbar nav')).toHaveClass(/compact/);
+    const [view, history] = [(await page.locator('#view-menu').boundingBox())!, (await page.locator('#history').boundingBox())!];
+    expect(history.x - (view.x + view.width)).toBeLessThanOrEqual(8);
   });
 });

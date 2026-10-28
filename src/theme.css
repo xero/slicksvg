@@ -289,6 +289,11 @@
   #context-bar nav > div:not(.hide) ~ div:not(.hide) {
     @apply ml-1 pl-1 border-l border-bounds;
   }
+  /* the app's menus at the start of its bar, and its tools at the end; a bar
+     too narrow for both closes the gap, and scrolls */
+  #appbar nav > #history {
+    @apply ml-auto;
+  }
   /* buttons that belong together: one edge round them, a fainter one between */
   .joined {
     @apply flex flex-row items-stretch mx-1 border-x border-bounds;
