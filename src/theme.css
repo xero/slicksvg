@@ -37,6 +37,10 @@
 	   than the faint ones between a group's buttons */
 	--color-divider: #8a90a5;
 	--color-dragbar: #b3b4d1;
+	/* the bar's grip: darker than the bar, at rest or under the pointer, and
+	   than the code and the drawing beside it, with lighter dots */
+	--color-grip: #8a90a5;
+	--color-grip-dot: #faf8ff;
 	--color-bounds:#c0c6dd;
 	--color-err: #fb2c36;
 	--color-err-bg: #fef2f2;
@@ -72,6 +76,8 @@
 	--color-active-txt: #1a1b26;
 	--color-divider: #565f89;
 	--color-dragbar: #565f89;
+	--color-grip: #16161e;
+	--color-grip-dot: #a9b1d6;
 	--color-err-bg:#82181a;
 	--color-err-fg: #ffc9c9;
 	--color-ok: #9ece6a;
@@ -173,9 +179,34 @@
 			&:active {
 				@apply bg-dragbar/35;
 			}
+			/* a grip in its middle, to say it can be dragged, and a little more
+			   of it to take hold of: a block wider than the bar, with three dots
+			   7px apart in its middle */
+			&::after {
+				content: '';
+				@apply absolute top-1/2 left-1/2;
+				width: 10px;
+				height: 50px;
+				transform: translate(-50%, -50%);
+				background:
+					radial-gradient(circle at 50% calc(50% - 7px), var(--color-grip-dot) 1.5px, transparent 2px),
+					radial-gradient(circle at 50% 50%, var(--color-grip-dot) 1.5px, transparent 2px),
+					radial-gradient(circle at 50% calc(50% + 7px), var(--color-grip-dot) 1.5px, transparent 2px),
+					var(--color-grip);
+			}
 		}
 		&.vertical #dragbar {
 			@apply w-full h-1.5 cursor-row-resize;
+			/* the grip turned with the bar */
+			&::after {
+				width: 50px;
+				height: 10px;
+				background:
+					radial-gradient(circle at calc(50% - 7px) 50%, var(--color-grip-dot) 1.5px, transparent 2px),
+					radial-gradient(circle at 50% 50%, var(--color-grip-dot) 1.5px, transparent 2px),
+					radial-gradient(circle at calc(50% + 7px) 50%, var(--color-grip-dot) 1.5px, transparent 2px),
+					var(--color-grip);
+			}
 		}
 		&.vertical #editor, &.vertical #preview {
 			min-height: 10%;
@@ -537,10 +568,15 @@
 				@apply text-white!;
 			}
 		}
-		.cm-lint-marker,
-		.cm-lint-marker-error,
-		.cm-lint-marker-warning {
-			@apply pointer-events-none cursor-auto;
+		/* the line numbers as wide as the longest needs, one figure for the one
+		   line a cleaned drawing is on, not the editor's two-figure least; a
+		   line with an error has its number in the error's red, where the
+		   editor's own gutter for it would take its width with nothing in it */
+		.cm-lineNumbers .cm-gutterElement {
+			min-width: 0 !important;
+		}
+		.cm-gutterElement.cm-error-line {
+			@apply bg-err! text-white! font-bold;
 		}
 		&:not(.dark) .cm-activeLine {
 			@apply bg-preview!;

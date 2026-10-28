@@ -1,3 +1,4 @@
+import { useHello } from './fixtures';
 import { pressMenuItem } from './toolbar';
 import { test, expect } from '@playwright/test';
 
@@ -15,11 +16,13 @@ test.describe('SVG Editor', () => {
     await expect(page.locator('#editor .cm-content')).toBeVisible();
     await expect(page.locator('.svg-preview-wrapper svg')).toBeVisible();
 
-    // Check for the "Hello SVG" text specifically in the SVG preview area
-    await expect(page.locator('#preview svg text').filter({ hasText: 'Hello SVG' })).toBeVisible();
+    // the light bulb, drawn in paths
+    await expect(page.locator('.svg-container svg')).toHaveAttribute('viewBox', '0 0 110 135');
+    await expect(page.locator('.svg-container svg path')).toHaveCount(4);
   });
 
   test('should update SVG preview when code changes', async ({ page }) => {
+    await useHello(page);
     // Get the initial color
     const initialSvg = page.locator('.svg-preview-wrapper svg circle');
     await expect(initialSvg).toHaveAttribute('fill', '#6291e0');

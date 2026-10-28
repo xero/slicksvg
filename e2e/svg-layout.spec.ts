@@ -201,6 +201,51 @@ test.describe('SVG Editor layout', () => {
   });
 });
 
+test.describe('SVG Editor gutter and grip', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/index.html');
+    await expect(page.locator('.svg-container svg')).toBeVisible();
+  });
+
+  test('should size the line numbers to the longest, with no gutter kept for errors, and mark an error\'s line on its number', async ({ page }) => {
+    const numbers = page.locator('.cm-gutter.cm-lineNumbers');
+    await expect(page.locator('.cm-gutter-lint')).toHaveCount(0);
+    await setContent(page, '<svg xmlns="http://www.w3.org/2000/svg"/>');
+    const one = (await numbers.boundingBox())!.width;
+    // a figure and its padding, not the editor's least of two figures' room
+    expect(one).toBeLessThan(18);
+    await setContent(page, `<svg xmlns="http://www.w3.org/2000/svg">${'\n<g/>'.repeat(120)}\n</svg>`);
+    await expect.poll(async () => (await numbers.boundingBox())!.width).toBeGreaterThan(one + 10);
+    await setContent(page, '<svg xmlns="http://www.w3.org/2000/svg">\n  <rect>\n</svg>');
+    const marked = page.locator('.cm-lineNumbers .cm-error-line');
+    await expect(marked).toHaveText('3');
+    await expect(marked).toHaveCSS('color', 'rgb(255, 255, 255)');
+  });
+
+  test('should put a grip in the middle of the bar between the panes, in a colour of its own, turned with the layout', async ({ page }) => {
+    const grip = () => page.evaluate(() => {
+      const bar = document.getElementById('dragbar')!;
+      const css = getComputedStyle(bar, '::after');
+      const bg = (el: Element) => getComputedStyle(el).backgroundColor;
+      return {
+        width: css.width, height: css.height, radius: css.borderRadius,
+        color: css.backgroundColor, bar: bg(bar), editor: bg(document.querySelector('.cm-editor')!), preview: bg(document.getElementById('preview')!),
+      };
+    });
+    for (const dark of [false, true]) {
+      if (dark) await pressMenuItem(page, 'dark');
+      // the colour change fades in
+      await page.waitForTimeout(300);
+      const g = await grip();
+      expect([g.width, g.height, g.radius]).toEqual(['10px', '50px', '0px']);
+      for (const other of [g.bar, g.editor, g.preview]) expect(g.color).not.toBe(other);
+    }
+    await pressMenuItem(page, 'flip');
+    const g = await grip();
+    expect([g.width, g.height]).toEqual(['50px', '10px']);
+  });
+});
+
 test.describe('SVG Editor layout on a portrait tablet', () => {
   test.use({ viewport: { width: 820, height: 1180 }, hasTouch: true, isMobile: true });
 

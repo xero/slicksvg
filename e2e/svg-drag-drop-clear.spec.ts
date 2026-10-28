@@ -1,3 +1,4 @@
+import { useHello } from './fixtures';
 import { test, expect } from '@playwright/test';
 
 test.describe('SVG Drag and Drop Content Clearing', () => {
@@ -11,7 +12,8 @@ test.describe('SVG Drag and Drop Content Clearing', () => {
     const editor = page.locator('#editor .cm-content');
     await expect(editor).toBeVisible();
 
-    // Get initial content (should be the default circle SVG)
+    await useHello(page);
+    // the circle and its text, to be replaced
     const initialContent = await editor.textContent();
     expect(initialContent).toContain('Hello SVG');
     expect(initialContent).toContain('circle');

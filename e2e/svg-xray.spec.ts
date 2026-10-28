@@ -1,3 +1,4 @@
+import { useHello } from './fixtures';
 import { test, expect, type Page } from '@playwright/test';
 
 const HIGHLIGHT = 'url(#highlight-glow)';
@@ -23,6 +24,7 @@ test.describe('SVG Editor X-ray Mode', () => {
     await page.goto('/index.html');
     await expect(page.locator('#editor .cm-content')).toBeVisible();
     await expect(page.locator('.svg-container svg')).toBeVisible();
+    await useHello(page);
   });
 
   test('should highlight the element under the cursor when x-ray is enabled', async ({ page }) => {

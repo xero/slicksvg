@@ -1,3 +1,4 @@
+import { useHello } from './fixtures';
 import { test, expect, type Page } from '@playwright/test';
 
 /** The pan and zoom the app wrote into the drawing's transform. */
@@ -149,8 +150,9 @@ test.describe('pinching the preview', () => {
 
   test('a second finger turns a drag of the selection into a pinch, and the drag is kept', async ({ page }) => {
     const { x: cx, y: cy } = await paneCenter(page);
+    await useHello(page);
     const touch = await fingers(page);
-    // the default drawing's circle, off its centre where the text sits
+    // the circle, off its centre where the text sits
     const box = await page.locator('.svg-container circle').boundingBox();
     if (!box) throw new Error('no circle');
     const [px, py] = [box.x + 20, box.y + box.height / 2];

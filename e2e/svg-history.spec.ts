@@ -1,3 +1,4 @@
+import { useHello } from './fixtures';
 import { pressMenuItem } from './toolbar';
 import { test, expect, type Page } from '@playwright/test';
 
@@ -15,6 +16,7 @@ test.describe('SVG Editor Edit History', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/index.html');
     await expect(page.locator('.svg-container svg')).toBeVisible();
+    await useHello(page);
   });
 
   test('should rewrite only the root svg tag when rotating, and undo it in one step', async ({ page }) => {

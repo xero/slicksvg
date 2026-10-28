@@ -1,11 +1,11 @@
-import {EditorView} from '@codemirror/view';
-import {EditorState, EditorSelection, Compartment} from '@codemirror/state';
+import {EditorView, GutterMarker, gutterLineClass} from '@codemirror/view';
+import {EditorState, EditorSelection, Compartment, RangeSet, StateField} from '@codemirror/state';
 import {keymap} from '@codemirror/view';
 import {xml} from '@codemirror/lang-xml';
 import {basicSetup} from 'codemirror';
 import {tokyoNightDay} from '@fsegurai/codemirror-theme-tokyo-night-day';
 import {tokyoNightStorm} from '@fsegurai/codemirror-theme-tokyo-night-storm';
-import {linter, lintGutter} from '@codemirror/lint';
+import {linter, setDiagnosticsEffect} from '@codemirror/lint';
 import {findElementAtCursor, type ElementRef} from './xray';
 import {startTags, readAttribute, attributesOf, planAttributeEdits, applyChanges, stampSource, parseSource, elementExtent, removalRange, duplicateInsertion, childInsertion, SOURCE_ATTR, type StartTag, type TextChange} from './source-map';
 import {
@@ -145,6 +145,28 @@ declare global {
 		updateStatusBar?: (state: CodeState, message: string) => void;
 	}
 }
+
+/** A line the code's check found an error on, in the gutter. */
+const errorLine = new class extends GutterMarker {
+	elementClass = 'cm-error-line';
+}();
+
+/** The lines with an error, marked on their numbers rather than in a gutter
+ * of their own, which would take its width with no error to show: the error
+ * is in the code, in red, and in the strip's message too. */
+const errorLines = StateField.define<RangeSet<GutterMarker>>({
+	create: ()=>RangeSet.empty,
+	update(lines, tr) {
+		for (const effect of tr.effects) {
+			if (!effect.is(setDiagnosticsEffect)) continue;
+			const doc = tr.state.doc;
+			const starts = new Set(effect.value.map(d=>doc.lineAt(Math.min(d.from, doc.length)).from));
+			return RangeSet.of([...starts].sort((a, b)=>a - b).map(from=>errorLine.range(from)));
+		}
+		return lines.map(tr.changes);
+	},
+	provide: (field)=>gutterLineClass.from(field),
+});
 
 // --- Utility functions
 function announce(message: string, type: 'action' | 'error') {
@@ -857,11 +879,13 @@ class slick {
 
 	private initializeEditor(): void {
 		const editorContainer = this.get('editor');
-		const startDoc = `<svg xmlns="http://www.w3.org/2000/svg" width="${DEFAULT_SVG_SIZE}" height="${DEFAULT_SVG_SIZE}" viewBox="0 0 ${DEFAULT_SVG_SIZE} ${DEFAULT_SVG_SIZE}">
-	<circle cx="100" cy="100" r="80" fill="#6291e0" stroke="#295da9" stroke-width="2"/>
-	<text x="100" y="110" text-anchor="middle" fill="white" font-family="Arial" font-size="16">
-		Hello SVG
-	</text>
+		// the drawing the editor opens with, a light bulb in paths, strokes, and fills
+		// made to show off the tools
+		const startDoc = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 110 135" stroke-linejoin="round">
+  <path d="M99.66 48.573c0-15.679-8.134-30.17-21.364-38.079s-29.565-8.037-42.908-.336C22.043 17.852 13.69 32.221 13.453 47.893s7.677 30.293 20.785 38.408l-.04 16.099c.259-.031.514-.043.773-.036h43.096a5.86 5.86 0 0 1 .773.036l.04-16.099c12.907-7.984 20.785-22.299 20.778-37.73l.002.002z" fill="#201340" stroke="#87ff53" stroke-width="8.298"/>
+  <path d="M99.66 47.579c0-15.326-8.134-29.49-21.364-37.22s-29.565-7.856-42.908-.328c-13.345 7.52-21.699 21.565-21.935 36.884s7.677 29.61 20.785 37.542v15.689c.259-.028.514-.04.773-.033h8.276V70.446c0-1.697 2.334-3.077 4.036-3.077s4.034 1.379 4.034 3.077v29.665h10.394l.007-23.912c.005-.639.208-1.264.583-1.783l15.274-16.039-3.417-6.835-3.169 4.1c-1.212 1.195-4.116 1.184-5.323-.017L60.8 50.684l-4.965 4.958a3.17 3.17 0 0 1-2.183.894c-.807-.005-1.58-.328-2.158-.894l-4.93-4.958-4.96 4.958c-.578.566-1.351.889-2.153.894-.819-.005-1.599-.328-2.188-.894l-7.118-7.118c-1.205-1.207-1.205-4.123 0-5.328a3.1 3.1 0 0 1 4.376 0l4.93 4.93 3.966-4.925c.578-.578 2.322-.901 3.14-.901.814 0 2.558.33 3.135.912l3.961 4.942 3.999-4.958c.578-.578 2.315-.901 3.129-.901s2.553.323 3.13.901l3.999 4.958 4.932-4.958c.703-.698 2.662-1.016 3.636-.86.976.162 2.772.78 3.211 1.662l5.2 13.272h-.005c.526 1.016.432 2.245-.243 3.169l-14.81 16.749v22.924h8.276c.259-.005.512.007.773.035V84.456a43.07 43.07 0 0 0 20.778-36.879l.002.002z" fill="#87ffaf"/>
+  <path d="M83.591 104.57c0-3.531-2.883-6.395-6.443-6.395H35.247c-3.56 0-6.443 2.865-6.443 6.395s2.883 6.395 6.443 6.395c-3.56 0-6.443 2.86-6.443 6.388s2.883 6.397 6.443 6.397h2.901l.899 4.452c.605 2.986 3.246 5.137 6.322 5.137h21.659c3.076 0 5.717-2.15 6.32-5.137l.901-4.452h2.901c3.56 0 6.443-2.866 6.443-6.397s-2.883-6.388-6.443-6.388c3.56 0 6.443-2.865 6.443-6.395z" fill="#875faf" stroke="#000010" stroke-width="3.962"/>
+  <path d="M71.189 12.258c5.488 2.787.296 7.731-.776 6.664-14.963-8.133-31.524-.312-38.017 9.814-.35 1.241-7.03-1.382-5.571-4.195.294-.566.312-.67.312-.67C38.334 9.238 54.778 3.924 71.189 12.258z" fill="#fff"/>
 </svg>`;
 
 		this.editor = new EditorView({
@@ -872,7 +896,7 @@ class slick {
 					keymap.of([]),
 					xml(),
 					EditorView.lineWrapping,
-					lintGutter(),
+					errorLines,
 					svgLinter,
 					this.themeCompartment.of([tokyoNightDay]),
 					EditorView.updateListener.of((update)=>{

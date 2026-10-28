@@ -1,3 +1,4 @@
+import { useHello } from './fixtures';
 import { test, expect, type Page } from '@playwright/test';
 
 /** The text the editor currently has selected. */
@@ -58,6 +59,7 @@ test.describe('SVG Editor Preview Selection', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/index.html');
     await expect(page.locator('.svg-container svg')).toBeVisible();
+    await useHello(page);
   });
 
   test('should select an element on click and select its start tag in the editor', async ({ page }) => {

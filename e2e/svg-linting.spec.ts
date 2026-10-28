@@ -19,11 +19,11 @@ test.describe('SVG Editor Linting', () => {
 		await page.waitForTimeout(1000);
 
 		// Check for lint gutter
-		const lintGutter = page.locator('.cm-gutter-lint');
-		await expect(lintGutter).toBeVisible();
+		// marked on its line's number, with no gutter of its own to take room
+		await expect(page.locator('.cm-gutter-lint')).toHaveCount(0);
 
 		// Look for error markers in the gutter
-		const lintMarkers = page.locator('.cm-lint-marker-error');
+		const lintMarkers = page.locator('.cm-lineNumbers .cm-error-line');
 		await expect(lintMarkers.first()).toBeVisible();
 	});
 
@@ -41,11 +41,11 @@ test.describe('SVG Editor Linting', () => {
 		await page.waitForTimeout(1000);
 
 		// Verify errors are present
-		const lintGutter = page.locator('.cm-gutter-lint');
-		await expect(lintGutter).toBeVisible();
+		// marked on its line's number, with no gutter of its own to take room
+		await expect(page.locator('.cm-gutter-lint')).toHaveCount(0);
 
 		// Check that there are error markers initially
-		const initialErrorMarkers = page.locator('.cm-lint-marker-error');
+		const initialErrorMarkers = page.locator('.cm-lineNumbers .cm-error-line');
 		await expect(initialErrorMarkers.first()).toBeVisible();
 
 		// Now fix the SVG with a fully valid, complete SVG
@@ -87,10 +87,10 @@ test.describe('SVG Editor Linting', () => {
 		await page.waitForTimeout(1000);
 
 		// Check for lint errors
-		const lintGutter = page.locator('.cm-gutter-lint');
-		await expect(lintGutter).toBeVisible();
+		// marked on its line's number, with no gutter of its own to take room
+		await expect(page.locator('.cm-gutter-lint')).toHaveCount(0);
 
-		const lintMarkers = page.locator('.cm-lint-marker-error');
+		const lintMarkers = page.locator('.cm-lineNumbers .cm-error-line');
 		await expect(lintMarkers.first()).toBeVisible();
 	});
 
@@ -108,11 +108,11 @@ test.describe('SVG Editor Linting', () => {
 		await page.waitForTimeout(1000);
 
 		// Check for lint warnings/errors
-		const lintGutter = page.locator('.cm-gutter-lint');
-		await expect(lintGutter).toBeVisible();
+		// marked on its line's number, with no gutter of its own to take room
+		await expect(page.locator('.cm-gutter-lint')).toHaveCount(0);
 
 		// Should have warning indicators (our linter shows warnings for non-SVG content)
-		const lintMarkers = page.locator('.cm-lint-marker');
+		const lintMarkers = page.locator('.cm-lineNumbers .cm-error-line');
 		await expect(lintMarkers.first()).toBeVisible();
 	});
 
@@ -130,7 +130,7 @@ test.describe('SVG Editor Linting', () => {
 		await page.waitForTimeout(1000);
 
 		// Empty content should not show lint errors
-		const lintMarkers = page.locator('.cm-lint-marker');
+		const lintMarkers = page.locator('.cm-lineNumbers .cm-error-line');
 		await expect(lintMarkers).toHaveCount(0);
 	});
 
@@ -148,7 +148,7 @@ test.describe('SVG Editor Linting', () => {
 		await page.waitForTimeout(1000);
 
 		// Check for lint markers
-		const lintMarkers = page.locator('.cm-lint-marker-error');
+		const lintMarkers = page.locator('.cm-lineNumbers .cm-error-line');
 		await expect(lintMarkers.first()).toBeVisible();
 
 		// Verify error information is shown in status bar instead of tooltips
@@ -184,10 +184,10 @@ test.describe('SVG Editor Linting', () => {
 		await page.waitForTimeout(1000);
 
 		// Should detect the error
-		const lintGutter = page.locator('.cm-gutter-lint');
-		await expect(lintGutter).toBeVisible();
+		// marked on its line's number, with no gutter of its own to take room
+		await expect(page.locator('.cm-gutter-lint')).toHaveCount(0);
 
-		const lintMarkers = page.locator('.cm-lint-marker-error');
+		const lintMarkers = page.locator('.cm-lineNumbers .cm-error-line');
 		await expect(lintMarkers.first()).toBeVisible();
 	});
 
