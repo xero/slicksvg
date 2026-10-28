@@ -126,6 +126,97 @@ test.describe('SVG Editor drawing shapes', () => {
     await expect(tool).toHaveAttribute('aria-pressed', 'false');
   });
 
+  test('should keep the crosshair while the tool is in hand, after a drag taken back too', async ({ page }) => {
+    const wrapper = page.locator('.svg-preview-wrapper');
+    await page.locator('#draw-rect').click();
+    await expect(wrapper).toHaveCSS('cursor', 'crosshair');
+    await drawDrag(page, [100, 20], [180, 60], { cancel: true });
+    await expect(wrapper).toHaveCSS('cursor', 'crosshair');
+    await page.keyboard.press('Escape');
+    await expect(wrapper).not.toHaveCSS('cursor', 'crosshair');
+  });
+
+  test('should place one shape with a double-click, and not try to edit its points', async ({ page }) => {
+    await page.locator('#draw-rect').click();
+    const p = await at(page, 100, 100);
+    await page.mouse.dblclick(p.x, p.y);
+    expect(await getSource(page)).toBe(withShape('<rect x="75" y="75" width="50" height="50" fill="#999"/>'));
+    // the second click selects the new shape again
+    await expect(page.locator('#test-announcements')).toHaveText('Selected rect');
+    await expect(page.locator('#error-announcements')).toHaveCount(0);
+    await expect(page.locator('#point-tools')).toBeHidden();
+    // a double-click after that is the selection's own again
+    await page.mouse.dblclick(p.x, p.y);
+    await expect(page.locator('#error-announcements')).toHaveText(/no points to edit/);
+  });
+
+  test('should not draw with a right-click, on a handle or the drawing', async ({ page }) => {
+    await page.locator('.svg-container #box').click();
+    await page.locator('#draw-rect').click();
+    const handle = (await page.locator('[data-handle="se"]').boundingBox())!;
+    await page.mouse.click(handle.x + handle.width / 2, handle.y + handle.height / 2, { button: 'right' });
+    const p = await at(page, 120, 40);
+    await page.mouse.click(p.x, p.y, { button: 'right' });
+    expect(await getSource(page)).toBe(FIXTURE);
+    await expect(page.locator('#draw-rect')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('should let a drag go when the tool is put down or changed mid-drag', async ({ page }) => {
+    const tool = page.locator('#draw-rect');
+    await tool.click();
+    const a = await at(page, 100, 20);
+    const b = await at(page, 180, 60);
+    await page.mouse.move(a.x, a.y);
+    await page.mouse.down();
+    await page.mouse.move(b.x, b.y, { steps: 4 });
+    await expect(page.locator('.svg-container rect')).toHaveCount(2);
+    // the tool button still has the keys, so Enter presses it again
+    await page.keyboard.press('Enter');
+    await expect(page.locator('.svg-container rect')).toHaveCount(1);
+    await page.mouse.move(b.x + 10, b.y + 10, { steps: 2 });
+    await page.mouse.up();
+    expect(await getSource(page)).toBe(FIXTURE);
+    await expect(tool).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.locator('#error-announcements')).toHaveCount(0);
+    // a tool changed mid-drag lets it go too, rather than draw the new shape with the old one's numbers
+    await tool.click();
+    await page.mouse.move(a.x, a.y);
+    await page.mouse.down();
+    await page.mouse.move(b.x, b.y, { steps: 4 });
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Enter');
+    await page.mouse.up();
+    expect(await getSource(page)).toBe(FIXTURE);
+    await expect(page.locator('#draw-circle')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('should keep the press where it was in the drawing when the view zooms mid-drag', async ({ page }) => {
+    await page.locator('#draw-rect').click();
+    const a = await at(page, 100, 100);
+    await page.mouse.move(a.x, a.y);
+    await page.mouse.down();
+    await page.mouse.move(a.x + 20, a.y + 20, { steps: 2 });
+    // the wheel waits for the drag, but a zoom button can be pressed from the keys
+    await page.locator('#zoomin').focus();
+    await page.keyboard.press('Enter');
+    const scale = () => page.evaluate(() => (document.querySelector('.svg-container svg') as SVGSVGElement).getScreenCTM()!.a);
+    await expect.poll(scale).toBeGreaterThan(1.1);
+    await page.waitForTimeout(600);
+    // the pointer is where it was on screen, which now shows another spot of the drawing
+    const corner = await page.evaluate(([x, y]) => {
+      const p = new DOMPoint(x, y).matrixTransform((document.querySelector('.svg-container svg') as SVGSVGElement).getScreenCTM()!.inverse());
+      return { x: p.x, y: p.y };
+    }, [a.x + 30, a.y + 30] as [number, number]);
+    await page.mouse.move(a.x + 30, a.y + 30, { steps: 2 });
+    await page.mouse.up();
+    const source = await getSource(page);
+    const m = /<rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)" fill="#999"\/>/.exec(source)!;
+    expect(Number(m[1])).toBe(100);
+    expect(Number(m[2])).toBe(100);
+    expect(Math.abs(Number(m[1]) + Number(m[3]) - corner.x)).toBeLessThan(1);
+    expect(Math.abs(Number(m[2]) + Number(m[4]) - corner.y)).toBeLessThan(1);
+  });
+
   test('should put the tool down when it is pressed again, or another taken up', async ({ page }) => {
     const rect = page.locator('#draw-rect');
     const circle = page.locator('#draw-circle');

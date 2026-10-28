@@ -332,12 +332,14 @@ interface Gesture {
 }
 
 /** A shape being drawn: the preview's stand-in for it, the screen to the
- * drawing's units, the precision the zoom shows, and its attributes so far. */
+ * drawing's units, the precision the zoom shows, where the press was in
+ * those units, and its attributes so far. */
 interface Draft {
 	kind: ShapeKind;
-	el: SVGElement;
+	el: SVGGraphicsElement;
 	toUnits: Matrix;
 	decimals: number;
+	from: Point;
 	attrs: Record<string, string>;
 }
 
@@ -608,6 +610,8 @@ class slick {
 	private pointMode: PointMode | null = null;
 	/** The shape tool in hand, which the next press on the drawing draws with. */
 	private drawTool: ShapeKind | null = null;
+	/** Set when the last press drew a shape, so a double-click it began does not edit points. */
+	private drewOnPress = false;
 	private pointsGroup!: SVGGElement;
 	private spotGroup!: SVGGElement;
 	private marquee!: SVGRectElement;
@@ -1133,9 +1137,12 @@ class slick {
 		if (e.button !== 0) return;
 		e.preventDefault();
 		if (this.drawTool) {
+			this.drewOnPress = true;
 			this.pressDraw(e.clientX, e.clientY);
 			return;
 		}
+		// a second click keeps the mark of a first that drew, for the double-click to see
+		if (e.detail <= 1) this.drewOnPress = false;
 		if (this.pressPoint(e, e.clientX, e.clientY)) return;
 		this.pressMoved = false;
 		this.tapTarget = e.target;
@@ -1176,7 +1183,7 @@ class slick {
 	private endPan(): void {
 		if (this.isPanning && !this.pressMoved) this.clickSelect(this.tapTarget, this.pressToggle);
 		this.isPanning = false;
-		this.svgPreview.style.cursor = '';
+		this.svgPreview.style.cursor = this.drawTool ? 'crosshair' : '';
 	}
 
 	/** One finger on the canvas: on the selection it starts a move, anywhere
@@ -1627,6 +1634,11 @@ class slick {
 	/** A double-click on the selection edits its points; in point editing it
 	 * adds a point where the outline is nearest. */
 	private onDoubleClick(e: MouseEvent): void {
+		// the first click of this double-click drew a shape, which the second only selects
+		if (this.drewOnPress) {
+			this.drewOnPress = false;
+			return;
+		}
 		const current = this.onSelection(e.target);
 		if (!current) return;
 		e.preventDefault();
@@ -2243,8 +2255,10 @@ class slick {
 	private onHandlePress(e: Event, x: number, y: number): void {
 		// a shape tool draws wherever it is pressed, on a handle too
 		if (this.drawTool) {
+			if (e instanceof MouseEvent && e.button !== 0) return;
 			e.preventDefault();
 			e.stopPropagation();
+			if (e instanceof MouseEvent) this.drewOnPress = true;
 			this.pressDraw(x, y);
 			return;
 		}
@@ -2419,7 +2433,7 @@ class slick {
 		this.drawBox(this.hoverBox, null);
 		// the cursor keeps the shape of the drag wherever the pointer strays:
 		// a closed hand for a move, and a handle's own arrow for its resize
-		const shapes: Record<GestureMode, string> = {move: 'grabbing', rotate: 'move', point: 'move', bend: 'grabbing', marquee: 'crosshair', resize: this.handleEls.get(g.handle ?? '')?.style.cursor ?? ''};
+		const shapes: Record<GestureMode, string> = {move: 'grabbing', rotate: 'move', point: 'move', bend: 'grabbing', marquee: 'crosshair', draw: 'crosshair', resize: this.handleEls.get(g.handle ?? '')?.style.cursor ?? ''};
 		this.svgPreview.style.cursor = shapes[g.mode];
 		return true;
 	}
@@ -2830,6 +2844,8 @@ class slick {
 	 * lands on, and a tap places one; then the tool is put down and the new
 	 * shape is selected, for its handles to size and turn it. */
 	private armShape(kind: ShapeKind | null): void {
+		// a tool put down or changed mid-drag lets the drag go
+		if (this.gesture?.mode === 'draw') this.cancelGesture();
 		this.drawTool = kind === this.drawTool ? null : kind;
 		if (this.drawTool) this.leavePointMode();
 		for (const each of SHAPE_KINDS) this.get(`draw-${each}`).setAttribute('aria-pressed', each === this.drawTool ? 'true' : 'false');
@@ -2848,32 +2864,45 @@ class slick {
 		this.gesture = {mode: 'draw', handle: null, fromHandle: false, toggle: false, startX: x, startY: y, targets: [], drags: [], point: null};
 	}
 
-	/** The preview's stand-in for a shape being drawn, last in the drawing as
-	 * the shape will be, and the frame it is drawn in: the drawing's own units. */
-	private startDraft(kind: ShapeKind): Draft | null {
+	/** The preview's stand-in for a shape being drawn from a press at (x, y),
+	 * last in the drawing as the shape will be, and the frame it is drawn
+	 * in: the drawing's own units. */
+	private startDraft(kind: ShapeKind, x: number, y: number): Draft | null {
 		const root = this.svgPreview.querySelector('.svg-container svg');
 		if (!(root instanceof SVGSVGElement)) return null;
 		const el = document.createElementNS(SVG_NS, kind);
 		el.setAttribute('fill', NEW_SHAPE_FILL);
 		root.appendChild(el);
-		const ctm = el.getScreenCTM();
-		const toUnits = ctm ? invert(toMatrix(ctm)) : null;
-		if (!ctm || !toUnits) {
+		const draft: Draft = {kind, el, toUnits: IDENTITY, decimals: 0, from: {x, y}, attrs: {}};
+		if (!this.measureDraft(draft)) {
 			el.remove();
 			return null;
 		}
-		return {kind, el, toUnits, decimals: decimalsFor(pixelsPerUnit(toMatrix(ctm))), attrs: {}};
+		draft.from = applyToPoint(draft.toUnits, x, y);
+		return draft;
 	}
 
-	/** Show the shape a drag draws, and read it out in the status bar. */
+	/** Read the frame a shape is drawn in afresh, for a zoom that came mid-drag. */
+	private measureDraft(draft: Draft): boolean {
+		const ctm = draft.el.getScreenCTM();
+		const toUnits = ctm ? invert(toMatrix(ctm)) : null;
+		if (!ctm || !toUnits) return false;
+		draft.toUnits = toUnits;
+		draft.decimals = decimalsFor(pixelsPerUnit(toMatrix(ctm)));
+		return true;
+	}
+
+	/** Show the shape a drag draws, and read it out in the status bar. The
+	 * press stays where it was in the drawing, however the view has moved
+	 * since, and the pointer is read in the view as it is now. */
 	private drawDraft(g: Gesture, square: boolean, fromCenter: boolean): void {
 		if (!this.drawTool || !g.to) return;
-		if (!g.draft) g.draft = this.startDraft(this.drawTool) ?? undefined;
+		if (!g.draft) g.draft = this.startDraft(this.drawTool, g.startX, g.startY) ?? undefined;
 		const draft = g.draft;
 		if (!draft) return;
-		const from = applyToPoint(draft.toUnits, g.startX, g.startY);
+		this.measureDraft(draft);
 		const to = applyToPoint(draft.toUnits, g.to.x, g.to.y);
-		draft.attrs = drawnShape(draft.kind, from, to, {square, fromCenter, decimals: draft.decimals});
+		draft.attrs = drawnShape(draft.kind, draft.from, to, {square, fromCenter, decimals: draft.decimals});
 		for (const [name, value] of Object.entries(draft.attrs)) draft.el.setAttribute(name, value);
 		this.updateStatusBar(`${draft.kind} ${Object.entries(draft.attrs).map(([name, value])=>`${name}="${value}"`).join(' ')}`, false);
 	}
@@ -2883,16 +2912,18 @@ class slick {
 	 * child. The tool is put down and the new shape selected. */
 	private finishDraw(g: Gesture): void {
 		const kind = this.drawTool;
-		const draft = g.draft ?? (kind && !g.to ? this.startDraft(kind) : null);
+		const draft = g.draft ?? (kind && !g.to ? this.startDraft(kind, g.startX, g.startY) : null);
 		const root = draft?.el.ownerSVGElement;
 		draft?.el.remove();
 		this.armShape(null);
-		if (!kind || !draft || !root) {
+		// a tool put down mid-drag has let the drag go already
+		if (!kind) return;
+		if (!draft || !root) {
 			this.announceError('There is no <svg> element to draw in.');
 			return;
 		}
 		const box = root.getBoundingClientRect();
-		const attrs = g.to ? draft.attrs : placedShape(kind, applyToPoint(draft.toUnits, g.startX, g.startY), (Math.min(box.width, box.height) / 4) * pixelsPerUnit(draft.toUnits), draft.decimals);
+		const attrs = g.to ? draft.attrs : placedShape(kind, draft.from, (Math.min(box.width, box.height) / 4) * pixelsPerUnit(draft.toUnits), draft.decimals);
 		const parsed = this.parseOnce();
 		if (!parsed) return;
 		const rootTag = this.rootTag(parsed.sourceText);

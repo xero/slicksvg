@@ -328,7 +328,8 @@ export function renameAttribute(source: string, tag: StartTag, from: string, to:
  * step in from the closing tag when there is none; otherwise it goes right
  * before the closing tag. An element closed in its start tag is opened. */
 export function childInsertion(source: string, ordinal: number, markup: string): TextChange | null {
-	const tag = startTags(source).at(ordinal);
+	const tags = startTags(source);
+	const tag = tags.at(ordinal);
 	const extent = elementExtent(source, ordinal);
 	if (!tag || !extent) return null;
 	if (tag.selfClosing) {
@@ -339,7 +340,7 @@ export function childInsertion(source: string, ordinal: number, markup: string):
 	const lineStart = source.lastIndexOf('\n', close - 1) + 1;
 	const closeIndent = source.slice(lineStart, close);
 	if (lineStart <= tag.end || !/^[ \t]*$/.test(closeIndent)) return {from: close, to: close, insert: markup};
-	const child = startTags(source).at(ordinal + 1);
+	const child = tags.at(ordinal + 1);
 	const childLine = child && child.start < close ? source.lastIndexOf('\n', child.start - 1) + 1 : -1;
 	const childIndent = childLine > tag.end ? source.slice(childLine, child?.start) : null;
 	const step = /\n(\t|[ ]+)</.exec(source)?.[1] ?? '  ';
