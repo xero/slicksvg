@@ -209,6 +209,57 @@ test.describe('SVG Editor drawing a point at a time', () => {
     expect(await getSource(page)).toBe(FIXTURE);
   });
 
+  test('should take back the last point with the undo button too, which a shape under way enables', async ({ page }) => {
+    // a fresh page has no history for the button to undo
+    await page.reload();
+    await expect(page.locator('.svg-container svg')).toBeVisible();
+    const source = await getSource(page);
+    await expect(page.locator('#undo')).toBeDisabled();
+    await page.locator('#draw-polyline').click();
+    await clicks(page, [20, 20], [60, 40]);
+    await expect(page.locator('#undo')).toBeEnabled();
+    await page.locator('#undo').click();
+    await expect(standIn(page, 'polyline')).toHaveAttribute('points', '20,20');
+    await page.locator('#undo').click();
+    await expect(standIn(page, 'polyline')).toHaveCount(0);
+    await expect(page.locator('#undo')).toBeDisabled();
+    expect(await getSource(page)).toBe(source);
+  });
+
+  test('should keep the crosshair between points', async ({ page }) => {
+    await page.locator('#draw-polygon').click();
+    await clicks(page, [100, 20]);
+    await expect(page.locator('.svg-preview-wrapper')).toHaveCSS('cursor', 'crosshair');
+  });
+
+  test('should keep a shape under way, and its tool, while the code does not parse', async ({ page }) => {
+    const tool = page.locator('#draw-polyline');
+    await tool.click();
+    await clicks(page, [100, 20], [180, 20], [140, 80]);
+    await setContent(page, FIXTURE.replace('</svg>', ''));
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#error-announcements')).toHaveText(/cannot be written yet/);
+    // closing it is refused too, without the point it would have closed with
+    await clicks(page, [100, 20]);
+    await tool.click();
+    await expect(tool).toHaveAttribute('aria-pressed', 'true');
+    await expect(standIn(page, 'polyline')).toHaveAttribute('points', '100,20 180,20 140,80');
+    await setContent(page, FIXTURE);
+    await page.locator('#draw-done').click();
+    expect(await getSource(page)).toBe(withShape(`<polyline points="100,20 180,20 140,80" ${STROKE}/>`));
+  });
+
+  test('should edit the points of a shape under way, written, when the points button is pressed', async ({ page }) => {
+    await setContent(page, FIXTURE.replace('<circle id="dot" cx="150" cy="150" r="30" fill="#aa0000"/>', '<path id="p" d="M120 120 L180 120 L150 180 Z"/>'));
+    await page.locator('.svg-container #p').click();
+    await page.locator('#draw-polyline').click();
+    await clicks(page, [100, 20], [180, 20], [140, 80]);
+    await page.locator('#points').click();
+    await expect(page.locator('#point-tools')).toBeVisible();
+    expect(await editorSelection(page)).toBe(`<polyline points="100,20 180,20 140,80" ${STROKE}/>`);
+    await expect(page.locator('.points rect')).toHaveCount(3);
+  });
+
   test('should write the shape under way when its tool is pressed again, and let one too short go quietly', async ({ page }) => {
     await page.locator('#draw-polyline').click();
     await clicks(page, [100, 20], [180, 60]);
@@ -279,6 +330,18 @@ test.describe('SVG Editor drawing paths with the pen', () => {
     await expect(page.locator('.sketch circle')).toHaveCount(2);
     await clicks(page, [140, 100], [100, 20]);
     expect(await getSource(page)).toBe(withShape('<path d="M100 20 C100 20 180 -20 180 20 C180 60 140 100 140 100 Z" fill="#999"/>'));
+  });
+
+  test('should end a path of two corners open on its first point, and close one with a curve', async ({ page }) => {
+    await page.locator('#draw-path').click();
+    await clicks(page, [100, 20], [180, 20], [100, 20]);
+    const open = `<path d="M100 20 L180 20" ${STROKE}/>`;
+    expect(await getSource(page)).toBe(withShape(open));
+    await page.locator('#draw-path').click();
+    await clicks(page, [100, 120]);
+    await dragAt(page, [180, 120], [180, 160]);
+    await clicks(page, [100, 120]);
+    expect(await getSource(page)).toBe(withShape(`${open}\n  <path d="M100 120 C100 120 180 80 180 120 C180 160 100 120 100 120 Z" fill="#999"/>`));
   });
 
   test('should show the curve a click where the pointer hovers would make', async ({ page }) => {

@@ -371,6 +371,13 @@ interface Sketch {
 	hover: Aim | null;
 }
 
+/** Whether a press on the first point of a shape under way closes it: once
+ * it has points enough to close round something, which for a path is two
+ * when either has handles to bend the way between them. */
+function closable(s: Sketch): boolean {
+	return s.anchors.length >= 3 || (s.kind === 'path' && s.anchors.length === 2 && s.anchors.some(a=>a.in !== null || a.out !== null));
+}
+
 /** Paint a stand-in as its shape will be painted, taking off what it no longer has. */
 function paintDraft(el: Element, paint: Record<string, string>): void {
 	for (const name of ['fill', 'stroke', 'stroke-width']) {
@@ -903,7 +910,11 @@ class slick {
 			['download', ()=>this.downloadSVG()],
 			['upload', ()=>this.triggerFileUpload()],
 			['xray', ()=>this.toggleXray()],
-			['undo', ()=>this.undoEdit()],
+			['undo', ()=>{
+				// while a shape is drawn a point at a time, its last point is the last thing done
+				if (this.sketch) this.backSketch();
+				else this.undoEdit();
+			}],
 			['redo', ()=>this.redoEdit()],
 			['duplicate', ()=>this.duplicateSelected()],
 			['points', ()=>this.togglePointMode()],
@@ -1688,7 +1699,16 @@ class slick {
 			this.announceError('This element\'s points could not be read, so they cannot be edited here.');
 			return;
 		}
-		if (this.drawTool) this.armShape(null);
+		if (this.drawTool) {
+			this.armShape(null);
+			// a shape under way the code cannot take yet keeps the tool in hand
+			if (this.sketch) return;
+			// a shape under way was written and selected in its place: its points are the ones edited
+			if (this.selected.at(-1) !== ordinal) {
+				this.enterPointMode();
+				return;
+			}
+		}
 		this.pointMode = {ordinal, selected: [], spot: null, several: false};
 		this.refreshSelection();
 		this.svgPreview.focus({preventScroll: true});
@@ -2690,7 +2710,8 @@ class slick {
 		const g = this.gesture;
 		this.gesture = null;
 		this.clearHold();
-		this.svgPreview.style.cursor = '';
+		// a shape drawn a point at a time keeps its tool, and its crosshair, between points
+		this.svgPreview.style.cursor = this.drawTool ? 'crosshair' : '';
 		if (!g) return;
 		if (g.pull && g.drags.length === 0) this.refreshSelection();
 		if (g.mode === 'marquee') {
@@ -2946,6 +2967,8 @@ class slick {
 		if (this.gesture?.mode === 'draw') this.cancelGesture();
 		const sketch = this.sketch;
 		if (sketch) {
+			// the points are kept, and the tool, until the code can take the shape
+			if (sketch.anchors.length >= pointsNeeded(sketch.kind) && !this.sketchWritable()) return;
 			this.dropSketch();
 			if (sketch.anchors.length >= pointsNeeded(sketch.kind)) this.addShape(sketch.kind, this.sketchAttrs(sketch, false));
 		}
@@ -3071,6 +3094,7 @@ class slick {
 				return;
 			}
 			this.sketch = {kind, draft, anchors: [], decimals: draft.decimals, press: null, hover: null};
+			this.refreshSketchTools();
 		}
 		const s = this.sketch;
 		this.measureDraft(s.draft);
@@ -3095,7 +3119,7 @@ class slick {
 		const first = s.anchors.at(0);
 		const last = s.anchors.at(-1);
 		const onFirst = first !== undefined && this.reaches(s, first, x, y);
-		if (first && onFirst && s.anchors.length >= (s.kind === 'path' ? 2 : 3)) return {does: 'close', anchor: {...first}, dragged: false};
+		if (first && onFirst && closable(s)) return {does: 'close', anchor: {...first}, dragged: false};
 		if (last && (onFirst || this.reaches(s, last, x, y))) return {does: 'end', anchor: {...last}, dragged: false};
 		const at = applyToPoint(s.draft.toUnits, x, y);
 		const to = shift && last ? snapAngle(last, at) : at;
@@ -3139,13 +3163,16 @@ class slick {
 			// a polyline stays open, so it comes back by a point of its own on the first
 			if (s.kind === 'polyline') s.anchors.push({...first});
 			this.endSketch(s.kind === 'path');
-			return;
+			if (this.sketch !== s) return;
+			// not written, for the code does not parse: the shape stays as it was
+			if (s.kind === 'polyline') s.anchors.pop();
 		} else if (press.dragged) {
 			s.anchors[s.anchors.length - 1] = press.anchor;
 		} else if (s.anchors.length >= 2) {
 			this.endSketch();
-			return;
+			if (this.sketch !== s) return;
 		}
+		this.refreshSketchTools();
 		this.showSketch();
 	}
 
@@ -3166,9 +3193,18 @@ class slick {
 			this.announceError(`A ${s.kind} needs ${need === 3 ? 'three' : 'two'} points or more.`);
 			return;
 		}
+		if (!this.sketchWritable()) return;
 		this.dropSketch();
 		this.armShape(null);
 		this.addShape(s.kind, this.sketchAttrs(s, closed));
+	}
+
+	/** Whether the code parses, so the shape under way can be written into
+	 * it; when it does not, the shape is kept, to be finished once it does. */
+	private sketchWritable(): boolean {
+		if (parseSource(this.editor.state.doc.toString())) return true;
+		this.announceError('The code has an error, so the shape cannot be written yet. Fix the code first, then finish it.');
+		return false;
 	}
 
 	/** Take back the last point of the shape under way; with none left, let it go. */
@@ -3182,6 +3218,7 @@ class slick {
 			return;
 		}
 		s.hover = null;
+		this.refreshSketchTools();
 		this.showSketch();
 		this.announceAction(`Point taken back, ${s.anchors.length} left`);
 	}
@@ -3219,7 +3256,6 @@ class slick {
 		paintDraft(s.draft.el, paintOf(s.kind, closed, strokeWidthFor(s.draft.size)));
 		this.updateStatusBar(`${s.kind} ${name}="${clipped(value)}"`, false);
 		this.placeSketch();
-		this.refreshSketchTools();
 	}
 
 	/** Mark the points of the shape under way on the overlay: the first
@@ -3255,13 +3291,13 @@ class slick {
 				mark('circle', {cx: h.x, cy: h.y, r: (HANDLE_SIZE - 1) / 2});
 			}
 		}
-		const closable = s.anchors.length >= (s.kind === 'path' ? 2 : 3);
 		const square = (p: Point, size: number, classes: string[]): void=>{
 			const at = onScreen(p);
 			mark('rect', {x: at.x - size / 2, y: at.y - size / 2, width: size, height: size}, classes);
 		};
+		const canClose = closable(s);
 		s.anchors.forEach((anchor, i)=>{
-			const first = i === 0 && closable;
+			const first = i === 0 && canClose;
 			const aimed = (aim?.does === 'close' && i === 0) || (aim?.does === 'end' && i === last);
 			square(anchor, first ? HANDLE_SIZE + 3 : HANDLE_SIZE - 1, [...(first ? ['first'] : []), ...(aimed ? ['aimed'] : [])]);
 		});
@@ -3278,6 +3314,7 @@ class slick {
 		for (const kind of SHAPE_KINDS) this.get(`draw-${kind}`).classList.toggle('hide', s !== null && kind !== s.kind);
 		for (const id of ['dark', 'flip']) this.get(id).classList.toggle('hide', editing || s !== null);
 		this.get('draw-done').toggleAttribute('disabled', !s || s.anchors.length < pointsNeeded(s.kind));
+		this.updateHistoryButtons();
 	}
 
 	/** Remove the selection from the code, each element with the line it sat
@@ -3413,7 +3450,8 @@ class slick {
 	}
 
 	private updateHistoryButtons(): void {
-		this.get('undo').toggleAttribute('disabled', undoDepth(this.editor.state) === 0);
+		// a shape under way has a point to take back, whatever the code's history
+		this.get('undo').toggleAttribute('disabled', undoDepth(this.editor.state) === 0 && !this.sketch);
 		this.get('redo').toggleAttribute('disabled', redoDepth(this.editor.state) === 0);
 	}
 
