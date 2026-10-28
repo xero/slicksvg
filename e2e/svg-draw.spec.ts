@@ -170,7 +170,8 @@ test.describe('SVG Editor drawing shapes', () => {
     await page.mouse.down();
     await page.mouse.move(b.x, b.y, { steps: 4 });
     await expect(page.locator('.svg-container rect')).toHaveCount(2);
-    // the tool button still has the keys, so Enter presses it again
+    // the canvas took the keys at the press, so the tool is pressed from the keys by focusing it
+    await tool.focus();
     await page.keyboard.press('Enter');
     await expect(page.locator('.svg-container rect')).toHaveCount(1);
     await page.mouse.move(b.x + 10, b.y + 10, { steps: 2 });
@@ -183,7 +184,7 @@ test.describe('SVG Editor drawing shapes', () => {
     await page.mouse.move(a.x, a.y);
     await page.mouse.down();
     await page.mouse.move(b.x, b.y, { steps: 4 });
-    await page.keyboard.press('Tab');
+    await page.locator('#draw-circle').focus();
     await page.keyboard.press('Enter');
     await page.mouse.up();
     expect(await getSource(page)).toBe(FIXTURE);

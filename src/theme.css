@@ -218,11 +218,11 @@
 				@apply hidden;
 			}
 		}
-		#point-tools, #shape-tools {
+		#point-tools, #shape-tools, #sketch-tools {
 			@apply flex flex-row items-center;
 		}
 		/* the shape tools stand apart from the view's own buttons */
-		#shape-tools {
+		#shape-tools, #sketch-tools {
 			@apply mr-3;
 		}
   }
@@ -323,6 +323,29 @@
         .pulling {
           stroke-width: 5;
           paint-order: stroke;
+        }
+        line {
+          @apply stroke-btn-txt;
+          stroke-width: 1;
+          stroke-dasharray: 2 2;
+        }
+      }
+      /* a shape drawn a point at a time: its points, the first ringed once a
+         press there would close it, the one a press would place, close, or
+         end it on filled, and a path's handles */
+      .sketch {
+        rect, circle {
+          @apply fill-menu-alt stroke-header;
+          stroke-width: 1.5;
+        }
+        circle {
+          @apply stroke-btn-txt;
+        }
+        .first {
+          stroke-width: 2.5;
+        }
+        .aimed {
+          @apply fill-header;
         }
         line {
           @apply stroke-btn-txt;

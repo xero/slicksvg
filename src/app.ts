@@ -8,7 +8,10 @@ import {tokyoNightStorm} from '@fsegurai/codemirror-theme-tokyo-night-storm';
 import {linter, lintGutter, forceLinting} from '@codemirror/lint';
 import {findElementAtCursor, type ElementRef} from './xray';
 import {startTags, readAttribute, attributesOf, planAttributeEdits, applyChanges, stampSource, parseSource, elementExtent, removalRange, duplicateInsertion, childInsertion, SOURCE_ATTR, type StartTag, type TextChange} from './source-map';
-import {SHAPE_KINDS, SHAPE_NAMES, NEW_SHAPE_FILL, drawnShape, placedShape, shapeMarkup, spacedClose, type ShapeKind} from './draw';
+import {
+	SHAPE_KINDS, SHAPE_NAMES, byPoints, pointsNeeded, paintOf, strokeWidthFor, snapAngle, drawnShape, placedShape, pointsList, draggedAnchor, penPathData, shapeMarkup, spacedClose,
+	type ShapeKind, type PointKind, type Anchor,
+} from './draw';
 import {GEOMETRY, SHAPES, plainLength, shapePathData, asPathChanges, conversionBlocked, type Length, type ShapePath} from './shapes';
 import {findSvgTarget, selectionChain, nextInChain, ordinalOf, boxCorners, handleCursor} from './select';
 import {planMove, planResize, planScaleAbout, planRotate, planMatrix, mirrorAbout, parentCenter, simplestTransform, parseTransform, listMatrix, commaIn, axisMaps, scaleMatrix, multiply, invert, applyToVector, applyToPoint, pixelsPerUnit, decimalsFor, roundTo, fmt, placesOf, IDENTITY, type Matrix, type Point, type Rect, type Handle, type EditPlan} from './geometry';
@@ -332,16 +335,61 @@ interface Gesture {
 }
 
 /** A shape being drawn: the preview's stand-in for it, the screen to the
- * drawing's units, the precision the zoom shows, where the press was in
- * those units, and its attributes so far. */
+ * drawing's units and back, the precision the zoom shows, where the press
+ * was in those units, the drawing's size in them, and its attributes so far. */
 interface Draft {
 	kind: ShapeKind;
 	el: SVGGraphicsElement;
 	toUnits: Matrix;
+	toScreen: Matrix;
 	decimals: number;
 	from: Point;
+	size: number;
 	attrs: Record<string, string>;
 }
+
+/** What a press on a shape drawn a point at a time does, with the point as
+ * it stands: places it, closes the shape on its first point, or ends it on
+ * its last. */
+interface Aim {
+	does: 'add' | 'close' | 'end';
+	anchor: Anchor;
+	/** Whether the press has travelled, which pulls a path's handles out. */
+	dragged: boolean;
+}
+
+/** A polyline, polygon, or path being drawn a point at a time, in the
+ * drawing's units: its stand-in, the points placed so far, the finest
+ * precision one was placed at, which they are all written to, and what the
+ * press under way, or one where the pointer hovers, would do. */
+interface Sketch {
+	kind: PointKind;
+	draft: Draft;
+	anchors: Anchor[];
+	decimals: number;
+	press: Aim | null;
+	hover: Aim | null;
+}
+
+/** Paint a stand-in as its shape will be painted, taking off what it no longer has. */
+function paintDraft(el: Element, paint: Record<string, string>): void {
+	for (const name of ['fill', 'stroke', 'stroke-width']) {
+		const value = Object.hasOwn(paint, name) ? paint[name] : null;
+		if (value === null) el.removeAttribute(name);
+		else el.setAttribute(name, value);
+	}
+}
+
+/** What each shape tool says it does, when it is taken up. */
+function toolHint(kind: ShapeKind): string {
+	if (kind === 'polyline') return 'Tap to place each point of the polyline, then tap the last again or press Done to finish it';
+	if (kind === 'polygon') return 'Tap to place each corner of the polygon, then tap the first again or press Done to close it';
+	if (kind === 'path') return 'Tap to place each point of the path, or drag to pull a curve out of it; tap the first point to close the path, or the last to end it open';
+	return `Drag across the drawing to draw a ${SHAPE_NAMES[kind]}, or tap to place one`;
+}
+
+/** A value for the status bar: the start of a long one says enough. */
+const clipped = (value: string): string=>value.length > 48 ? `${value.slice(0, 48)}…` : value;
 
 /** What a gesture shows on screen until it is written or taken back. */
 interface Live {
@@ -610,6 +658,9 @@ class slick {
 	private pointMode: PointMode | null = null;
 	/** The shape tool in hand, which the next press on the drawing draws with. */
 	private drawTool: ShapeKind | null = null;
+	/** The shape under way, drawn a point at a time. */
+	private sketch: Sketch | null = null;
+	private sketchGroup!: SVGGElement;
 	/** Set when the last press drew a shape, so a double-click it began does not edit points. */
 	private drewOnPress = false;
 	private pointsGroup!: SVGGElement;
@@ -744,6 +795,9 @@ class slick {
 		this.marquee = document.createElementNS(SVG_NS, 'rect');
 		this.marquee.classList.add('marquee', 'hide');
 		this.overlay.appendChild(this.marquee);
+		this.sketchGroup = document.createElementNS(SVG_NS, 'g');
+		this.sketchGroup.classList.add('sketch');
+		this.overlay.appendChild(this.sketchGroup);
 		this.previewContainer.appendChild(this.overlay);
 		new ResizeObserver(()=>this.refreshSelection()).observe(this.svgPreview);
 	}
@@ -861,7 +915,9 @@ class slick {
 			['point-curve', ()=>this.pointTool(()=>this.toggleCurve())],
 			['point-delete', ()=>this.pointTool(()=>this.deletePoint())],
 			['point-done', ()=>this.togglePointMode()],
-			...SHAPE_KINDS.map((kind): [string, () => void]=>[`draw-${kind}`, ()=>this.armShape(kind)])
+			...SHAPE_KINDS.map((kind): [string, () => void]=>[`draw-${kind}`, ()=>this.armShape(kind)]),
+			['draw-back', ()=>this.backSketch()],
+			['draw-done', ()=>this.endSketch()]
 		]);
 		document.addEventListener('keydown', this.handleHistoryKeys);
 		this.updateHistoryButtons();
@@ -890,8 +946,12 @@ class slick {
 			}
 			const target = e.target;
 			if (target instanceof Element && target.closest('.cm-editor, dialog')) return;
-			// a shape tool is put down first, then point editing ends; the next Escape clears the selection
-			if (this.drawTool) this.armShape(null);
+			// a shape under way is let go first, then its tool put down, then point
+			// editing ends; the next Escape clears the selection
+			if (this.sketch) {
+				this.dropSketch();
+				this.announceAction('Shape let go');
+			} else if (this.drawTool) this.armShape(null);
 			else if (this.pointMode) this.leavePointMode();
 			else this.clearSelection();
 		});
@@ -905,7 +965,13 @@ class slick {
 		document.addEventListener('touchcancel', (e)=>this.handleTouchEnd(e));
 		this.svgPreview.addEventListener('mousemove', (e)=>this.hoverAt(e));
 		this.svgPreview.addEventListener('dblclick', (e)=>this.onDoubleClick(e));
-		this.svgPreview.addEventListener('mouseleave', ()=>this.drawBox(this.hoverBox, null));
+		this.svgPreview.addEventListener('mouseleave', ()=>{
+			this.drawBox(this.hoverBox, null);
+			if (this.sketch && !this.gesture) {
+				this.sketch.hover = null;
+				this.showSketch();
+			}
+		});
 		this.svgPreview.addEventListener('keydown', (e)=>this.onCanvasKey(e));
 		// the wheel and a trackpad pinch zoom the drawing, not the page: every
 		// browser but Safari reports the pinch as Ctrl+wheel, and Safari sends
@@ -927,6 +993,9 @@ class slick {
 			svgContainer.innerHTML = stampSource(svgCode) ?? svgCode;
 			svgContainer.addEventListener('transitionend', ()=>this.refreshSelection());
 			this.svgPreview.replaceChildren(svgContainer);
+			// a shape under way stays in the drawing the code draws now
+			const root = svgContainer.querySelector('svg');
+			if (this.sketch && root) root.appendChild(this.sketch.draft.el);
 			this.applySVGStyles();
 		} catch (error) {
 			const message = document.createElement('div');
@@ -1138,7 +1207,7 @@ class slick {
 		e.preventDefault();
 		if (this.drawTool) {
 			this.drewOnPress = true;
-			this.pressDraw(e.clientX, e.clientY);
+			this.pressDraw(e.clientX, e.clientY, e.shiftKey);
 			return;
 		}
 		// a second click keeps the mark of a first that drew, for the double-click to see
@@ -1404,6 +1473,12 @@ class slick {
 	}
 
 	private hoverAt(e: MouseEvent): void {
+		// a shape under way shows what a press where the pointer is would add
+		if (this.sketch && !this.gesture) {
+			this.sketch.hover = this.aimAt(this.sketch, e.clientX, e.clientY, e.shiftKey);
+			this.showSketch();
+			return;
+		}
 		// with a shape tool in hand, nothing is picked out to select
 		if (this.isPanning || this.gesture || this.drawTool) return;
 		const pick = this.pickAt(e.target);
@@ -1438,6 +1513,7 @@ class slick {
 		const shape = SHAPES.join(',');
 		this.get('topath').toggleAttribute('disabled', !els.some(el=>el.matches(shape) || el.querySelector(shape)));
 		this.refreshPointTools(editing !== null);
+		this.placeSketch();
 	}
 
 	/** While points are being edited, their tools take the place of the
@@ -1446,7 +1522,8 @@ class slick {
 	 * something it works on. */
 	private refreshPointTools(editing: boolean): void {
 		this.get('point-tools').classList.toggle('hide', !editing);
-		for (const id of ['dark', 'flip', 'shape-tools']) this.get(id).classList.toggle('hide', editing);
+		this.get('shape-tools').classList.toggle('hide', editing);
+		this.refreshSketchTools(editing);
 		this.get('point-several').setAttribute('aria-pressed', this.pointMode?.several ? 'true' : 'false');
 		// the tools wait for a drag to end before they look again
 		if (this.gesture?.drags.length) return;
@@ -2259,7 +2336,7 @@ class slick {
 			e.preventDefault();
 			e.stopPropagation();
 			if (e instanceof MouseEvent) this.drewOnPress = true;
-			this.pressDraw(x, y);
+			this.pressDraw(x, y, e instanceof MouseEvent && e.shiftKey);
 			return;
 		}
 		const current = this.selectedElement();
@@ -2283,6 +2360,15 @@ class slick {
 	 * Shift), Enter edits its points, Delete removes it. Escape is handled
 	 * for the whole page, outside the editor, in setupEventListeners. */
 	private onCanvasKey(e: KeyboardEvent): void {
+		// a shape under way takes Enter to finish it and Delete to take a point
+		// back, and leaves the selection be
+		if (this.sketch) {
+			if (e.key === 'Enter') this.endSketch();
+			else if (e.key === 'Delete' || e.key === 'Backspace') this.backSketch();
+			else return;
+			e.preventDefault();
+			return;
+		}
 		const arrows: Record<string, [number, number] | undefined> = {ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1]};
 		const arrow = arrows[e.key];
 		if (arrow && this.selected.length > 0 && !e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -2496,6 +2582,10 @@ class slick {
 		if (!g) return;
 		const sx = x - g.startX;
 		const sy = y - g.startY;
+		if (g.mode === 'draw' && this.sketch) {
+			this.sketchMove(g, this.sketch, x, y, shift);
+			return;
+		}
 		if (g.mode === 'marquee' || g.mode === 'draw') {
 			if (!g.to && Math.hypot(sx, sy) < DRAG_THRESHOLD) return;
 			g.to = {x, y};
@@ -2590,8 +2680,7 @@ class slick {
 			return;
 		}
 		// a path's whole d can be long, and the start of it says enough of how it is moving
-		const shown = (value: string): string=>value.length > 48 ? `${value.slice(0, 48)}…` : value;
-		const readout = Object.entries(first.attrs).map(([name, value])=>value === null ? `no ${name}` : `${name}="${shown(value)}"`).join(' ');
+		const readout = Object.entries(first.attrs).map(([name, value])=>value === null ? `no ${name}` : `${name}="${clipped(value)}"`).join(' ');
 		this.updateStatusBar(g.drags.length > 1 ? `${g.drags.length} elements` : `${first.target.tagName.toLowerCase()} ${readout || 'unchanged'}`, false);
 	}
 
@@ -2611,7 +2700,8 @@ class slick {
 			return;
 		}
 		if (g.mode === 'draw') {
-			this.finishDraw(g);
+			if (this.sketch) this.releaseSketch(this.sketch);
+			else this.finishDraw(g);
 			return;
 		}
 		if (g.drags.length === 0) {
@@ -2687,6 +2777,11 @@ class slick {
 		if (g?.draft) {
 			g.draft.el.remove();
 			forceLinting(this.editor);
+		}
+		// a press on a shape under way is taken back, and the shape stays
+		if (g?.mode === 'draw' && this.sketch) {
+			this.sketch.press = null;
+			this.showSketch();
 		}
 		if (!g || g.drags.length === 0) return;
 		for (const d of g.drags) d.live.revert();
@@ -2841,89 +2936,108 @@ class slick {
 	// --- Drawing
 	/** Take up a shape tool, or put it down when it is in hand already, or
 	 * with null. The next press on the drawing draws that shape, whatever it
-	 * lands on, and a tap places one; then the tool is put down and the new
-	 * shape is selected, for its handles to size and turn it. */
+	 * lands on: with a drag or a tap for a shape drawn at one go, and a point
+	 * at a press for the others. Once drawn, the tool is put down and the new
+	 * shape selected, for its handles to size and turn it. A drag under way
+	 * is let go, and a shape under way, drawn a point at a time, is written
+	 * as it stands when it has points enough. */
 	private armShape(kind: ShapeKind | null): void {
-		// a tool put down or changed mid-drag lets the drag go
+		const next = kind === this.drawTool ? null : kind;
 		if (this.gesture?.mode === 'draw') this.cancelGesture();
-		this.drawTool = kind === this.drawTool ? null : kind;
+		const sketch = this.sketch;
+		if (sketch) {
+			this.dropSketch();
+			if (sketch.anchors.length >= pointsNeeded(sketch.kind)) this.addShape(sketch.kind, this.sketchAttrs(sketch, false));
+		}
+		this.drawTool = next;
 		if (this.drawTool) this.leavePointMode();
 		for (const each of SHAPE_KINDS) this.get(`draw-${each}`).setAttribute('aria-pressed', each === this.drawTool ? 'true' : 'false');
 		this.svgPreview.style.cursor = this.drawTool ? 'crosshair' : '';
 		this.drawBox(this.hoverBox, null);
-		if (this.drawTool) this.announceAction(`Drag across the drawing to draw a ${SHAPE_NAMES[this.drawTool]}, or tap to place one`);
+		if (this.drawTool) this.announceAction(toolHint(this.drawTool));
 	}
 
-	/** A press with a shape tool in hand starts drawing, unless the code does not parse. */
-	private pressDraw(x: number, y: number): void {
+	/** A press with a shape tool in hand starts drawing, unless the code does
+	 * not parse. The canvas takes the keys, for those that finish a shape
+	 * drawn a point at a time or take a point of it back. */
+	private pressDraw(x: number, y: number, shift = false): void {
 		this.isPanning = false;
+		this.svgPreview.focus({preventScroll: true});
 		if (!parseSource(this.editor.state.doc.toString())) {
 			this.announceError('The code has an error, so a shape cannot be added here. Fix the code first.');
 			return;
 		}
 		this.gesture = {mode: 'draw', handle: null, fromHandle: false, toggle: false, startX: x, startY: y, targets: [], drags: [], point: null};
+		if (this.drawTool && byPoints(this.drawTool)) this.pressSketch(this.gesture, this.drawTool, shift);
 	}
 
 	/** The preview's stand-in for a shape being drawn from a press at (x, y),
-	 * last in the drawing as the shape will be, and the frame it is drawn
-	 * in: the drawing's own units. */
+	 * last in the drawing as the shape will be and painted as it will be,
+	 * and the frame it is drawn in: the drawing's own units. */
 	private startDraft(kind: ShapeKind, x: number, y: number): Draft | null {
 		const root = this.svgPreview.querySelector('.svg-container svg');
 		if (!(root instanceof SVGSVGElement)) return null;
 		const el = document.createElementNS(SVG_NS, kind);
-		el.setAttribute('fill', NEW_SHAPE_FILL);
 		root.appendChild(el);
-		const draft: Draft = {kind, el, toUnits: IDENTITY, decimals: 0, from: {x, y}, attrs: {}};
+		const draft: Draft = {kind, el, toUnits: IDENTITY, toScreen: IDENTITY, decimals: 0, from: {x, y}, size: 0, attrs: {}};
 		if (!this.measureDraft(draft)) {
 			el.remove();
 			return null;
 		}
 		draft.from = applyToPoint(draft.toUnits, x, y);
+		// the drawing's size, which a shape placed with a tap and the width of a stroke go by
+		const box = root.getBoundingClientRect();
+		draft.size = Math.min(box.width, box.height) * pixelsPerUnit(draft.toUnits);
+		paintDraft(el, paintOf(kind, false, strokeWidthFor(draft.size)));
 		return draft;
 	}
 
-	/** Read the frame a shape is drawn in afresh, for a zoom that came mid-drag. */
+	/** Read the frame a shape is drawn in afresh, for a zoom or a pan since the last look. */
 	private measureDraft(draft: Draft): boolean {
 		const ctm = draft.el.getScreenCTM();
 		const toUnits = ctm ? invert(toMatrix(ctm)) : null;
 		if (!ctm || !toUnits) return false;
 		draft.toUnits = toUnits;
-		draft.decimals = decimalsFor(pixelsPerUnit(toMatrix(ctm)));
+		draft.toScreen = toMatrix(ctm);
+		draft.decimals = decimalsFor(pixelsPerUnit(draft.toScreen));
 		return true;
 	}
 
 	/** Show the shape a drag draws, and read it out in the status bar. The
 	 * press stays where it was in the drawing, however the view has moved
 	 * since, and the pointer is read in the view as it is now. */
-	private drawDraft(g: Gesture, square: boolean, fromCenter: boolean): void {
+	private drawDraft(g: Gesture, constrain: boolean, fromCenter: boolean): void {
 		if (!this.drawTool || !g.to) return;
 		if (!g.draft) g.draft = this.startDraft(this.drawTool, g.startX, g.startY) ?? undefined;
 		const draft = g.draft;
-		if (!draft) return;
+		const kind = draft?.kind;
+		if (!draft || !kind || byPoints(kind)) return;
 		this.measureDraft(draft);
 		const to = applyToPoint(draft.toUnits, g.to.x, g.to.y);
-		draft.attrs = drawnShape(draft.kind, draft.from, to, {square, fromCenter, decimals: draft.decimals});
+		draft.attrs = drawnShape(kind, draft.from, to, {constrain, fromCenter, decimals: draft.decimals});
 		for (const [name, value] of Object.entries(draft.attrs)) draft.el.setAttribute(name, value);
-		this.updateStatusBar(`${draft.kind} ${Object.entries(draft.attrs).map(([name, value])=>`${name}="${value}"`).join(' ')}`, false);
+		this.updateStatusBar(`${kind} ${Object.entries(draft.attrs).map(([name, value])=>`${name}="${value}"`).join(' ')}`, false);
 	}
 
 	/** Write the shape a drag drew, or for a tap one a quarter the size of
-	 * the drawing with its middle where the tap was, as the drawing's last
-	 * child. The tool is put down and the new shape selected. */
+	 * the drawing with its middle where the tap was. The tool is put down. */
 	private finishDraw(g: Gesture): void {
 		const kind = this.drawTool;
 		const draft = g.draft ?? (kind && !g.to ? this.startDraft(kind, g.startX, g.startY) : null);
-		const root = draft?.el.ownerSVGElement;
 		draft?.el.remove();
 		this.armShape(null);
 		// a tool put down mid-drag has let the drag go already
-		if (!kind) return;
-		if (!draft || !root) {
+		if (!kind || byPoints(kind)) return;
+		if (!draft) {
 			this.announceError('There is no <svg> element to draw in.');
 			return;
 		}
-		const box = root.getBoundingClientRect();
-		const attrs = g.to ? draft.attrs : placedShape(kind, draft.from, (Math.min(box.width, box.height) / 4) * pixelsPerUnit(draft.toUnits), draft.decimals);
+		const geometry = g.to ? draft.attrs : placedShape(kind, draft.from, draft.size / 4, draft.decimals);
+		this.addShape(kind, {...geometry, ...paintOf(kind, false, strokeWidthFor(draft.size))});
+	}
+
+	/** Write a new shape as the drawing's last child, select it, and give the canvas the keys. */
+	private addShape(kind: ShapeKind, attrs: Record<string, string>): void {
 		const parsed = this.parseOnce();
 		if (!parsed) return;
 		const rootTag = this.rootTag(parsed.sourceText);
@@ -2940,6 +3054,230 @@ class slick {
 		if (made) this.selectElement(made);
 		this.svgPreview.focus({preventScroll: true});
 		this.announceAction(`${kind} drawn`);
+	}
+
+	/** A press with a tool that draws a point at a time; the first starts the
+	 * shape. On a polyline or polygon, the press places a point that follows
+	 * the pointer until it lets go. On a path, it places an anchor, and a drag
+	 * pulls handles out of it. A press on the first point closes the shape,
+	 * and one on the last ends it, or with a drag bends a path's way out of
+	 * it alone. */
+	private pressSketch(g: Gesture, kind: PointKind, shift: boolean): void {
+		if (!this.sketch) {
+			const draft = this.startDraft(kind, g.startX, g.startY);
+			if (!draft) {
+				this.gesture = null;
+				this.announceError('There is no <svg> element to draw in.');
+				return;
+			}
+			this.sketch = {kind, draft, anchors: [], decimals: draft.decimals, press: null, hover: null};
+		}
+		const s = this.sketch;
+		this.measureDraft(s.draft);
+		s.decimals = Math.max(s.decimals, s.draft.decimals);
+		s.hover = null;
+		s.press = this.aimAt(s, g.startX, g.startY, shift);
+		this.showSketch();
+	}
+
+	/** Whether a point of the shape under way is within a press's reach of (x, y) on screen. */
+	private reaches(s: Sketch, a: Anchor, x: number, y: number): boolean {
+		const p = applyToPoint(s.draft.toScreen, a.x, a.y);
+		return Math.hypot(p.x - x, p.y - y) <= POINT_REACH;
+	}
+
+	/** What a press at (x, y) does to the shape under way: closes it on its
+	 * first point, once it has points enough to close round something; ends
+	 * it on its last, or on its first before then, rather than put a point
+	 * on top of one; or places a point there, which Shift keeps at a
+	 * multiple of 45 degrees from the last. */
+	private aimAt(s: Sketch, x: number, y: number, shift: boolean): Aim {
+		const first = s.anchors.at(0);
+		const last = s.anchors.at(-1);
+		const onFirst = first !== undefined && this.reaches(s, first, x, y);
+		if (first && onFirst && s.anchors.length >= (s.kind === 'path' ? 2 : 3)) return {does: 'close', anchor: {...first}, dragged: false};
+		if (last && (onFirst || this.reaches(s, last, x, y))) return {does: 'end', anchor: {...last}, dragged: false};
+		const at = applyToPoint(s.draft.toUnits, x, y);
+		const to = shift && last ? snapAngle(last, at) : at;
+		return {does: 'add', anchor: {x: to.x, y: to.y, in: null, out: null}, dragged: false};
+	}
+
+	/** The pointer moves while pressed on a shape under way: a polyline's or
+	 * polygon's new point follows it, and a path's handles are pulled toward
+	 * it, at a multiple of 45 degrees with Shift. */
+	private sketchMove(g: Gesture, s: Sketch, x: number, y: number, shift: boolean): void {
+		const press = s.press;
+		if (!press) return;
+		this.measureDraft(s.draft);
+		if (s.kind !== 'path') {
+			s.press = this.aimAt(s, x, y, shift);
+			this.showSketch();
+			return;
+		}
+		if (!press.dragged && Math.hypot(x - g.startX, y - g.startY) < DRAG_THRESHOLD) return;
+		const base = press.does === 'close' ? s.anchors.at(0) : press.does === 'end' ? s.anchors.at(-1) : press.anchor;
+		if (!base) return;
+		const raw = applyToPoint(s.draft.toUnits, x, y);
+		const to = shift ? snapAngle(base, raw) : raw;
+		press.dragged = true;
+		// from the last anchor only the way out bends, which leaves a corner there
+		press.anchor = press.does === 'end' ? {...base, out: to} : draggedAnchor(base, to);
+		this.showSketch();
+	}
+
+	/** A press on a shape under way lets go: the point it placed joins the
+	 * shape, or the shape is closed or ended and written. */
+	private releaseSketch(s: Sketch): void {
+		const press = s.press;
+		s.press = null;
+		const first = s.anchors.at(0);
+		if (!press) return;
+		if (press.does === 'add') {
+			s.anchors.push(press.anchor);
+		} else if (press.does === 'close' && first) {
+			if (s.kind === 'path') s.anchors[0] = press.anchor;
+			// a polyline stays open, so it comes back by a point of its own on the first
+			if (s.kind === 'polyline') s.anchors.push({...first});
+			this.endSketch(s.kind === 'path');
+			return;
+		} else if (press.dragged) {
+			s.anchors[s.anchors.length - 1] = press.anchor;
+		} else if (s.anchors.length >= 2) {
+			this.endSketch();
+			return;
+		}
+		this.showSketch();
+	}
+
+	/** The attributes of the shape drawn a point at a time, to the finest
+	 * precision a point of it was placed at. */
+	private sketchAttrs(s: Sketch, closed: boolean): Record<string, string> {
+		const geometry: Record<string, string> = s.kind === 'path' ? {d: penPathData(s.anchors, closed, s.decimals)} : {points: pointsList(s.anchors, s.decimals)};
+		return {...geometry, ...paintOf(s.kind, closed, strokeWidthFor(s.draft.size))};
+	}
+
+	/** Write the shape drawn a point at a time, when it has points enough,
+	 * and put the tool down. */
+	private endSketch(closed = false): void {
+		const s = this.sketch;
+		if (!s || s.press) return;
+		const need = pointsNeeded(s.kind);
+		if (s.anchors.length < need) {
+			this.announceError(`A ${s.kind} needs ${need === 3 ? 'three' : 'two'} points or more.`);
+			return;
+		}
+		this.dropSketch();
+		this.armShape(null);
+		this.addShape(s.kind, this.sketchAttrs(s, closed));
+	}
+
+	/** Take back the last point of the shape under way; with none left, let it go. */
+	private backSketch(): void {
+		const s = this.sketch;
+		if (!s || s.press) return;
+		s.anchors.pop();
+		if (s.anchors.length === 0) {
+			this.dropSketch();
+			this.announceAction('Shape let go');
+			return;
+		}
+		s.hover = null;
+		this.showSketch();
+		this.announceAction(`Point taken back, ${s.anchors.length} left`);
+	}
+
+	/** Let the shape under way go, without writing it. The tool stays in hand. */
+	private dropSketch(): void {
+		const s = this.sketch;
+		if (!s) return;
+		this.sketch = null;
+		s.draft.el.remove();
+		this.placeSketch();
+		this.refreshSketchTools();
+		forceLinting(this.editor);
+	}
+
+	/** Show the shape under way as it would be written, with what the press
+	 * under way, or one where the pointer hovers, would do to it. */
+	private showSketch(): void {
+		const s = this.sketch;
+		if (!s) return;
+		const aim = s.press ?? s.hover;
+		const first = s.anchors.at(0);
+		let anchors = s.anchors;
+		let closed = false;
+		if (aim?.does === 'add') {
+			anchors = [...anchors, aim.anchor];
+		} else if (aim?.does === 'end' && aim.dragged) {
+			anchors = [...anchors.slice(0, -1), aim.anchor];
+		} else if (aim?.does === 'close' && first) {
+			closed = s.kind !== 'polyline';
+			anchors = s.kind === 'path' ? [aim.anchor, ...anchors.slice(1)] : s.kind === 'polyline' ? [...anchors, first] : anchors;
+		}
+		const [name, value] = s.kind === 'path' ? ['d', penPathData(anchors, closed, s.decimals)] : ['points', pointsList(anchors, s.decimals)];
+		s.draft.el.setAttribute(name, value);
+		paintDraft(s.draft.el, paintOf(s.kind, closed, strokeWidthFor(s.draft.size)));
+		this.updateStatusBar(`${s.kind} ${name}="${clipped(value)}"`, false);
+		this.placeSketch();
+		this.refreshSketchTools();
+	}
+
+	/** Mark the points of the shape under way on the overlay: the first
+	 * ringed once a press on it would close the shape, the one a press would
+	 * close or end it on filled, the point a press is placing, and a path's
+	 * handles on its last anchor and on the one a press is pulling. */
+	private placeSketch(): void {
+		this.sketchGroup.replaceChildren();
+		const s = this.sketch;
+		if (!s || !this.measureDraft(s.draft)) return;
+		const origin = this.overlay.getBoundingClientRect();
+		const toScreen = s.draft.toScreen;
+		const onScreen = (p: Point): Point=>{
+			const q = applyToPoint(toScreen, p.x, p.y);
+			return {x: q.x - origin.left, y: q.y - origin.top};
+		};
+		const mark = (tag: 'rect' | 'circle' | 'line', attrs: Record<string, number>, classes: string[] = []): void=>{
+			const node = document.createElementNS(SVG_NS, tag);
+			for (const [name, value] of Object.entries(attrs)) node.setAttribute(name, `${value}`);
+			node.classList.add(...classes);
+			this.sketchGroup.appendChild(node);
+		};
+		const aim = s.press ?? s.hover;
+		const last = s.anchors.length - 1;
+		const handled = [s.anchors.at(-1), aim?.dragged ? aim.anchor : undefined];
+		for (const anchor of handled) {
+			if (!anchor) continue;
+			const at = onScreen(anchor);
+			for (const handle of [anchor.in, anchor.out]) {
+				if (!handle) continue;
+				const h = onScreen(handle);
+				mark('line', {x1: at.x, y1: at.y, x2: h.x, y2: h.y});
+				mark('circle', {cx: h.x, cy: h.y, r: (HANDLE_SIZE - 1) / 2});
+			}
+		}
+		const closable = s.anchors.length >= (s.kind === 'path' ? 2 : 3);
+		const square = (p: Point, size: number, classes: string[]): void=>{
+			const at = onScreen(p);
+			mark('rect', {x: at.x - size / 2, y: at.y - size / 2, width: size, height: size}, classes);
+		};
+		s.anchors.forEach((anchor, i)=>{
+			const first = i === 0 && closable;
+			const aimed = (aim?.does === 'close' && i === 0) || (aim?.does === 'end' && i === last);
+			square(anchor, first ? HANDLE_SIZE + 3 : HANDLE_SIZE - 1, [...(first ? ['first'] : []), ...(aimed ? ['aimed'] : [])]);
+		});
+		if (s.press?.does === 'add') square(s.press.anchor, HANDLE_SIZE - 1, ['aimed']);
+	}
+
+	/** While a shape is drawn a point at a time, the preview bar holds its
+	 * own tool and the buttons that take a point back and finish it, in place
+	 * of the other tools and the view's own, so they are in reach on a narrow
+	 * screen; while points are edited, the point tools have that place. */
+	private refreshSketchTools(editing = this.pointMode !== null): void {
+		const s = this.sketch;
+		this.get('sketch-tools').classList.toggle('hide', !s);
+		for (const kind of SHAPE_KINDS) this.get(`draw-${kind}`).classList.toggle('hide', s !== null && kind !== s.kind);
+		for (const id of ['dark', 'flip']) this.get(id).classList.toggle('hide', editing || s !== null);
+		this.get('draw-done').toggleAttribute('disabled', !s || s.anchors.length < pointsNeeded(s.kind));
 	}
 
 	/** Remove the selection from the code, each element with the line it sat
@@ -3062,7 +3400,9 @@ class slick {
 		const key = e.key.toLowerCase();
 		if (key === 'z' && !e.shiftKey) {
 			e.preventDefault();
-			this.undoEdit(false);
+			// while a shape is drawn a point at a time, its last point is the last thing done
+			if (this.sketch) this.backSketch();
+			else this.undoEdit(false);
 		} else if (key === 'y' || (key === 'z' && e.shiftKey)) {
 			e.preventDefault();
 			this.redoEdit(false);
