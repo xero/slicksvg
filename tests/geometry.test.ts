@@ -375,6 +375,10 @@ describe('planFlip', () => {
     expect(turns).toEqual(['translate(-50 25) rotate(90 100 25) scale(2 0.5)', 'rotate(180 50 50)', 'translate(25 50) rotate(-90 50 50) scale(2 0.5)', '']);
   });
 
+  it('should move a leading translate in place when the transform flattens the element', () => {
+    expect(planMove(el('<path d="M0 0" transform="translate(5 5) scale(0 1)"/>'), 5, 0)).toEqual({ ok: true, attrs: { transform: 'translate(10 5) scale(0 1)' } });
+  });
+
   it('should put a mirror in front of a transform that flattens the element, which has no simplest form', () => {
     expect(planFlip(el('<rect transform="scale(0 1)"/>'), 'x', c)).toEqual({ ok: true, attrs: { transform: 'matrix(-1 0 0 1 100 0) scale(0 1)' } });
   });
@@ -458,6 +462,22 @@ describe('simplestTransform', () => {
 
   it('should be nothing for a transform that flattens the element', () => {
     expect(simplest('scale(0 1)')).toBeNull();
+  });
+
+  it('should keep a slant and a turn that an element with no size has, as one not drawn gives', () => {
+    const none = { x: 0, y: 0, width: 0, height: 0 };
+    expect(simplest('translate(10 10) skewX(30)', { box: none })).toBe('matrix(1 0 0.57735 1 10 10)');
+    expect(simplest('rotate(12.5) translate(10 0)', { box: none, decimals: 3 })).toBe('translate(9.763 2.164) rotate(12.5)');
+  });
+
+  it('should keep a scale below nothing along both axes, and a rotate written about 0 0', () => {
+    expect(planMove(el('<path d="M0 0" transform="scale(-1)"/>'), 5, 0, box)).toEqual({ ok: true, attrs: { transform: 'translate(5 0) scale(-1)' } });
+    expect(planMove(el('<path d="M0 0" transform="rotate(30 0 0)"/>'), 5, 0, box)).toEqual({ ok: true, attrs: { transform: 'translate(5 0) rotate(30 0 0)' } });
+  });
+
+  it('should write a flip and a half turn as a flip the other way, whichever way the flip was', () => {
+    expect(planRotate(el('<path d="M0 0" transform="translate(100 0) scale(-1 1)"/>'), 180, { x: 50, y: 50 }, 2, box))
+      .toEqual({ ok: true, attrs: { transform: 'translate(0 100) scale(1 -1)' } });
   });
 
   // a seeded generator, so a failure can be found again

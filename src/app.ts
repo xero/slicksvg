@@ -10,7 +10,7 @@ import {findElementAtCursor, type ElementRef} from './xray';
 import {startTags, readAttribute, attributesOf, planAttributeEdits, applyChanges, stampSource, parseSource, elementExtent, removalRange, duplicateInsertion, SOURCE_ATTR, type StartTag, type TextChange} from './source-map';
 import {GEOMETRY, SHAPES, plainLength, shapePathData, asPathChanges, conversionBlocked, type Length, type ShapePath} from './shapes';
 import {findSvgTarget, selectionChain, nextInChain, ordinalOf, boxCorners, handleCursor} from './select';
-import {planMove, planResize, planScaleAbout, planRotate, planMatrix, mirrorAbout, parentCenter, simplestTransform, parseTransform, listMatrix, axisMaps, scaleMatrix, multiply, invert, applyToVector, applyToPoint, pixelsPerUnit, decimalsFor, roundTo, fmt, placesOf, IDENTITY, type Matrix, type Point, type Rect, type Handle, type EditPlan} from './geometry';
+import {planMove, planResize, planScaleAbout, planRotate, planMatrix, mirrorAbout, parentCenter, simplestTransform, parseTransform, listMatrix, commaIn, axisMaps, scaleMatrix, multiply, invert, applyToVector, applyToPoint, pixelsPerUnit, decimalsFor, roundTo, fmt, placesOf, IDENTITY, type Matrix, type Point, type Rect, type Handle, type EditPlan} from './geometry';
 import {
 	parsePathData, walkPath, pathPoints, pointOnSegment, movePathPoint, transformPathPoints, insertPathPoint, removePathPoint, retractPathHandle, nearestPathSegment,
 	smoothPathPoint, cornerPathPoint, symmetricPathPoint, anchorKind, curvePathSegment, straightenPathSegment, segmentCurved, handleMode, moveHandle, pullHandles, bendPathSegment, type HandleMode,
@@ -2968,15 +2968,15 @@ class slick {
 			const list = value === null ? null : parseTransform(value);
 			if (value === null || !list || list.length === 0) return [];
 			const shown = this.elementForOrdinal(tag.ordinal);
-			const text = simplestTransform(listMatrix(list), {box: shown ? bboxOf(shown) : null, was: list, decimals: 3, comma: value.includes(',')});
+			const text = simplestTransform(listMatrix(list), {box: shown ? bboxOf(shown) : null, was: list, decimals: 3, comma: commaIn(value)});
 			return text === null || text === value.trim() ? [] : planAttributeEdits(source, tag, [{name: 'transform', value: text || null}]);
 		});
 		return applyChanges(source, changes);
 	}
 
 	private optimizeSVG(): void {
-		const svgCode = this.simplestTransforms(this.editor.state.doc.toString());
 		try {
+			const svgCode = this.simplestTransforms(this.editor.state.doc.toString());
 			const optimized = svgCode
 			// Remove XML processing instructions
 			.replace(/<\?xml[^>]*\?>/g, '')

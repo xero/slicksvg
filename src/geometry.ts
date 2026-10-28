@@ -230,7 +230,9 @@ export function simplestTransform(m: Matrix, req: SimplestRequest): string | nul
 	const sep = req.comma ? ',' : ' ';
 	const tolerance = 0.5 * 10 ** -decimals;
 	const middle = box ? {x: box.x + box.width / 2, y: box.y + box.height / 2} : {x: 0, y: 0};
-	const radius = box ? Math.hypot(box.width, box.height) / 2 : 1000;
+	// a box with no size, as one not drawn gives, says nothing of how finely to write the parts
+	const sized = box && (box.width > 0 || box.height > 0) ? box : null;
+	const radius = sized ? Math.hypot(sized.width, sized.height) / 2 : 1000;
 	// places enough that a unit of the last one moves the box by no more than the tolerance
 	const placesFor = (reach: number): number=>reach <= 0 ? 0 : Math.min(12, Math.max(0, Math.ceil(decimals + Math.log10(reach) - 1e-9)));
 	// what it had, part by part, when it was written this way
@@ -243,17 +245,25 @@ export function simplestTransform(m: Matrix, req: SimplestRequest): string | nul
 	let sy = det / sx;
 	let lean = (m.a * m.c + m.b * m.d) / sx;
 	// a mirror is a scale below nothing along x rather than y when that leaves less of a turn,
-	// or when it was a mirror written that way, so that rounding never tips it from one to the other
+	// and a scale below nothing along both stays one when it was and leaves less of a turn;
+	// within a rounding of a quarter turn either way leaves as much, so it stays as it was
+	// written, and rounding never tips it from one to the other
 	const [wasX, wasY] = [oldScale?.at(0) ?? 1, oldScale?.at(-1) ?? 1];
-	const mirroredAlongX = wasX * wasY < 0 ? wasX < 0 : Math.abs(theta) > 90;
-	if (det < 0 && mirroredAlongX) {
+	const band = 0.5 * 10 ** -placesFor((radius * Math.max(Math.abs(sx), Math.abs(sy)) * Math.PI) / 180) + 1e-9;
+	const quarter = Math.abs(Math.abs(theta) - 90) <= band;
+	const flipped = det < 0
+		? (wasX * wasY < 0 && quarter ? wasX < 0 : Math.abs(theta) > 90)
+		: wasX < 0 && wasY < 0 && (quarter || Math.abs(theta) > 90);
+	if (flipped) {
 		theta += theta > 0 ? -180 : 180;
 		[sx, sy, lean] = [-sx, -sy, -lean];
 	}
 	if (theta <= -180) theta += 360;
-	if (Math.abs(lean) * radius > tolerance) {
+	// a matrix that leans by barely enough to be one stays one, though rounding it as it was written leaned it a little less
+	const leaning = was.length === 1 && was[0].name === 'matrix' ? 0.9 * tolerance : tolerance;
+	if (Math.abs(lean) * radius > leaning) {
 		// as far from the origin as the box reaches, the slant is still in place
-		const far = box ? Math.max(...[[box.x, box.y], [box.x + box.width, box.y + box.height], [box.x, box.y + box.height], [box.x + box.width, box.y]].map(([x, y])=>Math.hypot(x, y))) : radius;
+		const far = sized ? Math.max(...[[sized.x, sized.y], [sized.x + sized.width, sized.y + sized.height], [sized.x, sized.y + sized.height], [sized.x + sized.width, sized.y]].map(([x, y])=>Math.hypot(x, y))) : radius;
 		const slant = [m.a, m.b, m.c, m.d].map(n=>String(roundTo(n, Math.max(6, placesFor(far)))));
 		return `matrix(${[...slant, fmt(m.e, decimals), fmt(m.f, decimals)].join(sep)})`;
 	}
@@ -280,7 +290,9 @@ export function simplestTransform(m: Matrix, req: SimplestRequest): string | nul
 
 	// the point it turns about, where the scale has put it: the first of the
 	// one it had, the one the edit turned it about, and its middle that
-	// needs no translate, or else the one it had, or its middle
+	// needs no translate, or else the one it had, or its middle. An edit that
+	// leaves the turn as it was keeps the point too, even where a move
+	// happens to need no translate about the middle.
 	let about = {x: 0, y: 0};
 	if (turn % 360 !== 0) {
 		const aboutPlaces = Math.max(2, decimals + 1);
@@ -292,7 +304,8 @@ export function simplestTransform(m: Matrix, req: SimplestRequest): string | nul
 		const still = (q: Point | null): q is Point=>q !== null && ((t)=>Math.abs(t.x) < tolerance && Math.abs(t.y) < tolerance)(shiftFor(q));
 		// a middle that needs a translate anyway is near enough to a hundredth of the element's size
 		const roughly = (p: Point): Point=>((places)=>({x: roundTo(p.x, places), y: roundTo(p.y, places)}))(Math.min(aboutPlaces, Math.max(0, Math.ceil(-Math.log10(radius / 100)))));
-		about = [then, fromPivot, own].find(still) ?? then ?? (box ? roughly(scaled(middle)) : null) ?? fromPivot ?? about;
+		const kept = then && turn === thenTurn;
+		about = (kept ? [then, fromPivot] : [then, fromPivot, own]).find(still) ?? then ?? (box ? roughly(scaled(middle)) : null) ?? fromPivot ?? about;
 	}
 
 	const shift = (now: number, then: number | undefined): string=>then === undefined ? fmt(now, decimals) : shifted(then, roundTo(now - then, decimals));
@@ -302,13 +315,13 @@ export function simplestTransform(m: Matrix, req: SimplestRequest): string | nul
 
 	const parts: string[] = [];
 	if (Number(tx) !== 0 || Number(ty) !== 0) parts.push(oldShift?.length === 1 && Number(ty) === 0 ? `translate(${tx})` : `translate(${tx}${sep}${ty})`);
-	if (turn % 360 !== 0) parts.push(about.x === 0 && about.y === 0 ? `rotate(${turn})` : `rotate(${[turn, about.x, about.y].join(sep)})`);
+	if (turn % 360 !== 0) parts.push(about.x === 0 && about.y === 0 && oldTurn?.length !== 3 ? `rotate(${turn})` : `rotate(${[turn, about.x, about.y].join(sep)})`);
 	if (sxw !== 1 || syw !== 1) parts.push(sxw === syw ? `scale(${sxw})` : `scale(${sxw}${sep}${syw})`);
 	return parts.join(' ');
 }
 
 /** Whether a transform's arguments are written with commas between them. */
-const commaIn = (value: string): boolean=>/\d\s*,\s*[-+.\d]/.test(value);
+export const commaIn = (value: string): boolean=>/\d\s*,\s*[-+.\d]/.test(value);
 
 /** The change to the transform attribute that writes `text`, or none when it
  * is what is there already. */
@@ -491,6 +504,12 @@ export function planMove(el: Element, dx: number, dy: number, box: Rect | null =
 	const moved = multiply({...IDENTITY, e: dx, f: dy}, listMatrix(list));
 	const text = simplestTransform(moved, {box, was: list, decimals: Math.max(2, placesOf(dx), placesOf(dy)), comma: commaIn(value)});
 	if (text !== null) return transformChange(el, text);
+	// a transform that flattens the element has no simplest form: a translate in front takes the move
+	if (first?.name === 'translate') {
+		const [tx, ty = 0] = first.args;
+		const args = first.args.length === 1 && dy === 0 ? [shifted(tx, dx)] : [shifted(tx, dx), shifted(ty, dy)];
+		return {ok: true, attrs: {transform: value.slice(0, first.start) + `translate(${joinArgs(value.slice(first.start, first.end), args)})` + value.slice(first.end)}};
+	}
 	const translate = `translate(${fmt(dx)} ${fmt(dy)})`;
 	return {ok: true, attrs: {transform: value.trim() ? `${translate} ${value.trim()}` : translate}};
 }
