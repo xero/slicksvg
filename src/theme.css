@@ -33,6 +33,9 @@
 	--color-nav-hover: #c6c9dc;
 	--color-active: #2959aa;
 	--color-active-txt: #ffffff;
+	/* the edges between the bars' groups and round the app's sections, clearer
+	   than the faint ones between a group's buttons */
+	--color-divider: #8a90a5;
 	--color-dragbar: #b3b4d1;
 	--color-bounds:#c0c6dd;
 	--color-err: #fb2c36;
@@ -66,6 +69,7 @@
 	--color-nav-hover: #2c3048;
 	--color-active: #7dcfff;
 	--color-active-txt: #1a1b26;
+	--color-divider: #565f89;
 	--color-dragbar: #565f89;
 	--color-err-bg:#82181a;
 	--color-err-fg: #ffc9c9;
@@ -246,8 +250,7 @@
     @apply relative z-20 bg-menu;
     padding-top: env(safe-area-inset-top, 0px);
     box-shadow:
-      0 0 0 2px var(--color-menu-outside),
-      0 0 0 3px var(--color-bounds);
+      0 0 0 2px var(--color-divider);
   }
   /* each pane's foot, one height for both: what is going on in it, and for
      the drawing, the tools at hand; clear of the strip a home gesture takes */
@@ -256,8 +259,7 @@
     height: calc(var(--bar-height) + env(safe-area-inset-bottom, 0px));
     padding-bottom: env(safe-area-inset-bottom, 0px);
     box-shadow:
-      0 0 0 2px var(--color-menu-outside),
-      0 0 0 3px var(--color-bounds);
+      0 0 0 2px var(--color-divider);
   }
   /* a bar too narrow for its buttons' names shows their icons alone, and one
      too narrow even for those scrolls, fading at an edge with buttons past it */
@@ -287,11 +289,11 @@
     @apply flex flex-row items-stretch;
   }
   #context-bar nav > div:not(.hide) ~ div:not(.hide) {
-    @apply border-l border-bounds;
+    @apply border-l border-divider;
   }
   /* the last of them closed off too, where the message begins */
   #context-bar nav {
-    @apply pr-0 border-r border-bounds;
+    @apply pr-0 border-r border-divider;
   }
   /* the app's menus at the start of its bar, and its tools at the end; a bar
      too narrow for both closes the gap, and scrolls */
@@ -301,7 +303,7 @@
   /* buttons that belong together: one edge before them, and the last group
      in the bar an edge after it too; joined ones have a fainter one between */
   .group, .joined {
-    @apply flex flex-row items-stretch border-l border-bounds;
+    @apply flex flex-row items-stretch border-l border-divider;
   }
   #appbar nav > :last-child {
     @apply border-r;
@@ -328,7 +330,7 @@
     position: fixed;
     inset: auto;
     box-shadow:
-      0 0 0 1px var(--color-bounds),
+      0 0 0 1px var(--color-divider),
       0 6px 16px rgb(0 0 0 / 0.25);
     &:popover-open {
       @apply flex flex-col;
