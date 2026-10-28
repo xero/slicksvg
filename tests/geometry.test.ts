@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   parseTransform, listMatrix, multiply, invert, applyToPoint, decimalsFor, fmt, shifted,
   planMove, planResize, planScaleAbout, axisMaps, resizedBox, planRotate, planFlip, planMatrix, parentCenter,
-  type ResizeRequest, type Rect,
+  simplestTransform, turnMatrix, type ResizeRequest, type Rect, type Matrix,
 } from '../src/geometry';
 
 /** Parse a document and return the element with id "t", or the last element. */
@@ -129,9 +129,20 @@ describe('planMove', () => {
     expect(planMove(el('<g transform="translate(10)"/>'), 5, 0)).toEqual({ ok: true, attrs: { transform: 'translate(15)' } });
   });
 
-  it('should move a leading matrix by its translation', () => {
+  it('should move a leading matrix by its translation, writing it in its simplest form', () => {
     expect(planMove(el('<text transform="matrix(1 0 0 1 120.5 40.2)">a</text>'), 10, -0.2))
-      .toEqual({ ok: true, attrs: { transform: 'matrix(1 0 0 1 130.5 40)' } });
+      .toEqual({ ok: true, attrs: { transform: 'translate(130.5 40)' } });
+  });
+
+  it('should move a shape turned about a point of its own together with that point', () => {
+    expect(planMove(el('<rect x="20" y="20" width="60" height="60" transform="rotate(30 50 50)"/>'), 10, 0))
+      .toEqual({ ok: true, attrs: { x: '30', transform: 'rotate(30 60 50)' } });
+  });
+
+  it('should take a move into a long transform and write it in its simplest form', () => {
+    const long = 'rotate(14 92.49 81) translate(-11.5 -15.6) rotate(359 99.9 99.97) translate(-1.03 -7.42) scale(1.051 1.041)';
+    expect(planMove(el(`<path d="M0 0" transform="${long}"/>`), 1, 0, { x: 20, y: 20, width: 160, height: 160 }))
+      .toEqual({ ok: true, attrs: { transform: 'translate(-11.57 -23.11) rotate(13 105 104) scale(1.051 1.041)' } });
   });
 
   it('should put a translate in front of a path or a transform that does not start with one', () => {
@@ -272,10 +283,16 @@ describe('parentCenter', () => {
 describe('planRotate', () => {
   const c = { x: 50, y: 50 };
 
-  it('should put a rotate about the centre in front of the transform', () => {
+  it('should turn about the centre, taking the turn into the transform', () => {
     expect(planRotate(el('<rect x="40" y="40" width="20" height="20"/>'), 90, c)).toEqual({ ok: true, attrs: { transform: 'rotate(90 50 50)' } });
-    expect(planRotate(el('<path d="M0 0" transform="translate(5 5) scale(2)"/>'), 45, c))
-      .toEqual({ ok: true, attrs: { transform: 'rotate(45 50 50) translate(5 5) scale(2)' } });
+    // the turn goes between the move and the scale, about the middle as the scale leaves it
+    expect(planRotate(el('<path d="M0 0" transform="translate(5 5) scale(2)"/>'), 45, c, 2, { x: 20, y: 20, width: 5, height: 5 }))
+      .toEqual({ ok: true, attrs: { transform: 'translate(5 5) rotate(45 45 45) scale(2)' } });
+  });
+
+  it('should write a turn between a half turn back and a half turn on, unless it was written otherwise', () => {
+    expect(planRotate(el('<rect transform="rotate(350 50 50)"/>'), 5, c)).toEqual({ ok: true, attrs: { transform: 'rotate(-5 50 50)' } });
+    expect(planRotate(el('<rect transform="rotate(200 50 50)"/>'), 0, c)).toEqual({ ok: true, attrs: {} });
   });
 
   it('should add to a leading rotate about the same centre instead of stacking', () => {
@@ -290,9 +307,9 @@ describe('planRotate', () => {
     expect(planFlip(el('<rect transform="matrix(-1 0 0 1 100 0),scale(2)"/>'), 'x', c)).toEqual({ ok: true, attrs: { transform: 'scale(2)' } });
   });
 
-  it('should stack in front of a rotate about a different centre', () => {
-    expect(planRotate(el('<rect transform="rotate(90 10 10)"/>'), 90, c)).toEqual({ ok: true, attrs: { transform: 'rotate(90 50 50) rotate(90 10 10)' } });
-    expect(planRotate(el('<rect transform="rotate(90 50.02 50)"/>'), 90, c)).toEqual({ ok: true, attrs: { transform: 'rotate(90 50 50) rotate(90 50.02 50)' } });
+  it('should keep the centre a turn about another point leaves, and how far that point moved', () => {
+    expect(planRotate(el('<rect transform="rotate(90 10 10)"/>'), 90, c)).toEqual({ ok: true, attrs: { transform: 'translate(80 0) rotate(180 10 10)' } });
+    expect(planRotate(el('<rect transform="rotate(90 50.02 50)"/>'), 90, c)).toEqual({ ok: true, attrs: { transform: 'translate(-0.02 0.02) rotate(180 50.02 50)' } });
   });
 
   it('should take a centre rounded as it was written, and moved by its own turn, as the same centre', () => {
@@ -304,8 +321,11 @@ describe('planRotate', () => {
       .toEqual({ ok: true, attrs: { transform: 'rotate(180 17.1234 10)' } });
   });
 
-  it('should write the centre and angle to the given precision', () => {
-    expect(planRotate(el('<rect/>'), 33.3333, { x: 12.345, y: 6.789 }, 1)).toEqual({ ok: true, attrs: { transform: 'rotate(33.3 12.3 6.8)' } });
+  it('should write the angle finely enough for the size of the element, and the centre a place finer than a shift', () => {
+    expect(planRotate(el('<rect/>'), 33.3333, { x: 12.345, y: 6.789 }, 1, { x: 0, y: 0, width: 24.69, height: 13.578 }))
+      .toEqual({ ok: true, attrs: { transform: 'rotate(33.3 12.35 6.79)' } });
+    expect(planRotate(el('<rect/>'), 33.3333, { x: 12.345, y: 6.789 }, 1, { x: 0, y: 0, width: 2000, height: 10 }))
+      .toEqual({ ok: true, attrs: { transform: 'rotate(33.333 12.35 6.79)' } });
   });
 
   it('should refuse a transform origin or a CSS transform', () => {
@@ -317,47 +337,46 @@ describe('planRotate', () => {
 describe('planFlip', () => {
   const c = { x: 50, y: 50 };
 
-  it('should mirror across the vertical or horizontal line through the centre', () => {
-    expect(planFlip(el('<rect/>'), 'x', c)).toEqual({ ok: true, attrs: { transform: 'matrix(-1 0 0 1 100 0)' } });
-    expect(planFlip(el('<rect/>'), 'y', c)).toEqual({ ok: true, attrs: { transform: 'matrix(1 0 0 -1 0 100)' } });
-    expect(planFlip(el('<rect transform="scale(2)"/>'), 'x', c)).toEqual({ ok: true, attrs: { transform: 'matrix(-1 0 0 1 100 0) scale(2)' } });
+  it('should mirror across the upright or level line through the centre, as a scale below nothing', () => {
+    expect(planFlip(el('<rect/>'), 'x', c)).toEqual({ ok: true, attrs: { transform: 'translate(100 0) scale(-1 1)' } });
+    expect(planFlip(el('<rect/>'), 'y', c)).toEqual({ ok: true, attrs: { transform: 'translate(0 100) scale(1 -1)' } });
+    expect(planFlip(el('<rect transform="scale(2)"/>'), 'x', c)).toEqual({ ok: true, attrs: { transform: 'translate(100 0) scale(-2 2)' } });
   });
 
   it('should take a mirror back off when flipped across the same line again', () => {
+    expect(planFlip(el('<rect transform="translate(100 0) scale(-1 1)"/>'), 'x', c)).toEqual({ ok: true, attrs: { transform: null } });
     expect(planFlip(el('<rect transform="matrix(-1 0 0 1 100 0)"/>'), 'x', c)).toEqual({ ok: true, attrs: { transform: null } });
     expect(planFlip(el('<rect transform="matrix(-1 0 0 1 100 0) scale(2)"/>'), 'x', c)).toEqual({ ok: true, attrs: { transform: 'scale(2)' } });
-    // a flip across the other line takes the first in: the two are a half turn
-    expect(planFlip(el('<rect transform="matrix(-1 0 0 1 100 0)"/>'), 'y', c))
-      .toEqual({ ok: true, attrs: { transform: 'matrix(-1 0 0 -1 100 100)' } });
+    // a flip across the other line as well is a half turn
+    expect(planFlip(el('<rect transform="translate(100 0) scale(-1 1)"/>'), 'y', c, 2, { x: 40, y: 40, width: 20, height: 20 }))
+      .toEqual({ ok: true, attrs: { transform: 'rotate(180 50 50)' } });
   });
 
   it('should mirror across a slanted line, and take that mirror back off', () => {
     // across the line at 30 degrees through 10, 0, as a flip on screen is seen in a parent turned 30 degrees
     const [cos, sin] = [Math.cos(Math.PI / 3), Math.sin(Math.PI / 3)];
     const m = { a: cos, b: sin, c: sin, d: -cos, e: 10 - cos * 10, f: -sin * 10 };
-    expect(planMatrix(el('<rect/>'), m)).toEqual({ ok: true, attrs: { transform: 'matrix(0.5 0.866025 0.866025 -0.5 5 -8.66)' } });
-    expect(planMatrix(el('<rect transform="matrix(0.5 0.866025 0.866025 -0.5 5 -8.66) scale(2)"/>'), m)).toEqual({ ok: true, attrs: { transform: 'scale(2)' } });
+    expect(planMatrix(el('<rect/>'), m)).toEqual({ ok: true, attrs: { transform: 'translate(5 -8.66) rotate(60) scale(1 -1)' } });
+    expect(planMatrix(el('<rect transform="translate(5 -8.66) rotate(60) scale(1 -1)"/>'), m)).toEqual({ ok: true, attrs: { transform: null } });
     expect(planMatrix(el('<rect style="transform: scale(2)"/>'), m).ok).toBe(false);
   });
 
-  it('should take a turn into the matrix in front, so turns add up and four quarters come to none', () => {
+  it('should add up turns where the parent is stretched, so four quarters come to none', () => {
     // a quarter turn about 50,50 as a parent stretched twice as wide sees it
     const quarter = { a: 0, b: 2, c: -0.5, d: 0, e: 75, f: -50 };
-    const once = planMatrix(el('<rect/>'), quarter);
-    expect(once).toEqual({ ok: true, attrs: { transform: 'matrix(0 2 -0.5 0 75 -50)' } });
-    let transform = once.ok ? once.attrs.transform! : '';
-    const turns = [transform];
-    for (let i = 0; i < 3; i++) {
-      const next = planMatrix(el(`<rect transform="${transform}"/>`), quarter);
+    const box = { x: 40, y: 40, width: 20, height: 20 };
+    let transform = '';
+    const turns = [];
+    for (let i = 0; i < 4; i++) {
+      const next = planMatrix(el(`<rect transform="${transform}"/>`), quarter, 2, box);
       transform = next.ok ? next.attrs.transform ?? '' : 'refused';
       turns.push(transform);
     }
-    expect(turns).toEqual(['matrix(0 2 -0.5 0 75 -50)', 'matrix(-1 0 0 -1 100 100)', 'matrix(0 -2 0.5 0 25 150)', '']);
+    expect(turns).toEqual(['translate(-50 25) rotate(90 100 25) scale(2 0.5)', 'rotate(180 50 50)', 'translate(25 50) rotate(-90 50 50) scale(2 0.5)', '']);
   });
 
-  it('should keep the places a matrix in front was written to when taking a new one in', () => {
-    expect(planMatrix(el('<rect transform="matrix(0.70710678 0.70710678 -0.70710678 0.70710678 0.125 0)"/>'), { a: -1, b: 0, c: 0, d: 1, e: 100, f: 0 }))
-      .toEqual({ ok: true, attrs: { transform: 'matrix(-0.70710678 0.70710678 0.70710678 0.70710678 99.875 0)' } });
+  it('should put a mirror in front of a transform that flattens the element, which has no simplest form', () => {
+    expect(planFlip(el('<rect transform="scale(0 1)"/>'), 'x', c)).toEqual({ ok: true, attrs: { transform: 'matrix(-1 0 0 1 100 0) scale(0 1)' } });
   });
 
   it('should keep the mirror a true mirror: the centre stays put', () => {
@@ -393,9 +412,9 @@ describe('planScaleAbout', () => {
     expect(planScaleAbout(el('<path d="M0 0 L10 10"/>'), about(2, 2, 10, 10), 1)).toEqual({ ok: true, attrs: { transform: 'translate(-10 -10) scale(2)' } });
   });
 
-  it('should put a stretch across a turned element in front of its transform', () => {
-    expect(planScaleAbout(el('<rect width="10" height="10" transform="rotate(45)"/>'), about(2, 1, 0, 0), 1))
-      .toEqual({ ok: true, attrs: { transform: 'matrix(2 0 0 1 0 0) rotate(45)' } });
+  it('should take a stretch across a turned element into its transform, which leans, as one matrix', () => {
+    expect(planScaleAbout(el('<rect width="10" height="10" transform="rotate(45)"/>'), about(2, 1, 0, 0), 1, { x: 0, y: 0, width: 10, height: 10 }))
+      .toEqual({ ok: true, attrs: { transform: 'matrix(1.414214 0.707107 -1.414214 0.707107 0 0)' } });
     // a uniform scale is a scale along any axes
     expect(planScaleAbout(el('<rect width="10" height="10" transform="rotate(45)"/>'), about(2, 2, 0, 0), 1))
       .toEqual({ ok: true, attrs: { width: '20', height: '20' } });
@@ -404,5 +423,90 @@ describe('planScaleAbout', () => {
   it('should refuse what a resize refuses', () => {
     expect(planScaleAbout(el('<rect width="10" height="10" style="transform: scale(2)"/>'), about(2, 2, 0, 0), 1).ok).toBe(false);
     expect(planScaleAbout(el('<svg width="10" height="10"/>'), about(2, 2, 0, 0), 1).ok).toBe(false);
+  });
+});
+
+describe('simplestTransform', () => {
+  const box: Rect = { x: 40, y: 40, width: 20, height: 20 };
+  const simplest = (value: string, over: Partial<Parameters<typeof simplestTransform>[1]> = {}) => {
+    const was = parseTransform(value)!;
+    return simplestTransform(listMatrix(was), { box, was, decimals: 2, ...over });
+  };
+
+  it('should write any run of moves, turns, and scales as at most a translate, a rotate, and a scale', () => {
+    expect(simplest('translate(10 0) translate(5 5)')).toBe('translate(15 5)');
+    expect(simplest('rotate(30 50 50) rotate(60 50 50)')).toBe('rotate(90 50 50)');
+    expect(simplest('translate(50 50) rotate(45) translate(-50 -50)')).toBe('rotate(45 50 50)');
+    expect(simplest('matrix(2 0 0 2 10 10)')).toBe('translate(10 10) scale(2)');
+    expect(simplest('rotate(90 50 50) rotate(-90 50 50)')).toBe('');
+  });
+
+  it('should write a mirror as a scale below nothing, along the axis that leaves less of a turn', () => {
+    expect(simplest('matrix(-1 0 0 1 100 0)')).toBe('translate(100 0) scale(-1 1)');
+    expect(simplest('matrix(1 0 0 -1 0 100)')).toBe('translate(0 100) scale(1 -1)');
+  });
+
+  it('should write a slant with a lean in it as one matrix', () => {
+    expect(simplest('skewX(45)')).toBe('matrix(1 0 1 1 0 0)');
+  });
+
+  it('should keep each part that still holds as it was written', () => {
+    expect(simplest('translate(121.31122970581055 3) rotate(30.5 50 50) scale(0.00048828125)')).toBe('translate(121.31122970581055 3) rotate(30.5 50 50) scale(0.00048828125)');
+    expect(simplest('rotate(270 50 50)')).toBe('rotate(270 50 50)');
+    expect(simplest('translate(364,94) scale(2)', { comma: true })).toBe('translate(364,94) scale(2)');
+  });
+
+  it('should be nothing for a transform that flattens the element', () => {
+    expect(simplest('scale(0 1)')).toBeNull();
+  });
+
+  // a seeded generator, so a failure can be found again
+  const random = (seed: number) => () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+
+  it('should draw what it was given, write the same again from its own output, and change only the translate on a move', () => {
+    const rand = random(7);
+    const pick = <T,>(xs: T[]) => xs[Math.floor(rand() * xs.length)];
+    const n = (span: number) => Math.round((rand() - 0.5) * span * 100) / 100;
+    const scale = () => pick([-1, 1]) * Math.round((0.2 + rand() * 3) * 100) / 100;
+    let worst = 0;
+    for (let i = 0; i < 3000; i++) {
+      const area: Rect = { x: n(400), y: n(400), width: rand() * pick([1, 10, 100, 1000]), height: rand() * pick([1, 10, 100, 1000]) };
+      const parts = Array.from({ length: Math.floor(rand() * 5) }, () => pick([
+        () => `translate(${n(200)} ${n(200)})`, () => `rotate(${n(360)})`, () => `rotate(${n(360)} ${n(200)} ${n(200)})`,
+        () => `scale(${scale()})`, () => `scale(${scale()} ${scale()})`, () => `skewX(${n(60)})`,
+        () => `matrix(${[n(4), n(4), n(4), n(4), n(100), n(100)].join(' ')})`,
+      ])());
+      const was = parseTransform(parts.join(' '))!;
+      const pivot = { x: n(400), y: n(400) };
+      const edit = pick<Matrix>([
+        { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }, { a: 1, b: 0, c: 0, d: 1, e: n(100), f: n(100) },
+        turnMatrix(n(360), pivot), { a: -1, b: 0, c: 0, d: 1, e: 2 * pivot.x, f: 0 },
+      ]);
+      const m = multiply(edit, listMatrix(was));
+      if (Math.abs(m.a * m.d - m.b * m.c) < 1e-3) continue;
+      const decimals = Math.floor(rand() * 4);
+      const text = simplestTransform(m, { box: area, was, decimals, pivot })!;
+      const list = parseTransform(text)!;
+      expect(list.length).toBeLessThanOrEqual(3);
+      const written = listMatrix(list);
+      const corners = [[area.x, area.y], [area.x + area.width, area.y], [area.x, area.y + area.height], [area.x + area.width, area.y + area.height]];
+      for (const [x, y] of corners) {
+        const [p, q] = [applyToPoint(m, x, y), applyToPoint(written, x, y)];
+        worst = Math.max(worst, Math.hypot(p.x - q.x, p.y - q.y) / 10 ** -decimals);
+      }
+      expect(simplestTransform(written, { box: area, was: list, decimals })).toBe(text);
+      if (!text.startsWith('matrix')) {
+        const moved = simplestTransform(multiply({ a: 1, b: 0, c: 0, d: 1, e: 7, f: -3 }, written), { box: area, was: list, decimals })!;
+        const rest = (t: string) => t.replace(/^translate\([^)]*\)\s*/, '');
+        expect(rest(moved)).toBe(rest(text));
+      }
+    }
+    // within about a unit of the last place a shift is written to
+    expect(worst).toBeLessThan(1.5);
   });
 });

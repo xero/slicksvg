@@ -10,7 +10,7 @@ import {findElementAtCursor, type ElementRef} from './xray';
 import {startTags, readAttribute, attributesOf, planAttributeEdits, applyChanges, stampSource, parseSource, elementExtent, removalRange, duplicateInsertion, SOURCE_ATTR, type StartTag, type TextChange} from './source-map';
 import {GEOMETRY, SHAPES, plainLength, shapePathData, asPathChanges, conversionBlocked, type Length, type ShapePath} from './shapes';
 import {findSvgTarget, selectionChain, nextInChain, ordinalOf, boxCorners, handleCursor} from './select';
-import {planMove, planResize, planScaleAbout, planRotate, planMatrix, mirrorAbout, parentCenter, axisMaps, scaleMatrix, multiply, invert, applyToVector, applyToPoint, pixelsPerUnit, decimalsFor, roundTo, fmt, placesOf, IDENTITY, type Matrix, type Point, type Rect, type Handle, type EditPlan} from './geometry';
+import {planMove, planResize, planScaleAbout, planRotate, planMatrix, mirrorAbout, parentCenter, simplestTransform, parseTransform, listMatrix, axisMaps, scaleMatrix, multiply, invert, applyToVector, applyToPoint, pixelsPerUnit, decimalsFor, roundTo, fmt, placesOf, IDENTITY, type Matrix, type Point, type Rect, type Handle, type EditPlan} from './geometry';
 import {
 	parsePathData, walkPath, pathPoints, pointOnSegment, movePathPoint, transformPathPoints, insertPathPoint, removePathPoint, retractPathHandle, nearestPathSegment,
 	smoothPathPoint, cornerPathPoint, symmetricPathPoint, anchorKind, curvePathSegment, straightenPathSegment, segmentCurved, handleMode, moveHandle, pullHandles, bendPathSegment, type HandleMode,
@@ -2484,7 +2484,7 @@ class slick {
 			} else if (d.group && g.mode === 'resize' && g.handle) {
 				// the scale on screen, seen in the element's parent's units
 				const onScreen = scaleMatrix(axisMaps(d.group.box, {handle: g.handle, dx: sx, dy: sy, keepAspect, minSize: 2}));
-				plan = planScaleAbout(d.found.source, multiply(d.toUnits, multiply(onScreen, d.group.toScreen)), d.decimals);
+				plan = planScaleAbout(d.found.source, multiply(d.toUnits, multiply(onScreen, d.group.toScreen)), d.decimals, d.bbox);
 			} else if (d.bend) {
 				const v = applyToVector(d.toUnits, sx, sy);
 				const bent = bendPathSegment(d.bend.d, d.bend.segment, d.bend.t, {x: d.bend.from.x + v.x, y: d.bend.from.y + v.y}, d.decimals);
@@ -2504,13 +2504,13 @@ class slick {
 				const from = applyToVector(d.toUnits, g.startX - d.screenCenter.x, g.startY - d.screenCenter.y);
 				const to = applyToVector(d.toUnits, x - d.screenCenter.x, y - d.screenCenter.y);
 				const degrees = ((Math.atan2(to.y, to.x) - Math.atan2(from.y, from.x)) * 180) / Math.PI;
-				plan = planRotate(d.found.source, Math.round(degrees / snap) * snap, d.center);
+				plan = planRotate(d.found.source, Math.round(degrees / snap) * snap, d.center, d.decimals, d.bbox);
 			} else {
 				const v = applyToVector(d.toUnits, sx, sy);
 				const dx = roundTo(v.x, d.decimals);
 				const dy = roundTo(v.y, d.decimals);
 				plan = g.mode === 'move' || !g.handle
-					? planMove(d.found.source, dx, dy)
+					? planMove(d.found.source, dx, dy, d.bbox)
 					: planResize(d.found.source, {handle: g.handle, dx, dy, keepAspect, bbox: d.bbox, minSize: d.minSize, decimals: d.decimals});
 			}
 			if (!plan.ok) {
@@ -2642,7 +2642,7 @@ class slick {
 	private nudge(dx: number, dy: number): void {
 		const els = this.selectedElements();
 		if (els.length === 0 || this.gesture?.drags.length) return;
-		const made = this.plansFor(els, source=>planMove(source, dx, dy));
+		const made = this.plansFor(els, (source, bbox)=>planMove(source, dx, dy, bbox));
 		if (made) this.commitChanges(made.sourceText, made.plans, undefined, false);
 	}
 
@@ -2657,9 +2657,9 @@ class slick {
 		// the turn as it runs in each one's parent, which a flip there runs the
 		// other way round; a parent stretched or slanted against the screen sees
 		// it as no turn at all, so it goes in front as the matrix it is there
-		const made = this.plansAbout(els, turn, (source, m, center)=>isTurn(m)
-			? planRotate(source, (Math.atan2(m.b, m.a) * 180) / Math.PI, center)
-			: planMatrix(source, m));
+		const made = this.plansAbout(els, turn, (source, m, center, bbox)=>isTurn(m)
+			? planRotate(source, (Math.atan2(m.b, m.a) * 180) / Math.PI, center, 2, bbox)
+			: planMatrix(source, m, 2, bbox));
 		if (made && this.commitChanges(made.sourceText, made.plans, 'slick.rotate')) {
 			this.announceAction(els.length > 1 ? `${els.length} elements rotated ${degrees} degrees` : `${els[0].tagName.toLowerCase()} rotated ${degrees} degrees`);
 		}
@@ -2673,7 +2673,7 @@ class slick {
 		const mirror = (middle: Point): Matrix=>mirrorAbout(axis, middle);
 		if (this.transformSelectedPoints(mirror, `flipped ${way}`)) return;
 		const els = this.selectedElements();
-		const made = this.plansAbout(els, mirror, (source, m)=>planMatrix(source, m));
+		const made = this.plansAbout(els, mirror, (source, m, _center, bbox)=>planMatrix(source, m, 2, bbox));
 		if (made && this.commitChanges(made.sourceText, made.plans, 'slick.flip')) {
 			this.announceAction(els.length > 1 ? `${els.length} elements flipped ${way}` : `${els[0].tagName.toLowerCase()} flipped ${way}`);
 		}
@@ -2685,7 +2685,7 @@ class slick {
 	 * element's parent's units, about the point it holds there: for one
 	 * element its own centre, which its box gives exactly.
 	 */
-	private plansAbout(els: Element[], onScreen: (middle: Point) => Matrix, plan: (source: Element, m: Matrix, center: Point) => EditPlan): {sourceText: string; plans: Planned[]} | null {
+	private plansAbout(els: Element[], onScreen: (middle: Point) => Matrix, plan: (source: Element, m: Matrix, center: Point, bbox: Rect) => EditPlan): {sourceText: string; plans: Planned[]} | null {
 		const corners = els.flatMap(el=>boxCorners(el, this.overlay) ?? []);
 		if (corners.length === 0) {
 			this.announceError('The selection has no box to turn or flip it about.');
@@ -2702,7 +2702,7 @@ class slick {
 			if (!center || (!one && !toUnits)) return {ok: false, reason: 'This element\'s transform could not be read, so it cannot be turned or flipped here.'};
 			// a parent with no place on screen is taken as upright, as it was before there was a screen to go by
 			const m = ctm && toUnits ? multiply(toUnits, multiply(onScreen(middle), toMatrix(ctm))) : onScreen(center);
-			return plan(source, holding(m, center), center);
+			return plan(source, holding(m, center), center, bbox);
 		});
 	}
 
@@ -2755,7 +2755,7 @@ class slick {
 		}
 		const original = found.sourceText.slice(extent.start, extent.end);
 		const changes = [];
-		const shift = planMove(found.source, 10, 10);
+		const shift = planMove(found.source, 10, 10, bboxOf(current));
 		if (shift.ok) changes.push(...Object.entries(shift.attrs).map(([name, value])=>({name, value})));
 		const id = found.source.getAttribute('id');
 		if (id !== null) {
@@ -2959,8 +2959,23 @@ class slick {
 		this.modalClose();
 	}
 
+	/** The source with every element's transform in its simplest form, each
+	 * turning about the middle of the element as the preview draws it. The
+	 * root's is the whole drawing's, which its own buttons write. */
+	private simplestTransforms(source: string): string {
+		const changes = startTags(source).flatMap(tag=>{
+			const value = tag.name === 'svg' ? null : readAttribute(source, tag, 'transform');
+			const list = value === null ? null : parseTransform(value);
+			if (value === null || !list || list.length === 0) return [];
+			const shown = this.elementForOrdinal(tag.ordinal);
+			const text = simplestTransform(listMatrix(list), {box: shown ? bboxOf(shown) : null, was: list, decimals: 3, comma: value.includes(',')});
+			return text === null || text === value.trim() ? [] : planAttributeEdits(source, tag, [{name: 'transform', value: text || null}]);
+		});
+		return applyChanges(source, changes);
+	}
+
 	private optimizeSVG(): void {
-		const svgCode = this.editor.state.doc.toString();
+		const svgCode = this.simplestTransforms(this.editor.state.doc.toString());
 		try {
 			const optimized = svgCode
 			// Remove XML processing instructions

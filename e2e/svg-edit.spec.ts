@@ -165,8 +165,9 @@ test.describe('SVG Editor Preview Editing', () => {
     await page.locator('#rotate').click();
     expect(await getSource(page)).toContain('transform="rotate(180 50 50)"');
 
+    // a half turn and a flip across the upright line are a flip across the level one
     await page.locator('#flipx').click();
-    expect(await getSource(page)).toContain('transform="matrix(-1 0 0 1 100 0) rotate(180 50 50)"');
+    expect(await getSource(page)).toContain('fill="#6291e0" transform="translate(0 100) scale(1 -1)"');
     await page.locator('#flipx').click();
     expect(await getSource(page)).toContain('transform="rotate(180 50 50)"');
 
@@ -299,8 +300,8 @@ test.describe('SVG Editor Preview Editing', () => {
     await page.locator('.svg-container circle').click({ modifiers: ['ControlOrMeta'] });
     // the box runs from 20,20 to 180,180: the two change places across 100
     await page.locator('#flipx').click();
-    expect(await getSource(page)).toContain('fill="#6291e0" transform="matrix(-1 0 0 1 200 0)"');
-    expect(await getSource(page)).toContain('fill="#aa0000" transform="matrix(-1 0 0 1 200 0)"');
+    expect(await getSource(page)).toContain('fill="#6291e0" transform="translate(200 0) scale(-1 1)"');
+    expect(await getSource(page)).toContain('fill="#aa0000" transform="translate(200 0) scale(-1 1)"');
     await expect(page.locator('#test-announcements')).toHaveText('2 elements flipped horizontally');
     const box = (await page.locator('.svg-container rect').boundingBox())!;
     const svg = (await page.locator('.svg-container svg').boundingBox())!;
@@ -310,8 +311,8 @@ test.describe('SVG Editor Preview Editing', () => {
     expect(await getSource(page)).toBe(FIXTURE);
 
     await page.locator('#flipy').click();
-    expect(await getSource(page)).toContain('fill="#6291e0" transform="matrix(1 0 0 -1 0 200)"');
-    expect(await getSource(page)).toContain('fill="#aa0000" transform="matrix(1 0 0 -1 0 200)"');
+    expect(await getSource(page)).toContain('fill="#6291e0" transform="translate(0 200) scale(1 -1)"');
+    expect(await getSource(page)).toContain('fill="#aa0000" transform="translate(0 200) scale(1 -1)"');
     await page.locator('#undo').click();
     expect(await getSource(page)).toBe(FIXTURE);
   });
@@ -322,7 +323,7 @@ test.describe('SVG Editor Preview Editing', () => {
     await page.locator('.svg-container rect').click();
     const [corner, middle] = [await onPage(page, '#box', 20, 20), await onPage(page, '#box', 50, 50)];
     await page.locator('#flipx').click();
-    expect(await getSource(page)).toContain('fill="#6291e0" transform="matrix(1 0 0 -1 0 100)"');
+    expect(await getSource(page)).toContain('fill="#6291e0" transform="translate(0 100) scale(1 -1)"');
     // flipped across the upright line through its middle on screen
     const flipped = await onPage(page, '#box', 20, 20);
     expect(flipped.x).toBeCloseTo(2 * middle.x - corner.x, 1);
@@ -333,7 +334,7 @@ test.describe('SVG Editor Preview Editing', () => {
     await page.locator('.svg-container rect').click();
     const [start, centre] = [await onPage(page, '#box', 20, 20), await onPage(page, '#box', 50, 50)];
     await page.locator('#rotate').click();
-    expect(await getSource(page)).toContain('fill="#6291e0" transform="rotate(270 50 50)"');
+    expect(await getSource(page)).toContain('fill="#6291e0" transform="rotate(-90 50 50)"');
     const turned = await onPage(page, '#box', 20, 20);
     expect(turned.x).toBeCloseTo(centre.x - (start.y - centre.y), 1);
     expect(turned.y).toBeCloseTo(centre.y + (start.x - centre.x), 1);
@@ -345,15 +346,16 @@ test.describe('SVG Editor Preview Editing', () => {
     await setContent(page, stretched);
     await page.locator('.svg-container rect').click();
     const [nw, se, centre] = [await onPage(page, '#box', 20, 20), await onPage(page, '#box', 80, 80), await onPage(page, '#box', 50, 50)];
+    // in the drawing's own units the turn stretches the rect the other way, which its scale says
     await page.locator('#rotate').click();
-    expect(await getSource(page)).toMatch(/fill="#6291e0" transform="matrix\([^)]*\)"\/>/);
+    expect(await getSource(page)).toContain('fill="#6291e0" transform="translate(25 -50) rotate(90 25 100) scale(0.5 2)"/>');
     for (const [from, at] of [[nw, await onPage(page, '#box', 20, 20)], [se, await onPage(page, '#box', 80, 80)]]) {
       expect(at.x).toBeCloseTo(centre.x - (from.y - centre.y), 0);
       expect(at.y).toBeCloseTo(centre.y + (from.x - centre.x), 0);
     }
-    // a second turn is taken into the first: one matrix, half way round
+    // a second turn is taken into the first: half way round, and no stretch
     await page.locator('#rotate').click();
-    expect(await getSource(page)).toMatch(/fill="#6291e0" transform="matrix\([^)]*\)"\/>/);
+    expect(await getSource(page)).toContain('fill="#6291e0" transform="rotate(180 50 50)"/>');
     const half = await onPage(page, '#box', 20, 20);
     expect(half.x).toBeCloseTo(2 * centre.x - nw.x, 0);
     expect(half.y).toBeCloseTo(2 * centre.y - nw.y, 0);
@@ -361,6 +363,61 @@ test.describe('SVG Editor Preview Editing', () => {
     await page.locator('#rotate').click();
     await page.locator('#rotate').click();
     expect(await getSource(page)).toBe(stretched);
+  });
+
+  test('should keep a transform short however its handles, drags, and buttons are mixed', async ({ page }) => {
+    await setContent(page, `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+  <path id="blob" d="M150 100 C150 128 128 150 100 150 C72 150 50 128 50 100 C50 72 72 50 100 50 C128 50 150 72 150 100 Z" fill="#6291e0"/>
+</svg>`);
+    const path = page.locator('.svg-container path');
+    await path.click();
+    const transform = async () => (/transform="([^"]*)"/.exec(await getSource(page)) ?? [])[1] ?? '';
+    const short = /^(translate\([^)]*\))? ?(rotate\([^)]*\))? ?(scale\([^)]*\))?$/;
+    const turn = async (degrees: number) => {
+      // from the rotate handle, round the middle of the box by `degrees`, snapped with Shift
+      const handle = (await page.locator('[data-handle="rotate"]').boundingBox())!;
+      const box = (await page.locator('.select-overlay .select-box').boundingBox())!;
+      const [cx, cy] = [box.x + box.width / 2, box.y + box.height / 2];
+      const [hx, hy] = [handle.x + handle.width / 2, handle.y + handle.height / 2];
+      const [r, from] = [Math.hypot(hx - cx, hy - cy), Math.atan2(hy - cy, hx - cx)];
+      await page.mouse.move(hx, hy);
+      await page.mouse.down();
+      await page.keyboard.down('Shift');
+      for (const k of [0.5, 1]) await page.mouse.move(cx + r * Math.cos(from + k * degrees * Math.PI / 180), cy + r * Math.sin(from + k * degrees * Math.PI / 180), { steps: 4 });
+      await page.keyboard.up('Shift');
+      await page.mouse.up();
+    };
+
+    await drag(page, page.locator('[data-handle="se"]'), 20, 10);
+    expect(await transform()).toMatch(/^translate\([^)]*\) scale\([^)]*\)$/);
+    await turn(30);
+    expect(await transform()).toMatch(short);
+    expect(await transform()).toContain('rotate(30 ');
+    await drag(page, path, 15, -10);
+    expect(await transform()).toMatch(short);
+    await page.locator('#rotate').click();
+    expect(await transform()).toMatch(short);
+    expect(await transform()).toContain('rotate(120 ');
+    await drag(page, page.locator('[data-handle="se"]'), 10, 10);
+    expect(await transform()).toMatch(short);
+    await turn(-15);
+    expect(await transform()).toMatch(short);
+    expect(await transform()).toContain('rotate(105 ');
+
+    // each was one step, and taking them all back leaves nothing
+    for (let i = 0; i < 6; i++) await page.locator('#undo').click();
+    expect(await transform()).toBe('');
+  });
+
+  test('should write every transform in its simplest form when the drawing is optimized, drawing it where it was', async ({ page }) => {
+    await setContent(page, '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><path d="M180 100 C180 144.18 144.18 180 100 180 C55.82 180 24.09 143.99 20 100 C16.3 60.2 66.77 88.84 78 72.1 C89.23 55.36 45.4 22.3 100 20 C144.14 18.14 180 55.82 180 100 Z" fill="#6291e0" stroke="#295da9" stroke-width="2" transform="rotate(14 92.49 81) translate(-11.5 -15.6) rotate(359 99.9 99.97) translate(-1.03 -7.42) scale(1.051 1.041)"/><text x="100" y="110" text-anchor="middle" fill="white" font-family="Arial" font-size="16"> Hello SVG </text></svg>');
+    const path = page.locator('.svg-container path');
+    const before = (await path.boundingBox())!;
+    await page.locator('#optimize').click();
+    const transform = (/<path[^>]*transform="([^"]*)"/.exec(await getSource(page)) ?? [])[1];
+    expect(transform).toMatch(/^translate\([^)]*\) rotate\(13 [^)]*\) scale\(1\.051 1\.041\)$/);
+    const after = (await path.boundingBox())!;
+    for (const key of ['x', 'y', 'width', 'height'] as const) expect(Math.abs(after[key] - before[key])).toBeLessThan(0.05);
   });
 
   test('should move a group once when one of its children is selected with it', async ({ page }) => {

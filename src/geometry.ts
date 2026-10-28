@@ -175,6 +175,149 @@ function joinArgs(original: string, args: string[]): string {
 	return args.join(original.includes(',') ? ',' : ' ');
 }
 
+/** A turn by `degrees` about a point. */
+export function turnMatrix(degrees: number, c: Point): Matrix {
+	return fnMatrix({name: 'rotate', args: [degrees, c.x, c.y], start: 0, end: 0});
+}
+
+// ---------------------------------------------------------------------------
+// A transform in its simplest form
+// ---------------------------------------------------------------------------
+
+/** The parts of a transform in its simplest form, in the order they are written. */
+const SIMPLE_PARTS: TransformFn['name'][] = ['translate', 'rotate', 'scale'];
+
+/** Whether a transform is written in its simplest form's parts, in their order. */
+const isSimple = (list: TransformFn[]): boolean=>list.every((fn, i)=>{
+	const at = SIMPLE_PARTS.indexOf(fn.name);
+	return at >= 0 && (i === 0 || at > SIMPLE_PARTS.indexOf(list[i - 1].name));
+});
+
+export interface SimplestRequest {
+	/** The element's box in its own units. It turns about the middle, and the
+	 * size says how finely a turn or a scale must be written; without it they
+	 * are written finely enough for a large one. */
+	box: Rect | null;
+	/** The transform it had, whose numbers are kept where they still hold. */
+	was: TransformFn[];
+	/** Places a shift is written to, in the parent's units. */
+	decimals: number;
+	/** The point in the parent's units an edit turned the element about. */
+	pivot?: Point;
+	/** Whether the arguments are written with commas. */
+	comma?: boolean;
+}
+
+/**
+ * Write `m`, which takes an element's own units to its parent's, as simply
+ * as it can be written: a translate, a rotate, and a scale, each only when
+ * it does something, a mirror being a scale below nothing along one axis.
+ * The rotate is about the point the edit turned it about, or the one it was
+ * about before, or else the middle of the element as its scale leaves it,
+ * and the translate is then how far that has moved. A slant with a lean in
+ * it, which those three cannot say, is one matrix. Null when `m` flattens
+ * the element, which has no such form.
+ *
+ * Each part is written finely enough that it puts the element's box out by
+ * no more than half a unit of a shift's last place. A part that is still
+ * what it was keeps the number it was written with, and a translate that
+ * moved keeps the digits it had, so a move changes the translate alone.
+ */
+export function simplestTransform(m: Matrix, req: SimplestRequest): string | null {
+	const det = m.a * m.d - m.b * m.c;
+	if (!Number.isFinite(det) || Math.abs(det) < 1e-12) return null;
+	const {box, was, decimals, pivot} = req;
+	const sep = req.comma ? ',' : ' ';
+	const tolerance = 0.5 * 10 ** -decimals;
+	const middle = box ? {x: box.x + box.width / 2, y: box.y + box.height / 2} : {x: 0, y: 0};
+	const radius = box ? Math.hypot(box.width, box.height) / 2 : 1000;
+	// places enough that a unit of the last one moves the box by no more than the tolerance
+	const placesFor = (reach: number): number=>reach <= 0 ? 0 : Math.min(12, Math.max(0, Math.ceil(decimals + Math.log10(reach) - 1e-9)));
+	// what it had, part by part, when it was written this way
+	const simple = isSimple(was);
+	const had = (name: TransformFn['name']): number[] | undefined=>simple ? was.find(fn=>fn.name === name)?.args ?? [] : undefined;
+	const [oldShift, oldTurn, oldScale] = [had('translate'), had('rotate'), had('scale')];
+	// the slant as a turn, then a lean, then a scale along each axis: R(θ)·[[sx, h], [0, sy]]
+	let sx = Math.hypot(m.a, m.b);
+	let theta = (Math.atan2(m.b, m.a) * 180) / Math.PI;
+	let sy = det / sx;
+	let lean = (m.a * m.c + m.b * m.d) / sx;
+	// a mirror is a scale below nothing along x rather than y when that leaves less of a turn,
+	// or when it was a mirror written that way, so that rounding never tips it from one to the other
+	const [wasX, wasY] = [oldScale?.at(0) ?? 1, oldScale?.at(-1) ?? 1];
+	const mirroredAlongX = wasX * wasY < 0 ? wasX < 0 : Math.abs(theta) > 90;
+	if (det < 0 && mirroredAlongX) {
+		theta += theta > 0 ? -180 : 180;
+		[sx, sy, lean] = [-sx, -sy, -lean];
+	}
+	if (theta <= -180) theta += 360;
+	if (Math.abs(lean) * radius > tolerance) {
+		// as far from the origin as the box reaches, the slant is still in place
+		const far = box ? Math.max(...[[box.x, box.y], [box.x + box.width, box.y + box.height], [box.x, box.y + box.height], [box.x + box.width, box.y]].map(([x, y])=>Math.hypot(x, y))) : radius;
+		const slant = [m.a, m.b, m.c, m.d].map(n=>String(roundTo(n, Math.max(6, placesFor(far)))));
+		return `matrix(${[...slant, fmt(m.e, decimals), fmt(m.f, decimals)].join(sep)})`;
+	}
+
+	const keep = (now: number, then: number | undefined, places: number): number=>then !== undefined && Math.abs(now - then) <= 0.5 * 10 ** -places ? then : roundTo(now, places);
+	// a scale keeps three figures, so that a small element is never scaled to nothing
+	const scalePlaces = (k: number): number=>Math.max(placesFor(radius), Math.min(12, 2 - Math.floor(Math.log10(Math.abs(k)))));
+	const sxw = keep(sx, oldScale && (oldScale.at(0) ?? 1), scalePlaces(sx));
+	const syw = keep(sy, oldScale && (oldScale.at(-1) ?? 1), scalePlaces(sy));
+	// a turn that is the one it had, the whole way round from it or not, is written as it was
+	const turnPlaces = placesFor((radius * Math.max(Math.abs(sxw), Math.abs(syw)) * Math.PI) / 180);
+	const thenTurn = oldTurn && (oldTurn.at(0) ?? 0);
+	const turn = thenTurn !== undefined && Math.abs(((theta - thenTurn) % 360 + 540) % 360 - 180) <= 0.5 * 10 ** -turnPlaces ? thenTurn : roundTo(theta, turnPlaces);
+	const scaled = (p: Point): Point=>({x: p.x * sxw, y: p.y * syw});
+
+	// the shift that puts the middle where `m` puts it, after the scale and a turn about `q`
+	const [cos, sin] = [Math.cos((turn * Math.PI) / 180), Math.sin((turn * Math.PI) / 180)];
+	const s = scaled(middle);
+	const there = applyToPoint(m, middle.x, middle.y);
+	const shiftFor = (q: Point): Point=>({
+		x: there.x - (q.x + cos * (s.x - q.x) - sin * (s.y - q.y)),
+		y: there.y - (q.y + sin * (s.x - q.x) + cos * (s.y - q.y)),
+	});
+
+	// the point it turns about, where the scale has put it: the first of the
+	// one it had, the one the edit turned it about, and its middle that
+	// needs no translate, or else the one it had, or its middle
+	let about = {x: 0, y: 0};
+	if (turn % 360 !== 0) {
+		const aboutPlaces = Math.max(2, decimals + 1);
+		const round = (p: Point): Point=>({x: roundTo(p.x, aboutPlaces), y: roundTo(p.y, aboutPlaces)});
+		const inverse = invert(m);
+		const then = oldTurn && oldTurn.length > 0 ? {x: oldTurn.at(1) ?? 0, y: oldTurn.at(2) ?? 0} : null;
+		const fromPivot = pivot && inverse ? round(scaled(applyToPoint(inverse, pivot.x, pivot.y))) : null;
+		const own = box ? round(scaled(middle)) : null;
+		const still = (q: Point | null): q is Point=>q !== null && ((t)=>Math.abs(t.x) < tolerance && Math.abs(t.y) < tolerance)(shiftFor(q));
+		// a middle that needs a translate anyway is near enough to a hundredth of the element's size
+		const roughly = (p: Point): Point=>((places)=>({x: roundTo(p.x, places), y: roundTo(p.y, places)}))(Math.min(aboutPlaces, Math.max(0, Math.ceil(-Math.log10(radius / 100)))));
+		about = [then, fromPivot, own].find(still) ?? then ?? (box ? roughly(scaled(middle)) : null) ?? fromPivot ?? about;
+	}
+
+	const shift = (now: number, then: number | undefined): string=>then === undefined ? fmt(now, decimals) : shifted(then, roundTo(now - then, decimals));
+	const moved = shiftFor(about);
+	const tx = shift(moved.x, oldShift && (oldShift.at(0) ?? 0));
+	const ty = shift(moved.y, oldShift && (oldShift.at(1) ?? 0));
+
+	const parts: string[] = [];
+	if (Number(tx) !== 0 || Number(ty) !== 0) parts.push(oldShift?.length === 1 && Number(ty) === 0 ? `translate(${tx})` : `translate(${tx}${sep}${ty})`);
+	if (turn % 360 !== 0) parts.push(about.x === 0 && about.y === 0 ? `rotate(${turn})` : `rotate(${[turn, about.x, about.y].join(sep)})`);
+	if (sxw !== 1 || syw !== 1) parts.push(sxw === syw ? `scale(${sxw})` : `scale(${sxw}${sep}${syw})`);
+	return parts.join(' ');
+}
+
+/** Whether a transform's arguments are written with commas between them. */
+const commaIn = (value: string): boolean=>/\d\s*,\s*[-+.\d]/.test(value);
+
+/** The change to the transform attribute that writes `text`, or none when it
+ * is what is there already. */
+function transformChange(el: Element, text: string): EditPlan {
+	const value = (el.getAttribute('transform') ?? '').trim();
+	if (text === value) return {ok: true, attrs: {}};
+	return {ok: true, attrs: {transform: text || null}};
+}
+
 // ---------------------------------------------------------------------------
 // Planning
 // ---------------------------------------------------------------------------
@@ -301,13 +444,18 @@ const MOVE_ATTRS: Record<string, {x: string[]; y: string[]}> = {
  *
  * In order of preference:
  *   1. a leading `translate(...)` or `matrix(...)` is where the author put
- *      the position, so that is what changes (every traced path has one);
- *   2. an element with its own position attributes gets those shifted, in
- *      its local units, which is the parent's delta taken back through
- *      whatever rotation or scale its transform applies;
- *   3. anything else (a path, a polygon, a group) gets a `translate` in front.
+ *      the position, so that is what changes (every traced path has one),
+ *      and the transform is written in its simplest form;
+ *   2. an element with its own position attributes gets those shifted: by
+ *      the move itself when its transform is one turn about a point, which
+ *      moves along with it, or else by the move taken back into its own
+ *      units through whatever turn or scale its transform applies;
+ *   3. anything else (a path, a polygon, a group) has the move taken into
+ *      its transform, written in its simplest form, which with nothing
+ *      there before is a `translate`.
+ * `box` is the element's own box, for the simplest form.
  */
-export function planMove(el: Element, dx: number, dy: number): EditPlan {
+export function planMove(el: Element, dx: number, dy: number, box: Rect | null = null): EditPlan {
 	const blocked = blockedReason(el);
 	if (blocked) return {ok: false, reason: blocked};
 	const list = readTransform(el);
@@ -315,19 +463,6 @@ export function planMove(el: Element, dx: number, dy: number): EditPlan {
 	if (dx === 0 && dy === 0) return {ok: true, attrs: {}};
 	const value = el.getAttribute('transform') ?? '';
 	const first = list.at(0);
-
-	if (first?.name === 'translate') {
-		const text = value.slice(first.start, first.end);
-		const [tx, ty = 0] = first.args;
-		const args = first.args.length === 1 && dy === 0 ? [shifted(tx, dx)] : [shifted(tx, dx), shifted(ty, dy)];
-		return {ok: true, attrs: {transform: value.slice(0, first.start) + `translate(${joinArgs(text, args)})` + value.slice(first.end)}};
-	}
-	if (first?.name === 'matrix') {
-		const text = value.slice(first.start, first.end);
-		const [a, b, c, d, e, f] = first.args;
-		const args = [String(a), String(b), String(c), String(d), shifted(e, dx), shifted(f, dy)];
-		return {ok: true, attrs: {transform: value.slice(0, first.start) + `matrix(${joinArgs(text, args)})` + value.slice(first.end)}};
-	}
 
 	const tag = el.tagName.toLowerCase();
 	const spec = MOVE_ATTRS[tag] as {x: string[]; y: string[]} | undefined;
@@ -337,16 +472,25 @@ export function planMove(el: Element, dx: number, dy: number): EditPlan {
 		? plainNumbers(el, [...spec.x, ...spec.y], {lists: tag === 'text'})
 		: null;
 	const inverse = invert(listMatrix(list));
-	if (spec && values && inverse) {
-		const local = applyToVector(inverse, dx, dy);
+	if (spec && values && inverse && first?.name !== 'translate' && first?.name !== 'matrix') {
 		const attrs: Record<string, string | null> = {};
+		// a turn about a point of its own: the shape and the point move together, as far as the move
+		const centred = list.length === 1 && first?.name === 'rotate' && first.args.length === 3 ? first : null;
+		const local = centred ? {x: dx, y: dy} : applyToVector(inverse, dx, dy);
 		for (const [names, delta] of [[spec.x, local.x], [spec.y, local.y]] as const) {
 			if (roundTo(delta, 6) === 0) continue;
 			for (const name of names) attrs[name] = shiftedList(values[name], delta);
 		}
+		if (centred) {
+			const [angle, cx, cy] = centred.args;
+			attrs.transform = value.slice(0, centred.start) + `rotate(${joinArgs(value.slice(centred.start, centred.end), [String(angle), shifted(cx, dx), shifted(cy, dy)])})` + value.slice(centred.end);
+		}
 		return {ok: true, attrs};
 	}
 
+	const moved = multiply({...IDENTITY, e: dx, f: dy}, listMatrix(list));
+	const text = simplestTransform(moved, {box, was: list, decimals: Math.max(2, placesOf(dx), placesOf(dy)), comma: commaIn(value)});
+	if (text !== null) return transformChange(el, text);
 	const translate = `translate(${fmt(dx)} ${fmt(dy)})`;
 	return {ok: true, attrs: {transform: value.trim() ? `${translate} ${value.trim()}` : translate}};
 }
@@ -467,9 +611,9 @@ function nativeBox(el: Element): {box: Rect; values: Record<string, number[]>} |
  * Shapes defined by a box (rect, image, ellipse, circle, line) get their own
  * attributes rewritten, except a circle pulled out of round, which has no
  * attribute for that. Everything else (paths, polygons, text, groups) is
- * scaled by its transform: the scale-and-shift is folded into a trailing
- * `translate(…) scale(…)` so repeated resizes keep one pair rather than
- * stacking a new one each time. A stroke scales along with the shape it
+ * scaled by its transform: the scale-and-shift is taken into it, and it is
+ * written in its simplest form, so repeated resizes keep one scale rather
+ * than stacking a new one each time. A stroke scales along with the shape it
  * belongs to, as it would in any drawing program that scales objects.
  */
 export function planResize(el: Element, req: ResizeRequest): EditPlan {
@@ -489,7 +633,11 @@ export function planResize(el: Element, req: ResizeRequest): EditPlan {
 	if (native && !(tag === 'circle' && !corner && !req.keepAspect)) {
 		return scaledNatively(tag, native.values, native.box, axisMaps(native.box, {...req, keepAspect: req.keepAspect || tag === 'circle'}));
 	}
-	return scaledByTransform(el, list, axisMaps(native ? native.box : req.bbox, req), req.decimals);
+	// the places the drag was rounded to are in the element's own units; the transform's shift is in its parent's
+	const scale = Math.sqrt(Math.abs(((m)=>m.a * m.d - m.b * m.c)(listMatrix(list))));
+	const decimals = scale > 0 ? Math.max(0, Math.ceil(req.decimals - Math.log10(scale) - 1e-9)) : req.decimals;
+	const box = native ? native.box : req.bbox;
+	return scaledByTransform(el, list, axisMaps(box, req), decimals, box);
 }
 
 /** A box shape's own attributes, after a scale along each axis, written
@@ -528,42 +676,20 @@ function scaledNatively(tag: string, v: Record<string, number[]>, box: Rect, map
 	return {ok: true, attrs};
 }
 
-/** An element's transform, after a scale along each of its own axes. */
-function scaledByTransform(el: Element, list: TransformFn[], maps: {x: AxisMap; y: AxisMap}, decimals: number): EditPlan {
+/** An element's transform, after a scale along each of its own axes, in its
+ * simplest form; `decimals` are places in the parent's units. A transform
+ * with no simplest form keeps a trailing translate and scale for it. */
+function scaledByTransform(el: Element, list: TransformFn[], maps: {x: AxisMap; y: AxisMap}, decimals: number, box: Rect | null): EditPlan {
 	const local: Matrix = {
 		a: maps.x.k, b: 0, c: 0, d: maps.y.k,
 		e: maps.x.anchor * (1 - maps.x.k),
 		f: maps.y.anchor * (1 - maps.y.k),
 	};
-
-	// Fold into the run of translate/scale at the end of the list, which is
-	// what an earlier resize left there. A matrix can absorb anything, but
-	// nobody wants to read one where two plain functions would do.
-	let runStart = list.length;
-	while (runStart > 0 && (list[runStart - 1].name === 'translate' || list[runStart - 1].name === 'scale')) runStart -= 1;
-	const before = listMatrix(list.slice(runStart));
-	const run = multiply(before, local);
 	const value = el.getAttribute('transform') ?? '';
-	const prefix = runStart === 0 ? '' : value.slice(0, list[runStart - 1].end).trim();
-	const comma = runStart < list.length && value.slice(list[runStart].start).includes(',');
-
-	const sep = comma ? ',' : ' ';
-	// What the drag changed is rounded; what it did not stays as written. The
-	// offset moves by an amount rounded to what the zoom can show, keeping the
-	// digits it had. The scale is rounded to significant digits, so a glyph's
-	// scale(0.00048828125) is not cut to 0.00049, a 0.35% jump at the first pixel.
-	const offset = (was: number, now: number): string=>shifted(was, roundTo(now - was, decimals + 1));
-	const e = offset(before.e, run.e);
-	const f = offset(before.f, run.f);
-	const sx = maps.x.k === 1 ? before.a : Number(run.a.toPrecision(6));
-	const sy = maps.y.k === 1 ? before.d : Number(run.d.toPrecision(6));
-	const num = (n: number): string=>String(Object.is(n, -0) ? 0 : n);
-	const parts: string[] = [];
-	if (Number(e) !== 0 || Number(f) !== 0) parts.push(`translate(${e}${sep}${f})`);
-	if (sx !== 1 || sy !== 1) parts.push(sx === sy ? `scale(${num(sx)})` : `scale(${num(sx)}${sep}${num(sy)})`);
-	const next = [prefix, ...parts].filter(Boolean).join(' ');
-	if (next === value.trim()) return {ok: true, attrs: {}};
-	return {ok: true, attrs: {transform: next || null}};
+	const text = simplestTransform(multiply(listMatrix(list), local), {box, was: list, decimals, comma: commaIn(value)});
+	if (text !== null) return transformChange(el, text);
+	const parts = [`translate(${fmt(local.e, decimals)} ${fmt(local.f, decimals)})`, `scale(${Number(local.a.toPrecision(6))} ${Number(local.d.toPrecision(6))})`];
+	return {ok: true, attrs: {transform: [value.trim(), ...parts].filter(Boolean).join(' ')}};
 }
 
 /**
@@ -575,7 +701,7 @@ function scaledByTransform(el: Element, list: TransformFn[], maps: {x: AxisMap; 
  * element turned against the group's axes cannot be stretched along them by
  * either, so the scale goes in front of its transform as a matrix.
  */
-export function planScaleAbout(el: Element, m: Matrix, decimals: number): EditPlan {
+export function planScaleAbout(el: Element, m: Matrix, decimals: number, box: Rect | null = null): EditPlan {
 	const blocked = originBlockedReason(el);
 	if (blocked) return {ok: false, reason: blocked};
 	const list = readTransform(el);
@@ -592,12 +718,9 @@ export function planScaleAbout(el: Element, m: Matrix, decimals: number): EditPl
 		const maps = {x: axis(local.a, local.e), y: axis(local.d, local.f)};
 		const native = nativeBox(el);
 		if (native && (tag !== 'circle' || same(Math.abs(local.a), Math.abs(local.d)))) return scaledNatively(tag, native.values, native.box, maps, decimals);
-		return scaledByTransform(el, list, maps, decimals);
+		return scaledByTransform(el, list, maps, decimals, native ? native.box : box);
 	}
-	const value = el.getAttribute('transform') ?? '';
-	const linear = [m.a, m.b, m.c, m.d].map(n=>String(Number(n.toPrecision(6))));
-	const text = `matrix(${[...linear, fmt(m.e, decimals + 1), fmt(m.f, decimals + 1)].join(' ')})`;
-	return {ok: true, attrs: {transform: [text, value.trim()].filter(Boolean).join(' ')}};
+	return planMatrix(el, m, decimals, box);
 }
 
 // ---------------------------------------------------------------------------
@@ -619,36 +742,31 @@ export function parentCenter(el: Element, bbox: Rect): Point | null {
 }
 
 /**
- * Turn an element by `degrees` about `center`, given in its parent's units:
- * a `rotate(a cx cy)` in front of its transform, which is where a turn about
- * a point in the parent's space belongs. A leading rotate about the same
- * centre, from an earlier turn, is updated rather than stacked, and a full
- * circle leaves nothing behind. The same centre is the same to within a unit
- * of the last place it is written to: a centre that was rounded as it was
- * written is a little off the true one, and the turn about it moves the
- * true one by as much again.
+ * Turn an element by `degrees` about `center`, given in its parent's units,
+ * taken into its transform, which is written in its simplest form: a turn
+ * about its own middle is a `rotate(a cx cy)` there, a later one adds to
+ * it, and a full circle leaves nothing behind. A turn about the point an
+ * earlier one was about, to within a unit of the last place that point was
+ * written to, is about that point: a centre rounded as it was written is a
+ * little off the true one, and the turn about it moves the true one by as
+ * much again. `box` is the element's own box.
  */
-export function planRotate(el: Element, degrees: number, center: Point, decimals = 2): EditPlan {
+export function planRotate(el: Element, degrees: number, center: Point, decimals = 2, box: Rect | null = null): EditPlan {
 	const blocked = originBlockedReason(el);
 	if (blocked) return {ok: false, reason: blocked};
 	const list = readTransform(el);
 	if (!list) return {ok: false, reason: UNREADABLE_TRANSFORM};
 	const value = el.getAttribute('transform') ?? '';
-	const first = list.at(0);
-	const near = (a: number, b: number): boolean=>Math.abs(a - b) <= 10 ** -decimals + 1e-9;
-	let rest = value.trim();
-	let angle = degrees;
-	let about = {x: fmt(center.x, decimals), y: fmt(center.y, decimals)};
-	if (first?.name === 'rotate' && first.args.length === 3 && near(first.args[1], center.x) && near(first.args[2], center.y)) {
-		angle += first.args[0];
-		rest = afterFunction(value, first.end);
-		about = {x: fmt(first.args[1]), y: fmt(first.args[2])};
-	}
-	angle = roundTo(((angle % 360) + 360) % 360, decimals);
-	const turn = angle === 0 ? '' : `rotate(${fmt(angle, decimals)} ${about.x} ${about.y})`;
-	const next = [turn, rest].filter(Boolean).join(' ');
-	if (next === value.trim()) return {ok: true, attrs: {}};
-	return {ok: true, attrs: {transform: next || null}};
+	// where the point the transform turns about is in the parent: its place, moved by the translate before it
+	const shift = list.at(0)?.name === 'translate' ? list[0].args : [];
+	const turn = isSimple(list) ? list.find(fn=>fn.name === 'rotate') : undefined;
+	const was = turn ? {x: (turn.args.at(1) ?? 0) + (shift.at(0) ?? 0), y: (turn.args.at(2) ?? 0) + (shift.at(1) ?? 0)} : null;
+	const reach = 10 ** -Math.max(2, decimals) + 1e-9;
+	const at = was && Math.abs(was.x - center.x) <= reach && Math.abs(was.y - center.y) <= reach ? was : center;
+	const text = simplestTransform(multiply(turnMatrix(degrees, at), listMatrix(list)), {box, was: list, decimals, pivot: at, comma: commaIn(value)});
+	if (text !== null) return transformChange(el, text);
+	const front = `rotate(${fmt(degrees, decimals)} ${fmt(at.x, decimals)} ${fmt(at.y, decimals)})`;
+	return {ok: true, attrs: {transform: [front, value.trim()].filter(Boolean).join(' ')}};
 }
 
 /**
@@ -656,8 +774,8 @@ export function planRotate(el: Element, degrees: number, center: Point, decimals
  * line through `center`, given in its parent's units: a matrix in front of
  * its transform. Mirroring across the same line again takes it back off.
  */
-export function planFlip(el: Element, axis: 'x' | 'y', center: Point, decimals = 2): EditPlan {
-	return planMatrix(el, mirrorAbout(axis, center), decimals);
+export function planFlip(el: Element, axis: 'x' | 'y', center: Point, decimals = 2, box: Rect | null = null): EditPlan {
+	return planMatrix(el, mirrorAbout(axis, center), decimals, box);
 }
 
 /** A mirror across the vertical (axis "x") or horizontal (axis "y") line through a point. */
@@ -666,21 +784,26 @@ export function mirrorAbout(axis: 'x' | 'y', c: Point): Matrix {
 }
 
 /**
- * Put `m`, a transform in the element's parent's units, in front of its
- * transform as a matrix, its slant to six places and its shift to
- * `decimals`. This is how a mirror is written, and a turn where the parent
- * is stretched or slanted against the screen, so that it is no rotate
- * there. A matrix already in front takes the new one in rather than
- * stacking under it, keeping the places it was written to, and two that
- * come to nothing leave nothing: the same mirror again takes the first
- * back off, and four quarter turns come round to none.
+ * Put `m`, a transform in the element's parent's units, through the
+ * element's transform, which is written in its simplest form. This is how a
+ * mirror is written, a scale of several elements across one that is turned
+ * against them, and a turn where the parent is stretched or slanted against
+ * the screen. Two that come to nothing leave nothing: the same mirror again
+ * takes the first back off, and four quarter turns come round to none.
+ * `box` is the element's own box.
+ *
+ * A transform with no simplest form has `m` in front as a matrix, its slant
+ * to six places and its shift to `decimals`; a matrix already in front
+ * takes the new one in, keeping the places it was written to.
  */
-export function planMatrix(el: Element, m: Matrix, decimals = 2): EditPlan {
+export function planMatrix(el: Element, m: Matrix, decimals = 2, box: Rect | null = null): EditPlan {
 	const blocked = originBlockedReason(el);
 	if (blocked) return {ok: false, reason: blocked};
 	const list = readTransform(el);
 	if (!list) return {ok: false, reason: UNREADABLE_TRANSFORM};
 	const value = el.getAttribute('transform') ?? '';
+	const simplest = simplestTransform(multiply(m, listMatrix(list)), {box, was: list, decimals, comma: commaIn(value)});
+	if (simplest !== null) return transformChange(el, simplest);
 	const round = (n: Matrix, slant: number, shift: number): Matrix=>({
 		a: roundTo(n.a, slant), b: roundTo(n.b, slant), c: roundTo(n.c, slant), d: roundTo(n.d, slant), e: roundTo(n.e, shift), f: roundTo(n.f, shift),
 	});
