@@ -39,13 +39,13 @@ test.describe('SVG Editor Accessibility E2E Tests', () => {
 
   test('should have proper button labels for screen readers', async ({ page }) => {
     const buttonLabels = [
-      { selector: '#upload', expectedLabel: /upload/i },
-      { selector: '#resolution', expectedLabel: /resize|resolution/i },
-      { selector: '#optimize', expectedLabel: /optimize/i },
-      { selector: '#rotate', expectedLabel: /rotate/i },
+      { selector: '#upload', expectedLabel: /open|upload/i },
+      { selector: '#resolution', expectedLabel: /size|resize|resolution/i },
+      { selector: '#optimize', expectedLabel: /clean|optimize/i },
+      { selector: '#rotate', expectedLabel: /turn|rotate/i },
       { selector: '#flipx', expectedLabel: /flip.*horizontal/i },
       { selector: '#flipy', expectedLabel: /flip.*vertical/i },
-      { selector: '#dark', expectedLabel: /dark mode/i },
+      { selector: '#dark', expectedLabel: /theme|dark mode/i },
       { selector: '#flip', expectedLabel: /flip screen|layout/i },
       { selector: '#zoomin', expectedLabel: /zoom in/i },
       { selector: '#zoomout', expectedLabel: /zoom out/i }

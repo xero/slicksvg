@@ -27,6 +27,12 @@
 	--color-btn: #d2d7ec;
 	--color-btn-h: #e5f1fe;
 	--color-btn-txt: #565f89;
+	/* toolbars: names that read at a small size, a hover that tints, and an
+	   active state that stands out in either theme, 4.7:1 against the bar here */
+	--color-nav-txt: #3b4261;
+	--color-nav-hover: #c6c9dc;
+	--color-active: #2959aa;
+	--color-active-txt: #ffffff;
 	--color-dragbar: #b3b4d1;
 	--color-bounds:#c0c6dd;
 	--color-err: #fb2c36;
@@ -56,6 +62,10 @@
 	--color-btn: #24283b;
 	--color-btn-h: #1a1b26;
 	--color-btn-txt: #565f89;
+	--color-nav-txt: #a9b1d6;
+	--color-nav-hover: #2c3048;
+	--color-active: #7dcfff;
+	--color-active-txt: #1a1b26;
 	--color-dragbar: #565f89;
 	--color-err-bg:#82181a;
 	--color-err-fg: #ffc9c9;
@@ -64,6 +74,8 @@
 }
 /* <--//----------------------------------------------------------[document] */
 :root {
+  /* every toolbar is this tall: a fingertip, with room for a button's name under its icon */
+  --bar-height: 3.25rem;
   overscroll-behavior: none;
   overflow-x: hidden;
   overflow-x: clip;
@@ -164,34 +176,60 @@
 		}
 	}
   button {
-    @apply flex shrink-0 cursor-pointer items-center justify-center text-face bg-btn mr-2;
-    /* on a touch screen a button is as wide as a fingertip, set closer to its neighbours */
-    @media (pointer: coarse) {
-      @apply min-w-11 min-h-11 mr-1;
-    }
+    @apply flex shrink-0 cursor-pointer items-center justify-center text-face bg-btn;
     &:hover,
-    &:active,
-    &:focus,
-    &:focus-within {
+    &:active {
       @apply bg-btn-h;
     }
+		&:disabled {
+			@apply opacity-40 cursor-default;
+			&:hover {
+				@apply bg-btn;
+			}
+		}
+  }
+  /* a toolbar button: its icon over its name, as tall as the bar and at least
+     a fingertip wide, with nothing round it but its padding, so a hover or an
+     active state fills the bar from top to bottom */
+  nav button {
+    @apply flex-col gap-1 px-2 min-w-11 bg-transparent text-nav-txt whitespace-nowrap;
+    font-size: 0.6875rem;
+    line-height: 1;
 		svg {
-			@apply w-8 h-8 fill-btn-txt;
+			@apply w-6 h-6 shrink-0 fill-nav-txt;
 		}
 		svg.line {
-			@apply fill-none stroke-btn-txt;
+			@apply fill-none stroke-nav-txt;
 			stroke-width: 2.5;
 			stroke-linecap: round;
 			stroke-linejoin: round;
 		}
+    &:hover,
+    &:active {
+      @apply bg-nav-hover;
+    }
 		&[aria-pressed="true"] {
-			@apply bg-btn-h;
+			@apply bg-active text-active-txt;
+			svg {
+				@apply fill-active-txt;
+			}
+			svg.line {
+				@apply fill-none stroke-active-txt;
+			}
 		}
 		&:disabled {
-			@apply opacity-40 cursor-default;
-			&:hover, &:focus {
-				@apply bg-btn;
+			@apply opacity-50;
+			&:hover {
+				@apply bg-transparent;
 			}
+		}
+		/* the keys show where they are, which a pointer has no need of */
+		&:focus-visible {
+			outline: 2px solid var(--color-active) !important;
+			outline-offset: -2px;
+		}
+		&[aria-pressed="true"]:focus-visible {
+			outline-color: var(--color-active-txt) !important;
 		}
   }
 /* <--//---------------------------------------------------------[interface] */
@@ -210,20 +248,25 @@
 				0 0 0 2px var(--color-menu-outside),
 				0 0 0 3px var(--color-bounds);
 		}
-		/* a bar too narrow for its buttons scrolls rather than hiding them */
+		/* a bar too narrow for its buttons' names shows their icons alone, and
+		   one too narrow even for those scrolls rather than hiding them */
 		nav {
-			@apply overflow-x-auto;
+			@apply overflow-x-auto items-stretch py-0 px-1;
+			height: var(--bar-height);
+			&.compact button > span {
+				@apply sr-only;
+			}
 			scrollbar-width: none;
 			&::-webkit-scrollbar {
 				@apply hidden;
 			}
 		}
 		#point-tools, #shape-tools, #sketch-tools {
-			@apply flex flex-row items-center;
+			@apply flex flex-row items-stretch;
 		}
 		/* the shape tools stand apart from the view's own buttons */
 		#shape-tools, #sketch-tools {
-			@apply mr-3;
+			@apply mr-1 pr-1 border-r border-bounds;
 		}
   }
   #editor {
@@ -237,7 +280,8 @@
 				0 0 0 3px var(--color-err-bg);
 		}
 		.cm-editor {
-			@apply flex-1 min-h-0 overflow-auto mb-10 mt-12;
+			@apply flex-1 min-h-0 overflow-auto mb-10;
+			margin-top: var(--bar-height);
 		}
 		.cm-editor .cm-selectionBackground
 		.cm-editor.cm-focused .cm-selectionBackground {

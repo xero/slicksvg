@@ -109,10 +109,10 @@ test.describe('SVG Editor Mobile Accessibility E2E Tests', () => {
       
       // Check that main controls have accessible labels
       const controls = [
-        { selector: '#upload', expectedContent: /upload|file|import/i },
+        { selector: '#upload', expectedContent: /open|upload|file|import/i },
         { selector: '#dark', expectedContent: /dark|theme|mode/i },
         { selector: '#flip', expectedContent: /flip|layout|screen/i },
-        { selector: '#rotate', expectedContent: /rotate/i }
+        { selector: '#rotate', expectedContent: /turn|rotate/i }
       ];
       
       for (const control of controls) {

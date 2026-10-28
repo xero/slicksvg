@@ -822,6 +822,7 @@ class slick {
 	private toggleXray = (): void=>{
 		this.xray = !this.xray;
 		this.eyes.forEach(s=>s.classList.toggle('hide'));
+		this.get('xray').setAttribute('aria-pressed', this.xray ? 'true' : 'false');
 		this.editor.focus();
 		if (this.xray) {
 			this.updateElementHighlight();
@@ -992,6 +993,23 @@ class slick {
 		this.previewContainer.addEventListener('gesturechange', (e)=>this.onGestureChange(e), {passive: false});
 		this.previewContainer.addEventListener('gestureend', (e)=>this.onGestureEnd(e), {passive: false});
 		this.setupResizeDragbar();
+		for (const nav of document.querySelectorAll('nav')) this.fitBar(nav);
+	}
+
+	/** Keep a toolbar's buttons named while their names fit, and fall back to
+	 * their icons alone when the bar is too narrow for them: when the bar is
+	 * resized, and when buttons in it come and go. */
+	private fitBar(nav: HTMLElement): void {
+		const fit = (): void=>{
+			nav.classList.remove('compact');
+			if (nav.scrollWidth > nav.clientWidth) nav.classList.add('compact');
+		};
+		new ResizeObserver(fit).observe(nav);
+		// the bar's own class is what fitting changes, so only its buttons' changes count
+		new MutationObserver((records)=>{
+			if (records.some(r=>r.target !== nav)) fit();
+		}).observe(nav, {subtree: true, attributes: true, attributeFilter: ['class']});
+		fit();
 	}
 
 	private updateSVGPreview(): void {

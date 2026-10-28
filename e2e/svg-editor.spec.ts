@@ -56,7 +56,7 @@ test.describe('SVG Editor', () => {
 
   test('should have flip screen button', async ({ page }) => {
     // Check that flip button exists
-    const flipButton = page.getByRole('button', { name: 'flip screen' });
+    const flipButton = page.getByRole('button', { name: 'Layout' });
     await expect(flipButton).toBeVisible();
 
     // Click the flip button
@@ -78,12 +78,12 @@ test.describe('SVG Editor', () => {
 
   test('should have SVG transform controls', async ({ page }) => {
     // Check that transform controls exist
-    await expect(page.getByRole('button', { name: /rotate/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Turn' })).toBeVisible();
     await expect(page.getByRole('button', { name: /flip.*horizontal/i })).toBeVisible();
     await expect(page.getByRole('button', { name: /flip.*vertical/i })).toBeVisible();
 
     // Test rotation functionality
-    const rotateButton = page.getByRole('button', { name: /rotate/i });
+    const rotateButton = page.getByRole('button', { name: 'Turn' });
     await rotateButton.click();
 
     // SVG should still be visible after rotation
@@ -92,7 +92,7 @@ test.describe('SVG Editor', () => {
 
   test('should have SVG optimization button', async ({ page }) => {
     // Check that optimize button exists
-    const optimizeButton = page.getByRole('button', { name: /optimize/i });
+    const optimizeButton = page.getByRole('button', { name: 'Clean' });
     await expect(optimizeButton).toBeVisible();
 
     // Click the optimize button

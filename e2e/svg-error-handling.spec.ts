@@ -90,7 +90,7 @@ test.describe('SVG Editor Error Handling E2E Tests', () => {
 
   test('should handle modal input validation errors', async ({ page }) => {
     // Open resolution modal
-    await page.getByRole('button', { name: /resize|resolution/i }).click();
+    await page.getByRole('button', { name: 'Size of the drawing' }).click();
 
     const dialog = page.locator('dialog');
     await expect(dialog).toBeVisible();
@@ -166,8 +166,8 @@ test.describe('SVG Editor Error Handling E2E Tests', () => {
     });
 
     // Try to interact with the application
-    await page.getByRole('button', { name: /dark mode/i }).click();
-    await page.getByRole('button', { name: /flip screen/i }).click();
+    await page.getByRole('button', { name: 'Theme' }).click();
+    await page.getByRole('button', { name: 'Layout' }).click();
 
     // Application should still be responsive
     await expect(page.getByRole('main')).toBeVisible();
@@ -211,7 +211,7 @@ test.describe('SVG Editor Error Handling E2E Tests', () => {
 
   test('should handle rapid user interactions', async ({ page }) => {
     // Rapid clicking should not crash the application
-    const rotateButton = page.getByRole('button', { name: /rotate/i });
+    const rotateButton = page.getByRole('button', { name: 'Turn' });
 
     // Click rapidly multiple times
     for (let i = 0; i < 10; i++) {
@@ -291,7 +291,7 @@ test.describe('SVG Editor Error Handling E2E Tests', () => {
     await expect(page.getByRole('main')).toBeVisible();
 
     // Try to interact with other controls
-    await page.getByRole('button', { name: /dark mode/i }).click();
+    await page.getByRole('button', { name: 'Theme' }).click();
 
     // Should remain responsive
     await expect(page.getByRole('complementary')).toBeVisible();
@@ -316,8 +316,8 @@ test.describe('SVG Editor Error Handling E2E Tests', () => {
     await expect(page.getByRole('main')).toBeVisible();
 
     // Try operations that might use localStorage
-    await page.getByRole('button', { name: /dark mode/i }).click();
-    await page.getByRole('button', { name: /flip screen/i }).click();
+    await page.getByRole('button', { name: 'Theme' }).click();
+    await page.getByRole('button', { name: 'Layout' }).click();
 
     // Should continue working
     await expect(page.getByRole('complementary')).toBeVisible();
