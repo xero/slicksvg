@@ -373,13 +373,13 @@
     flex: 0 1 auto;
     min-width: 0;
   }
-  /* the message beside the tools: two lines at the size of the buttons' names */
+  /* the message beside the tools: up to three lines at the size of the buttons' names */
   #preview-status {
-    @apply flex-1 min-w-0 m-0 px-3 self-center overflow-hidden leading-tight text-nav-txt;
+    @apply flex-1 min-w-0 m-0 px-2 self-center overflow-hidden leading-tight text-nav-txt;
     font-size: 0.6875rem;
     display: -webkit-box;
     -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 3;
     overflow-wrap: break-word;
     &.error {
       @apply text-err-fg;

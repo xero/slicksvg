@@ -406,7 +406,7 @@ function paintDraft(el: Element, paint: Record<string, string>): void {
 function toolHint(kind: ShapeKind): string {
 	if (kind === 'polyline') return 'Tap to place each point of the polyline, then tap the last again or press Done to finish it';
 	if (kind === 'polygon') return 'Tap to place each corner of the polygon, then tap the first again or press Done to close it';
-	if (kind === 'path') return 'Tap to place each point of the path, or drag to pull a curve out of it; tap the first point to close the path, or the last to end it open';
+	if (kind === 'path') return 'Tap to place points, drag to pull a curve; tap the first point to close, the last to end';
 	return `Drag across the drawing to draw a ${SHAPE_NAMES[kind]}, or tap to place one`;
 }
 
@@ -961,7 +961,7 @@ class slick {
 		if (s?.kind === 'polyline') return 'Tap the last point again, or press Done, to finish the polyline';
 		if (s?.kind === 'path') return 'Tap the first point to close the path, or the last to end it open; drag to pull a curve';
 		if (this.drawTool) return toolHint(this.drawTool);
-		if (this.pointMode) return 'Drag a point; tap the outline to pick a segment, or double-click it to add a point';
+		if (this.pointMode) return 'Drag a point; tap an edge to pick it, double-click it to add a point';
 		if (this.mode === 'points') {
 			const tag = this.selected.length === 1 ? this.selectedElement()?.tagName.toLowerCase() ?? '' : '';
 			return pointlessShape(tag) ? `${withArticle(tag)} has no points until it is a path: press To path` : 'Tap a path, polygon, polyline, or line to edit its points';
@@ -1719,7 +1719,7 @@ class slick {
 	/** Say whose points are being edited, or why an element picked in Points has none. */
 	private announcePoints(el: Element): void {
 		const tag = el.tagName.toLowerCase();
-		if (this.pointMode) this.announceAction(`Editing the points of ${tag}: drag a point, tap the outline to pick a segment, double-click it to add a point, Delete removes one`);
+		if (this.pointMode) this.announceAction(`Editing the points of the ${tag}`);
 		else if (pointlessShape(tag)) this.announceError(`${withArticle(tag)} has no points to edit until it is a path: press To path.`);
 		else if (POINT_ELEMENTS.test(tag)) this.announceError(`This ${tag}'s points could not be read, so they cannot be edited here.`);
 		else this.announceError(`This ${tag} has no points to edit.`);

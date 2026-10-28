@@ -86,10 +86,10 @@ test.describe('SVG Editor layout', () => {
     await setContent(page, FIXTURE.replace('<circle id="dot" cx="150" cy="150" r="30" fill="#aa0000"/>', '<path id="p" d="M120 120 L180 120 L150 180 Z"/>'));
     await page.locator('.svg-container #p').click();
     await page.locator('#points').click();
-    await expect(status).toHaveText(/^Drag a point; tap the outline/, { timeout: 5000 });
+    await expect(status).toHaveText(/^Drag a point; tap an edge/, { timeout: 5000 });
   });
 
-  test('should close off the drawing\'s tools, and fit a message of two lines beside them, or raise a longer one above', async ({ page }) => {
+  test('should close off the drawing\'s tools, and fit a message of up to three lines beside them, or raise a longer one above', async ({ page }) => {
     await expect(page.locator('#context-bar nav')).toHaveCSS('border-right-width', '1px');
     const status = page.locator('#preview-status');
     await page.locator('#mode-shapes').click();
@@ -98,8 +98,18 @@ test.describe('SVG Editor layout', () => {
     await expect(status).not.toHaveClass(/above/);
     const lines = await status.evaluate((el) => Math.round(el.getBoundingClientRect().height / parseFloat(getComputedStyle(el).lineHeight)));
     expect(lines).toBe(2);
+    // the path tool's longer hint takes three lines, still beside the tools
     await page.locator('#draw-path').click();
-    await expect(status).toHaveText(/^Tap to place each point of the path/);
+    await expect(status).toHaveText(/^Tap to place points, drag to pull a curve/);
+    await expect(status).not.toHaveClass(/above/);
+    // in Points, editing a path's points, the standing hint fits beside the point tools too
+    await page.locator('#points').click();
+    await page.locator('.svg-container #box').click();
+    await page.locator('#topath').click();
+    await expect(status).toHaveText(/^Drag a point; tap an edge/, { timeout: 5000 });
+    await expect(status).not.toHaveClass(/above/);
+    // a message longer than three lines there rises above the strip
+    await page.evaluate(() => (window as any).svgEditor.sayInPreview('The code has an error, so this element cannot be edited here. Fix the code first, then try again.'));
     await expect(status).toHaveClass(/above/);
   });
 
