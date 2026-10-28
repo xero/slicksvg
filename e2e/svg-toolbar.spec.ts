@@ -110,6 +110,28 @@ test.describe('SVG Editor toolbar buttons', () => {
   });
 });
 
+test.describe('SVG Editor dialog buttons', () => {
+  test('should make the dialog\'s buttons a fingertip in size, apart, and ringed for the keys', async ({ page }) => {
+    await page.goto('/index.html');
+    await expect(page.locator('.svg-container svg')).toBeVisible();
+    await page.locator('#resolution').click();
+    const update = page.locator('dialog #resize');
+    const cancel = page.locator('dialog #cancel');
+    // the dialog grows open, so it is measured once it has
+    await expect.poll(async () => (await cancel.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
+    const [a, b] = [(await update.boundingBox())!, (await cancel.boundingBox())!];
+    for (const box of [a, b]) {
+      expect(box.width).toBeGreaterThanOrEqual(44);
+      expect(box.height).toBeGreaterThanOrEqual(44);
+    }
+    expect(b.x - (a.x + a.width)).toBeGreaterThanOrEqual(4);
+    await page.locator('#height').focus();
+    await page.keyboard.press('Tab');
+    await expect(update).toBeFocused();
+    await expect(update).toHaveCSS('outline-style', 'solid');
+  });
+});
+
 test.describe('SVG Editor toolbars too narrow for their names', () => {
   // side by side, each pane is too narrow for all its buttons' names
   test.use({ viewport: { width: 1100, height: 800 } });

@@ -355,7 +355,7 @@ The application is built with modern web technologies:
 11. **Edit points**: Select a path, polygon, polyline, or line and press Enter (or double-click it) to edit its points: drag them, double-click the outline to add one, tap the outline to pick a segment to add a point to or curve, Smooth to round a corner, Delete (or the delete button in the preview bar) to remove one or retract a handle, Escape or Done to finish
 12. **Edit in the preview**: Drag the selection to move it, drag a handle to resize or rotate it, use the arrow keys to nudge it, press Delete to remove it, or duplicate it with the Clone button or Ctrl/Cmd+D. The Turn and Flip buttons act on the selection when there is one, turning several elements or picked points together about their middle
 10. **Dark Mode**: Toggle between light and dark themes with the Theme button
-11. **Layout Toggle**: Click "Flip Screen" to switch between horizontal and vertical layouts
+11. **Layout Toggle**: Click the Layout button to switch between horizontal and vertical layouts
 
 ## Development
 

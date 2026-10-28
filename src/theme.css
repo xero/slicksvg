@@ -484,7 +484,13 @@
       }
     }
 		button {
-			@apply px-3 py-1 bg-frm text-lbl;
+			/* as big as a fingertip, as every button is */
+			@apply px-3 py-1 min-w-11 min-h-11 bg-frm text-lbl;
+			/* the keys show where they are, which a pointer has no need of */
+			&:focus-visible {
+				outline: 2px solid var(--color-active) !important;
+				outline-offset: -2px;
+			}
 		}
     header,
     article,
@@ -510,7 +516,7 @@
 			}
 		}
     footer {
-      @apply bg-menu;
+      @apply bg-menu gap-2;
     }
   }
 }

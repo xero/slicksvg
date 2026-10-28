@@ -1009,7 +1009,6 @@ class slick {
 		new MutationObserver((records)=>{
 			if (records.some(r=>r.target !== nav)) fit();
 		}).observe(nav, {subtree: true, attributes: true, attributeFilter: ['class']});
-		fit();
 	}
 
 	private updateSVGPreview(): void {
@@ -1559,7 +1558,7 @@ class slick {
 		const chosen = editing ? this.selectedPoints()?.chosen ?? [] : [];
 		const remove = this.get('point-delete');
 		remove.toggleAttribute('disabled', chosen.length === 0 || chosen.every(c=>c.point.ref.type === 'line'));
-		remove.setAttribute('aria-label', chosen.length > 1 ? 'delete points' : chosen.at(0)?.point.kind === 'control' ? 'delete handle' : 'delete point');
+		remove.setAttribute('aria-label', chosen.length > 1 ? 'Delete points' : chosen.at(0)?.point.kind === 'control' ? 'Delete handle' : 'Delete point');
 		const el = editing ? this.selectedElement() : null;
 		const data = el ? pathDataOf(el) : null;
 		const anchors = chosenAnchors(chosen);

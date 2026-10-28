@@ -214,7 +214,7 @@ test.describe('SVG Editor Point Editing', () => {
     await page.keyboard.press('Enter');
     await expect(page.locator('.points circle')).toHaveCount(2);
     await page.locator('.points [data-point="2"]').click();
-    await expect(page.locator('#point-delete')).toHaveAttribute('aria-label', 'delete handle');
+    await expect(page.locator('#point-delete')).toHaveAttribute('aria-label', 'Delete handle');
     await page.keyboard.press('Delete');
     expect(await getSource(page)).toContain('d="M20 100 C20 20 100 100 100 100 L180 100"');
     // a handle on its anchor is hidden, and the anchor it went into is selected
@@ -451,7 +451,7 @@ test.describe('SVG Editor Point Editing', () => {
     await page.locator('.points [data-point="1"]').click();
     await page.locator('.points [data-point="3"]').click({ modifiers: ['ControlOrMeta'] });
     await expect(page.locator('.points rect.selected')).toHaveCount(2);
-    await expect(page.locator('#point-delete')).toHaveAttribute('aria-label', 'delete points');
+    await expect(page.locator('#point-delete')).toHaveAttribute('aria-label', 'Delete points');
     await page.keyboard.press('Delete');
     expect(await getSource(page)).toContain('d="M20 20 L100 20 L100 100 Z"');
     await expect(page.locator('#test-announcements')).toHaveText('2 points removed');
