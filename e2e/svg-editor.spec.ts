@@ -1,3 +1,4 @@
+import { pressMenuItem } from './toolbar';
 import { test, expect } from '@playwright/test';
 
 test.describe('SVG Editor', () => {
@@ -56,11 +57,11 @@ test.describe('SVG Editor', () => {
 
   test('should have flip screen button', async ({ page }) => {
     // Check that flip button exists
-    const flipButton = page.getByRole('button', { name: 'Layout' });
+    const flipButton = page.locator('#view-menu');
     await expect(flipButton).toBeVisible();
 
     // Click the flip button
-    await flipButton.click();
+    await pressMenuItem(page, 'flip');
 
     // Elements should still be visible after flip
     await expect(page.getByRole('main')).toBeVisible();

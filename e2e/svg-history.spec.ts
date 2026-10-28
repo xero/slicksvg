@@ -1,3 +1,4 @@
+import { pressMenuItem } from './toolbar';
 import { test, expect, type Page } from '@playwright/test';
 
 const getSource = (page: Page) =>
@@ -65,7 +66,7 @@ test.describe('SVG Editor Edit History', () => {
     await setContent(page, '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="50" height="50"/></svg>');
     await expect(page.locator('.svg-container rect')).toBeVisible();
 
-    await page.locator('#resolution').click();
+    await pressMenuItem(page, 'resolution');
     const modal = page.locator('dialog');
     await modal.locator('#width').fill('300');
     await modal.locator('#height').fill('400');

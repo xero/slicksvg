@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { pressMenuItem } from './toolbar';
 
 /** The contrast ratio of two CSS rgb() colours, as WCAG measures it. */
 function contrast(a: string, b: string): number {
@@ -53,7 +54,7 @@ test.describe('SVG Editor toolbar buttons', () => {
     await expect(page.locator('#appbar nav')).not.toHaveClass(/compact/);
     await expect(page.locator('#context-bar nav')).not.toHaveClass(/compact/);
     const all = await buttons(page);
-    expect(all.length).toBeGreaterThan(20);
+    expect(all.length).toBeGreaterThan(15);
     for (const b of all) {
       expect(b.shown, b.id).not.toBe('');
       expect(b.spanWidth, b.id).toBeGreaterThan(1);
@@ -66,7 +67,7 @@ test.describe('SVG Editor toolbar buttons', () => {
 
   test('should be known by the name it shows, or by one that says it in full', async ({ page }) => {
     for (const b of await buttons(page)) expect(b.said.toLowerCase(), b.id).toContain(b.shown.toLowerCase());
-    for (const name of ['Open', 'Save', 'Clean', 'X-ray', 'Rect', 'Theme', 'Layout', 'Zoom in']) {
+    for (const name of ['File', 'View', 'Select', 'Points', 'Shapes', 'Clean', 'X-ray', 'Zoom in', 'Clone', 'Turn']) {
       await expect(page.getByRole('button', { name, exact: true })).toBeVisible();
     }
     await expect(page.getByRole('button', { name: 'Flip horizontal' })).toBeVisible();
@@ -79,7 +80,7 @@ test.describe('SVG Editor toolbar buttons', () => {
     expect(light.bg).toBe('rgb(41, 89, 170)');
     expect(contrast(light.bg, light.bar)).toBeGreaterThanOrEqual(3);
     expect(contrast(light.text, light.bg)).toBeGreaterThanOrEqual(4.5);
-    await page.locator('#dark').click();
+    await pressMenuItem(page, 'dark');
     await page.mouse.move(1000, 600);
     const dark = await colours(page, 'xray');
     expect(dark.bg).toBe('rgb(125, 207, 255)');
@@ -93,7 +94,7 @@ test.describe('SVG Editor toolbar buttons', () => {
   test('should write the names in colours that read against the bar in both themes', async ({ page }) => {
     const light = await colours(page, 'optimize');
     expect(contrast(light.text, light.bar)).toBeGreaterThanOrEqual(4.5);
-    await page.locator('#dark').click();
+    await pressMenuItem(page, 'dark');
     await page.mouse.move(1000, 600);
     const dark = await colours(page, 'optimize');
     expect(contrast(dark.text, dark.bar)).toBeGreaterThanOrEqual(4.5);
@@ -102,7 +103,7 @@ test.describe('SVG Editor toolbar buttons', () => {
   test('should ring the button the keys are on, and not one pressed with the pointer', async ({ page }) => {
     await page.locator('#zoomin').click();
     await expect(page.locator('#zoomin')).toHaveCSS('outline-style', 'none');
-    await page.locator('#upload').focus();
+    await page.locator('#file-menu').focus();
     await page.keyboard.press('Tab');
     const focused = page.locator('nav button:focus');
     await expect(focused).toHaveCSS('outline-style', 'solid');
@@ -114,7 +115,7 @@ test.describe('SVG Editor dialog buttons', () => {
   test('should make the dialog\'s buttons a fingertip in size, apart, and ringed for the keys', async ({ page }) => {
     await page.goto('/index.html');
     await expect(page.locator('.svg-container svg')).toBeVisible();
-    await page.locator('#resolution').click();
+    await pressMenuItem(page, 'resolution');
     const update = page.locator('dialog #resize');
     const cancel = page.locator('dialog #cancel');
     // the dialog grows open, so it is measured once it has
@@ -134,7 +135,7 @@ test.describe('SVG Editor dialog buttons', () => {
 
 test.describe('SVG Editor toolbars too narrow for their names', () => {
   // too narrow for the names of all the app's buttons
-  test.use({ viewport: { width: 800, height: 800 } });
+  test.use({ viewport: { width: 560, height: 800 } });
 
   test.beforeEach(async ({ page }) => {
     await page.goto('/index.html');
@@ -163,6 +164,7 @@ test.describe('SVG Editor drawing tools too narrow for their names', () => {
 
   test('should name the buttons again when the ones that crowded the bar make way', async ({ page }) => {
     const bar = page.locator('#context-bar nav');
+    await page.locator('#mode-shapes').click();
     await expect(bar).toHaveClass(/compact/);
     // a shape under way leaves its own tool, take-back, Done, and the zoom
     await page.locator('#draw-polygon').click();

@@ -1,3 +1,4 @@
+import { pressMenuItem, MENU_OF } from './toolbar';
 import { test, expect } from '@playwright/test';
 
 test.describe('SVG Editor Accessibility E2E Tests', () => {
@@ -18,14 +19,14 @@ test.describe('SVG Editor Accessibility E2E Tests', () => {
   test('should support keyboard navigation', async ({ page }) => {
     // Tab through all interactive elements using their IDs for more reliable selection
     const interactiveElements = [
-      '#upload',
-      '#resolution',
+      '#file-menu',
+      '#file-menu',
       '#optimize',
       '#rotate',
       '#flipx',
       '#flipy',
-      '#dark',
-      '#flip',
+      '#view-menu',
+      '#view-menu',
       '#zoomin',
       '#zoomout'
     ];
@@ -52,6 +53,9 @@ test.describe('SVG Editor Accessibility E2E Tests', () => {
     ];
 
     for (const { selector, expectedLabel } of buttonLabels) {
+      // an item in one of the app bar's menus is looked at with its menu open
+      const menu = MENU_OF[selector.slice(1)];
+      if (menu) await page.locator(`#${menu}`).click();
       const button = page.locator(selector);
       await expect(button).toBeVisible();
 
@@ -59,12 +63,13 @@ test.describe('SVG Editor Accessibility E2E Tests', () => {
       const accessibleName = await button.getAttribute('aria-label') ||
                              await button.textContent() || '';
       expect(accessibleName).toMatch(expectedLabel);
+      if (menu) await page.keyboard.press('Escape');
     }
   });
 
   test('should support high contrast mode', async ({ page }) => {
     // Toggle dark mode
-    await page.locator('#dark').click();
+    await pressMenuItem(page, 'dark');
 
     // Check that body has dark class
     await expect(page.locator('body')).toHaveClass(/dark/);
@@ -123,7 +128,7 @@ test.describe('SVG Editor Accessibility E2E Tests', () => {
 
   test('should have accessible modal dialog', async ({ page }) => {
     // Open resolution modal
-    await page.locator('#resolution').click();
+    await pressMenuItem(page, 'resolution');
 
     // Check modal is visible and properly labeled
     const dialog = page.locator('dialog');
@@ -152,7 +157,7 @@ test.describe('SVG Editor Accessibility E2E Tests', () => {
 
   test('should handle focus trapping in modal', async ({ page }) => {
     // Open modal
-    await page.locator('#resolution').click();
+    await pressMenuItem(page, 'resolution');
 
     const dialog = page.locator('dialog');
     await expect(dialog).toBeVisible();

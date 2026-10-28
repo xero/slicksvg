@@ -53,6 +53,8 @@ test.describe('SVG Editor drawing shapes', () => {
     await expect(page.locator('.svg-container svg')).toBeVisible();
     await setContent(page, FIXTURE);
     await expect(page.locator('.svg-container #box')).toBeVisible();
+    // the shape tools are Shapes'
+    await page.locator('#mode-shapes').click();
   });
 
   test('should draw a rectangle with a drag as the drawing\'s last child, select it, and put the tool down', async ({ page }) => {
@@ -264,12 +266,12 @@ test.describe('SVG Editor drawing shapes', () => {
     expect(await getSource(page)).toBe(broken);
   });
 
-  test('should hide the shape tools while points are edited', async ({ page }) => {
+  test('should hide the shape tools while points are edited, and edit points when Enter is pressed with a tool in hand', async ({ page }) => {
     await setContent(page, FIXTURE.replace('<circle id="dot" cx="150" cy="150" r="30" fill="#aa0000"/>', '<path id="p" d="M120 120 L180 120 L150 180 Z"/>'));
     await page.locator('.svg-container #p').click();
     await page.locator('#points').click();
     await expect(page.locator('#shape-tools')).toBeHidden();
-    await page.locator('#point-done').click();
+    await page.locator('#mode-shapes').click();
     await expect(page.locator('#shape-tools')).toBeVisible();
     // taking up a tool, Enter on the canvas edits the selection's points and puts the tool down
     await page.locator('#draw-rect').click();
@@ -287,6 +289,7 @@ test.describe('SVG Editor drawing shapes by touch', () => {
     await page.goto('/index.html');
     await expect(page.locator('.svg-container svg')).toBeVisible();
     await setContent(page, FIXTURE);
+    await page.locator('#mode-shapes').tap();
     await page.locator('#draw-ellipse').tap();
     const cdp = await page.context().newCDPSession(page);
     const touch = (p: { x: number; y: number }) => [{ x: p.x, y: p.y, id: 1 }];

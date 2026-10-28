@@ -190,6 +190,11 @@ function resetElementStyles(...elements: HTMLElement[]) {
 // --- SVGEditor Class
 type GestureMode = 'move' | 'resize' | 'rotate' | 'point' | 'bend' | 'marquee' | 'draw';
 
+/** What a press on the drawing does, and which tools its strip holds:
+ * Select picks and moves elements, Points edits the points of the element
+ * picked, and Shapes draws new ones. */
+type Mode = 'select' | 'points' | 'shapes';
+
 /** A point of a path, polygon, polyline, or line, as the edit functions address it. */
 type PointRef =
 	| {type: 'path'; segment: number; slot: 'end' | 'cp1' | 'cp2'}
@@ -665,8 +670,13 @@ class slick {
 	private moreBoxes: SVGPolygonElement[] = [];
 	private pressToggle = false;
 	private pointMode: PointMode | null = null;
+	private mode: Mode = 'select';
 	/** The shape tool in hand, which the next press on the drawing draws with. */
 	private drawTool: ShapeKind | null = null;
+	/** The toolbar menu open, and the button it opened from. */
+	private openMenu: {menu: HTMLElement; trigger: HTMLElement} | null = null;
+	/** Set when a press only closed a menu, so the click it ends in presses nothing. */
+	private swallowClick = false;
 	/** The shape under way, drawn a point at a time. */
 	private sketch: Sketch | null = null;
 	private sketchGroup!: SVGGElement;
@@ -936,6 +946,11 @@ class slick {
 		if (s?.kind === 'path') return 'Tap the first point to close the path, or the last to end it open; drag to pull a curve';
 		if (this.drawTool) return toolHint(this.drawTool);
 		if (this.pointMode) return 'Drag a point; tap the outline to pick a segment, or double-click it to add a point';
+		if (this.mode === 'points') {
+			const tag = this.selected.length === 1 ? this.selectedElement()?.tagName.toLowerCase() ?? '' : '';
+			return SHAPES.includes(tag) ? `${/^[aeiou]/.test(tag) ? 'An' : 'A'} ${tag} has no points until it is a path: press To path` : 'Tap a path, polygon, polyline, or line to edit its points';
+		}
+		if (this.mode === 'shapes') return 'Pick a shape, then drag or tap on the drawing';
 		return '';
 	}
 
@@ -976,7 +991,11 @@ class slick {
 			}],
 			['redo', ()=>this.redoEdit()],
 			['duplicate', ()=>this.duplicateSelected()],
-			['points', ()=>this.togglePointMode()],
+			['mode-select', ()=>this.setMode('select')],
+			['points', ()=>this.setMode('points')],
+			['mode-shapes', ()=>this.setMode('shapes')],
+			['delete', ()=>this.deleteSelected()],
+			['zoom-reset', ()=>this.resetZoom()],
 			['topath', ()=>this.pointTool(()=>this.convertToPaths())],
 			['point-several', ()=>this.pointTool(()=>this.toggleSeveral())],
 			['point-add', ()=>this.pointTool(()=>this.addPointAtSpot())],
@@ -984,7 +1003,6 @@ class slick {
 			['point-symmetric', ()=>this.pointTool(()=>this.makeSymmetric())],
 			['point-curve', ()=>this.pointTool(()=>this.toggleCurve())],
 			['point-delete', ()=>this.pointTool(()=>this.deletePoint())],
-			['point-done', ()=>this.togglePointMode()],
 			...SHAPE_KINDS.map((kind): [string, () => void]=>[`draw-${kind}`, ()=>this.armShape(kind)]),
 			['draw-back', ()=>this.backSketch()],
 			['draw-done', ()=>this.endSketch()]
@@ -1016,13 +1034,13 @@ class slick {
 			}
 			const target = e.target;
 			if (target instanceof Element && target.closest('.cm-editor, dialog')) return;
-			// a shape under way is let go first, then its tool put down, then point
-			// editing ends; the next Escape clears the selection
+			// a shape under way is let go first, then its tool put down, then the
+			// mode goes back to Select; the next Escape clears the selection
 			if (this.sketch) {
 				this.dropSketch();
 				this.announceAction('Shape let go');
 			} else if (this.drawTool) this.armShape(null);
-			else if (this.pointMode) this.leavePointMode();
+			else if (this.mode !== 'select') this.setMode('select');
 			else this.clearSelection();
 		});
 		this.svgPreview.addEventListener('touchstart', (e)=>this.handleTouchStart(e), {passive: false});
@@ -1053,6 +1071,7 @@ class slick {
 		this.setupResizeDragbar();
 		for (const nav of document.querySelectorAll('nav')) this.fitBar(nav);
 		this.guardBarsFromPalm();
+		this.setupMenus();
 		// the preview's message sits beside its tools while there is room there,
 		// and above the strip, across the foot of the drawing, while there is not
 		const strip = this.get('context-bar');
@@ -1084,6 +1103,76 @@ class slick {
 				e.stopPropagation();
 			}, {capture: true, passive: false});
 		}
+	}
+
+	/** The app bar's menus. A menu opens under its button, one at a time, and
+	 * closes when one of its items is pressed, its button is pressed again, or
+	 * Escape is pressed, which gives its button the keys back. A press
+	 * anywhere else only closes it, so it presses or draws nothing. The arrow
+	 * keys move along its items. */
+	private setupMenus(): void {
+		for (const trigger of document.querySelectorAll<HTMLElement>('[aria-haspopup="menu"]')) {
+			const menu = this.get(trigger.getAttribute('aria-controls') ?? '');
+			trigger.addEventListener('click', (e)=>{
+				if (this.openMenu?.menu === menu) this.closeMenu();
+				// opened from the keys, the first item takes them
+				else this.showMenu(menu, trigger, e.detail === 0);
+			});
+			menu.addEventListener('click', (e)=>{
+				if (e.target instanceof Element && e.target.closest('button')) this.closeMenu();
+			});
+			menu.addEventListener('keydown', (e)=>{
+				const items = Array.from(menu.querySelectorAll<HTMLElement>('button'));
+				const at = items.indexOf(document.activeElement as HTMLElement);
+				const to = e.key === 'ArrowDown' ? at + 1 : e.key === 'ArrowUp' ? at - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? items.length - 1 : null;
+				if (to === null) return;
+				e.preventDefault();
+				items.at((to + items.length) % items.length)?.focus();
+			});
+		}
+		const outside = (e: Event): void=>{
+			const open = this.openMenu;
+			if (!open || !(e.target instanceof Node) || open.menu.contains(e.target) || open.trigger.contains(e.target)) return;
+			e.preventDefault();
+			e.stopPropagation();
+			this.swallowClick = e.type === 'mousedown';
+			this.closeMenu();
+		};
+		document.addEventListener('mousedown', outside, {capture: true});
+		document.addEventListener('touchstart', outside, {capture: true, passive: false});
+		document.addEventListener('click', (e)=>{
+			if (!this.swallowClick) return;
+			this.swallowClick = false;
+			e.preventDefault();
+			e.stopPropagation();
+		}, {capture: true});
+		window.addEventListener('keydown', (e)=>{
+			if (e.key !== 'Escape' || !this.openMenu) return;
+			e.preventDefault();
+			e.stopPropagation();
+			this.closeMenu(true);
+		}, {capture: true});
+	}
+
+	private showMenu(menu: HTMLElement, trigger: HTMLElement, focusFirst: boolean): void {
+		this.closeMenu();
+		menu.showPopover();
+		const r = trigger.getBoundingClientRect();
+		// under its button, kept on the screen
+		menu.style.top = `${r.bottom}px`;
+		menu.style.left = `${Math.max(0, Math.min(r.left, window.innerWidth - menu.offsetWidth))}px`;
+		trigger.setAttribute('aria-expanded', 'true');
+		this.openMenu = {menu, trigger};
+		if (focusFirst) menu.querySelector<HTMLElement>('button')?.focus();
+	}
+
+	private closeMenu(focusTrigger = false): void {
+		const open = this.openMenu;
+		if (!open) return;
+		this.openMenu = null;
+		open.menu.hidePopover();
+		open.trigger.setAttribute('aria-expanded', 'false');
+		if (focusTrigger) open.trigger.focus();
 	}
 
 	/** Whether a node is in one of the toolbars. */
@@ -1240,6 +1329,7 @@ class slick {
 	private toggleLayout(): void {
 		this.isVerticalLayout = !this.isVerticalLayout;
 		document.body.classList.toggle('vertical');
+		this.get('flip').setAttribute('aria-checked', this.isVerticalLayout ? 'true' : 'false');
 		resetElementStyles(this.get('editor'), this.get('preview'));
 		const dragbar = this.get('dragbar');
 		dragbar.setAttribute('aria-orientation', this.isVerticalLayout ? 'horizontal' : 'vertical');
@@ -1248,6 +1338,7 @@ class slick {
 	private toggleMode(): void {
 		this.isDarkMode = !this.isDarkMode;
 		document.body.classList.toggle('dark');
+		this.get('dark').setAttribute('aria-checked', this.isDarkMode ? 'true' : 'false');
 		this.editor.dispatch({
 			effects: this.themeCompartment.reconfigure(
 				this.isDarkMode ? [tokyoNightStorm] : [tokyoNightDay]
@@ -1262,6 +1353,11 @@ class slick {
 		this.setView(zoomAbout(v, ZOOM_STEP, v.panX, v.panY), true);
 		this.announceAction(`Zoomed in to ${Math.round(this.zoomLevel * 100)}%`);
 	}
+	/** Back to the drawing at its own size, in the middle of the pane. */
+	private resetZoom(): void {
+		this.setView({zoom: 1, panX: 0, panY: 0}, true);
+		this.showZoom();
+	}
 	private zoomOut(): void {
 		const v = this.view();
 		this.setView(zoomAbout(v, 1 / ZOOM_STEP, v.panX, v.panY), true);
@@ -1274,6 +1370,14 @@ class slick {
 		this.zoomLevel = view.zoom;
 		this.panX = view.panX;
 		this.panY = view.panY;
+		// the button between Out and In says how far in the view is
+		const pct = `${Math.round(view.zoom * 100)}%`;
+		const reset = this.get('zoom-reset');
+		const shown = reset.querySelector('span');
+		if (shown && shown.textContent !== pct) {
+			shown.textContent = pct;
+			reset.setAttribute('aria-label', `Reset zoom, at ${pct}`);
+		}
 		this.drawBox(this.hoverBox, null);
 		this.applySVGStyles(animate);
 	}
@@ -1533,7 +1637,9 @@ class slick {
 			this.refreshSelection();
 			return;
 		}
-		const pick = this.pickAt(target);
+		// in Points, a tap goes straight to the element under it, inside any
+		// group, for its points; in the other modes it walks into groups
+		const pick = this.mode === 'points' ? this.leafAt(target) : this.pickAt(target);
 		if (!pick) {
 			if (!toggle) this.clearSelection();
 			return;
@@ -1553,7 +1659,22 @@ class slick {
 		this.refreshSelection();
 		this.drawBox(this.hoverBox, null);
 		this.selectInEditor(pick, ordinal);
-		this.announceAction(`Selected ${pick.tagName.toLowerCase()}`);
+		if (this.mode === 'points' && !toggle) this.announcePoints(pick);
+		else this.announceAction(`Selected ${pick.tagName.toLowerCase()}`);
+	}
+
+	/** The element under a press, inside any group. */
+	private leafAt(target: EventTarget | null): Element | null {
+		const root = this.svgPreview.querySelector('.svg-container svg');
+		return root instanceof SVGSVGElement ? findSvgTarget(target, root) : null;
+	}
+
+	/** Say whose points are being edited, or why an element picked in Points has none. */
+	private announcePoints(el: Element): void {
+		const tag = el.tagName.toLowerCase();
+		if (this.pointMode) this.announceAction(`Editing the points of ${tag}: drag a point, tap the outline to pick a segment, double-click it to add a point, Delete removes one`);
+		else if (SHAPES.includes(tag)) this.announceError(`${/^[aeiou]/.test(tag) ? 'An' : 'A'} ${tag} has no points to edit until it is a path: press To path.`);
+		else this.announceError(`This ${tag} has no points to edit.`);
 	}
 
 	private ordinalFor(el: Element, source = this.editor.state.doc.toString()): number | null {
@@ -1625,8 +1746,14 @@ class slick {
 		const others = els.slice(0, -1);
 		while (this.moreBoxes.length < others.length) this.moreBoxes.push(this.makeBox('select-more'));
 		const drawn = this.moreBoxes.map((box, i)=>this.drawBox(box, others.at(i) ?? null));
-		// point editing ends when its element is no longer the one selection
-		if (this.pointMode && (els.length !== 1 || this.selected[0] !== this.pointMode.ordinal)) this.pointMode = null;
+		// in Points, the points edited are the one selected element's, when it
+		// has them, and editing follows the selection from one element to the next
+		const ordinal = els.length === 1 ? this.selected.at(-1) : undefined;
+		if (this.mode !== 'points' || !primary || ordinal === undefined) this.pointMode = null;
+		else if (this.pointMode?.ordinal !== ordinal) {
+			const editable = POINT_ELEMENTS.test(primary.tagName.toLowerCase()) && pointsOf(primary) !== null;
+			this.pointMode = editable ? {ordinal, selected: [], spot: null, several: this.pointMode?.several ?? false} : null;
+		}
 		const editing = this.pointMode && primary ? primary : null;
 		// several elements, or several points, have one box with handles round them all;
 		// while it turns, it turns with them rather than growing to hold them upright
@@ -1637,24 +1764,33 @@ class slick {
 		this.placeHandles(els.length === 1 && !editing ? corners : shown);
 		this.placePoints(editing);
 		this.get('duplicate').toggleAttribute('disabled', !primary);
-		const pointsButton = this.get('points');
-		pointsButton.toggleAttribute('disabled', !(els.length === 1 && primary && POINT_ELEMENTS.test(primary.tagName.toLowerCase())));
-		pointsButton.setAttribute('aria-pressed', editing ? 'true' : 'false');
+		this.get('delete').toggleAttribute('disabled', !primary);
 		const shape = SHAPES.join(',');
 		this.get('topath').toggleAttribute('disabled', !els.some(el=>el.matches(shape) || el.querySelector(shape)));
 		this.refreshPointTools(editing !== null);
 		this.placeSketch();
 	}
 
-	/** While points are being edited, their tools take the place of the
-	 * preview's own buttons, but for the zoom, which editing needs too. Each
+	/** The mode's buttons and the drawing's tools for it: the selection's in
+	 * Select, the points' in Points, the shapes in Shapes; Turn and Flip in
+	 * Select and Points, for elements or picked points; To path in Select, and
+	 * in Points for a shape that has no points until it is a path. Each tool
 	 * is there to be found, and can be pressed when what is selected is
 	 * something it works on. */
 	private refreshPointTools(editing: boolean): void {
-		this.get('point-tools').classList.toggle('hide', !editing);
-		this.get('shape-tools').classList.toggle('hide', editing);
+		const mode = this.mode;
+		for (const [id, m] of [['mode-select', 'select'], ['points', 'points'], ['mode-shapes', 'shapes']] as const) this.get(id).setAttribute('aria-pressed', mode === m ? 'true' : 'false');
+		const tag = this.selectedElement()?.tagName.toLowerCase() ?? '';
+		const pointless = this.selected.length === 1 && SHAPES.includes(tag) && !POINT_ELEMENTS.test(tag);
+		const shown: Record<string, boolean> = {
+			'select-tools': mode === 'select', 'point-tools': mode === 'points', 'turn-tools': mode !== 'shapes',
+			'path-tools': mode === 'select' || (mode === 'points' && pointless), 'shape-tools': mode === 'shapes',
+		};
+		for (const [id, show] of Object.entries(shown)) this.get(id).classList.toggle('hide', !show);
 		this.refreshSketchTools();
-		this.get('point-several').setAttribute('aria-pressed', this.pointMode?.several ? 'true' : 'false');
+		const several = this.get('point-several');
+		several.setAttribute('aria-pressed', this.pointMode?.several ? 'true' : 'false');
+		several.toggleAttribute('disabled', !editing);
 		// the tools wait for a drag to end before they look again
 		if (this.gesture?.drags.length) return;
 		const chosen = editing ? this.selectedPoints()?.chosen ?? [] : [];
@@ -1805,46 +1941,23 @@ class slick {
 	}
 
 	/** Edit the points of the one selected path, polygon, polyline, or line. */
-	private enterPointMode(): void {
-		const current = this.selectedElement();
-		const ordinal = this.selected.at(-1);
-		if (!current || ordinal === undefined || this.selected.length !== 1) return;
-		const tag = current.tagName.toLowerCase();
-		if (!POINT_ELEMENTS.test(tag)) {
-			if (SHAPES.includes(tag)) this.announceError(`${/^[aeiou]/.test(tag) ? 'An' : 'A'} ${tag} has no points to edit until it is a path: use the to-path button first.`);
-			return;
-		}
-		if (!pointsOf(current)) {
-			this.announceError('This element\'s points could not be read, so they cannot be edited here.');
-			return;
-		}
-		if (this.drawTool) {
+	/** Change what a press on the drawing does, and which tools its strip
+	 * holds. A tool in hand is put down first, writing a shape under way
+	 * that has points enough, which Points then edits the points of; one the
+	 * code cannot take yet keeps its tool, and Shapes. */
+	private setMode(mode: Mode): void {
+		this.svgPreview.focus({preventScroll: true});
+		if (mode !== 'shapes' && (this.drawTool || this.sketch)) {
 			this.armShape(null);
-			// a shape under way the code cannot take yet keeps the tool in hand
 			if (this.sketch) return;
-			// a shape under way was written and selected in its place: its points are the ones edited
-			if (this.selected.at(-1) !== ordinal) {
-				this.enterPointMode();
-				return;
-			}
 		}
-		this.pointMode = {ordinal, selected: [], spot: null, several: false};
+		if (this.mode === mode) return;
+		this.mode = mode;
 		this.refreshSelection();
-		this.svgPreview.focus({preventScroll: true});
-		this.announceAction(`Editing the points of ${current.tagName.toLowerCase()}: drag a point, tap the outline to pick a segment, double-click it to add a point, Delete removes one`);
-	}
-
-	private leavePointMode(): void {
-		if (!this.pointMode) return;
-		this.pointMode = null;
-		this.refreshSelection();
-		this.announceAction('Point editing ended');
-	}
-
-	private togglePointMode(): void {
-		if (this.pointMode) this.leavePointMode();
-		else this.enterPointMode();
-		this.svgPreview.focus({preventScroll: true});
+		this.restoreHint(true);
+		const el = this.selectedElement();
+		if (mode === 'points' && el && this.selected.length === 1) this.announcePoints(el);
+		else announce(mode === 'points' ? 'Points: tap a path, polygon, polyline, or line to edit its points' : mode === 'shapes' ? 'Shapes: pick a shape to draw' : 'Select', 'action');
 	}
 
 	/** A double-click on the selection edits its points; in point editing it
@@ -1858,8 +1971,8 @@ class slick {
 		const current = this.onSelection(e.target);
 		if (!current) return;
 		e.preventDefault();
-		if (!this.pointMode) {
-			this.enterPointMode();
+		if (this.mode !== 'points') {
+			this.setMode('points');
 			return;
 		}
 		const spot = this.outlineNear(current, e.clientX, e.clientY);
@@ -2515,9 +2628,9 @@ class slick {
 			const step = e.shiftKey ? 10 : 1;
 			if (this.pointMode) this.nudgePoint(arrow[0] * step, arrow[1] * step);
 			else this.nudge(arrow[0] * step, arrow[1] * step);
-		} else if (e.key === 'Enter' && !this.pointMode) {
+		} else if (e.key === 'Enter' && this.mode !== 'points' && this.selected.length > 0) {
 			e.preventDefault();
-			this.enterPointMode();
+			this.setMode('points');
 		} else if (e.key === 'Delete' || e.key === 'Backspace') {
 			e.preventDefault();
 			if (this.pointMode) this.deletePoint();
@@ -3095,7 +3208,11 @@ class slick {
 			if (sketch.anchors.length >= pointsNeeded(sketch.kind)) this.addShape(sketch.kind, this.sketchAttrs(sketch, false));
 		}
 		this.drawTool = next;
-		if (this.drawTool) this.leavePointMode();
+		// a shape tool belongs to Shapes
+		if (this.drawTool && this.mode !== 'shapes') {
+			this.mode = 'shapes';
+			this.refreshSelection();
+		}
 		for (const each of SHAPE_KINDS) this.get(`draw-${each}`).setAttribute('aria-pressed', each === this.drawTool ? 'true' : 'false');
 		this.svgPreview.style.cursor = this.drawTool ? 'crosshair' : '';
 		this.drawBox(this.hoverBox, null);

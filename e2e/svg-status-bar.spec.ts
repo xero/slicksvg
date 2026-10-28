@@ -1,3 +1,4 @@
+import { pressMenuItem } from './toolbar';
 import { test, expect } from '@playwright/test';
 
 test.describe('SVG Status Bar E2E Tests', () => {
@@ -141,15 +142,14 @@ test.describe('SVG Status Bar E2E Tests', () => {
 		await expect(statusBar).toHaveText('SVG valid');
 
 		// Toggle dark mode
-		const darkButton = page.locator('#dark');
-		await darkButton.click();
+				await pressMenuItem(page, 'dark');
 
 		// Status bar should still be visible and functional
 		await expect(statusBar).toBeVisible();
 		await expect(statusBar).toHaveText('SVG valid');
 
 		// Toggle back to light mode
-		await darkButton.click();
+		await pressMenuItem(page, 'dark');
 
 		// Status bar should still work
 		await expect(statusBar).toBeVisible();

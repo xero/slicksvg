@@ -1,3 +1,4 @@
+import { pressMenuItem } from './toolbar';
 import { test, expect } from '@playwright/test';
 
 test.describe('SVG Upload Functionality', () => {
@@ -8,7 +9,7 @@ test.describe('SVG Upload Functionality', () => {
 
   test('should have upload button visible', async ({ page }) => {
     // Check that upload button exists and is visible
-    const uploadButton = page.locator('#upload');
+    const uploadButton = page.locator('#file-menu');
     await expect(uploadButton).toBeVisible();
   });
 
@@ -17,7 +18,7 @@ test.describe('SVG Upload Functionality', () => {
     const fileChooserPromise = page.waitForEvent('filechooser');
 
     // Click upload button
-    await page.locator('#upload').click();
+    await pressMenuItem(page, 'upload');
 
     // Verify file chooser opens
     const fileChooser = await fileChooserPromise;

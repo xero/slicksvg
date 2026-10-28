@@ -1,3 +1,4 @@
+import { pressMenuItem } from './toolbar';
 import { test, expect } from '@playwright/test';
 
 test.describe('SVG Editor Error Handling E2E Tests', () => {
@@ -90,7 +91,7 @@ test.describe('SVG Editor Error Handling E2E Tests', () => {
 
   test('should handle modal input validation errors', async ({ page }) => {
     // Open resolution modal
-    await page.getByRole('button', { name: 'Size of the drawing' }).click();
+    await pressMenuItem(page, 'resolution');
 
     const dialog = page.locator('dialog');
     await expect(dialog).toBeVisible();
@@ -166,8 +167,8 @@ test.describe('SVG Editor Error Handling E2E Tests', () => {
     });
 
     // Try to interact with the application
-    await page.getByRole('button', { name: 'Theme' }).click();
-    await page.getByRole('button', { name: 'Layout' }).click();
+    await pressMenuItem(page, 'dark');
+    await pressMenuItem(page, 'flip');
 
     // Application should still be responsive
     await expect(page.getByRole('main')).toBeVisible();
@@ -291,7 +292,7 @@ test.describe('SVG Editor Error Handling E2E Tests', () => {
     await expect(page.getByRole('main')).toBeVisible();
 
     // Try to interact with other controls
-    await page.getByRole('button', { name: 'Theme' }).click();
+    await pressMenuItem(page, 'dark');
 
     // Should remain responsive
     await expect(page.getByRole('complementary')).toBeVisible();
@@ -316,8 +317,8 @@ test.describe('SVG Editor Error Handling E2E Tests', () => {
     await expect(page.getByRole('main')).toBeVisible();
 
     // Try operations that might use localStorage
-    await page.getByRole('button', { name: 'Theme' }).click();
-    await page.getByRole('button', { name: 'Layout' }).click();
+    await pressMenuItem(page, 'dark');
+    await pressMenuItem(page, 'flip');
 
     // Should continue working
     await expect(page.getByRole('complementary')).toBeVisible();

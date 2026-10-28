@@ -1,3 +1,4 @@
+import { pressMenuItem } from './toolbar';
 import { test, expect, devices } from '@playwright/test';
 
 test.describe('SVG Editor Mobile Devices E2E Tests', () => {
@@ -14,13 +15,13 @@ test.describe('SVG Editor Mobile Devices E2E Tests', () => {
       await page.setViewportSize({ width: 390, height: 844 });
       
       // Check all essential UI elements are accessible
-      await expect(page.locator('#upload')).toBeVisible();
-      await expect(page.locator('#dark')).toBeVisible();
-      await expect(page.locator('#flip')).toBeVisible();
+      await expect(page.locator('#file-menu')).toBeVisible();
+      await expect(page.locator('#view-menu')).toBeVisible();
+      await expect(page.locator('#view-menu')).toBeVisible();
       await expect(page.locator('#rotate')).toBeVisible();
       
       // Test basic functionality
-      await page.locator('#dark').click();
+      await pressMenuItem(page, 'dark');
       await page.locator('#rotate').click();
       
       // Verify the app remains functional
@@ -39,7 +40,7 @@ test.describe('SVG Editor Mobile Devices E2E Tests', () => {
       // Test toolbar accessibility in landscape
       await expect(page.locator('#zoomin')).toBeVisible();
       await expect(page.locator('#zoomout')).toBeVisible();
-      await expect(page.locator('#resolution')).toBeVisible();
+      await expect(page.locator('#file-menu')).toBeVisible();
       
       // Test zoom functionality works in landscape
       await page.locator('#zoomin').click();
@@ -74,7 +75,7 @@ test.describe('SVG Editor Mobile Devices E2E Tests', () => {
       await expect(page.getByRole('complementary')).toBeVisible();
       
       // Test that controls are still accessible
-      await page.locator('#dark').click();
+      await pressMenuItem(page, 'dark');
       await expect(page.getByRole('main')).toBeVisible();
     });
   });
@@ -112,7 +113,7 @@ test.describe('SVG Editor Mobile Devices E2E Tests', () => {
       await expect(page.getByRole('complementary')).toBeVisible();
       
       // Test flip screen functionality in landscape
-      await page.locator('#flip').click();
+      await pressMenuItem(page, 'flip');
       await expect(page.getByRole('main')).toBeVisible();
       
       // Test editor in landscape
@@ -157,11 +158,11 @@ test.describe('SVG Editor Mobile Devices E2E Tests', () => {
       await page.setViewportSize({ width: 375, height: 667 });
       
       // Test that all critical UI is accessible
-      await expect(page.locator('#upload')).toBeVisible();
-      await expect(page.locator('#dark')).toBeVisible();
+      await expect(page.locator('#file-menu')).toBeVisible();
+      await expect(page.locator('#view-menu')).toBeVisible();
       
       // Test touch targets are large enough
-      const uploadButton = page.locator('#upload');
+      const uploadButton = page.locator('#file-menu');
       const boundingBox = await uploadButton.boundingBox();
       
       if (boundingBox) {
@@ -191,7 +192,7 @@ test.describe('SVG Editor Mobile Devices E2E Tests', () => {
       await expect(page.getByRole('complementary')).toBeVisible();
       
       // Test functionality in extreme aspect ratios
-      await page.locator('#flip').click();
+      await pressMenuItem(page, 'flip');
       await expect(page.getByRole('main')).toBeVisible();
     });
   });
@@ -244,8 +245,8 @@ test.describe('SVG Editor Mobile Devices E2E Tests', () => {
         await expect(page.getByRole('complementary')).toBeVisible();
         
         // Test basic functionality
-        await page.locator('#dark').click();
-        await page.locator('#dark').click(); // Toggle back
+        await pressMenuItem(page, 'dark');
+        await pressMenuItem(page, 'dark'); // Toggle back
       }
     });
   });
@@ -277,7 +278,7 @@ test.describe('SVG Editor Mobile Devices E2E Tests', () => {
       await page.context().setOffline(true);
       
       // App should still function (since it's a client-side app)
-      await page.locator('#dark').click();
+      await pressMenuItem(page, 'dark');
       await page.locator('#rotate').click();
       
       await expect(page.getByRole('main')).toBeVisible();
@@ -292,7 +293,7 @@ test.describe('SVG Editor Mobile Devices E2E Tests', () => {
       await page.setViewportSize({ width: 375, height: 667 });
       
       // Test long press simulation
-      const uploadButton = page.locator('#upload');
+      const uploadButton = page.locator('#file-menu');
       await uploadButton.hover();
       await page.mouse.down();
       await page.waitForTimeout(800); // Long press duration

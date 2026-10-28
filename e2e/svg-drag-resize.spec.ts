@@ -1,3 +1,4 @@
+import { pressMenuItem } from './toolbar';
 import { test, expect } from '@playwright/test';
 
 test.describe('SVG Editor Drag Resize E2E Tests', () => {
@@ -61,8 +62,7 @@ test.describe('SVG Editor Drag Resize E2E Tests', () => {
 
     test('should resize panels by dragging in vertical layout', async ({ page }) => {
       // Switch to vertical layout first
-      const flipButton = page.locator('#flip');
-      await flipButton.click();
+            await pressMenuItem(page, 'flip');
 
       // Verify we're in vertical layout
       await expect(page.locator('body')).toHaveClass(/vertical/);
@@ -146,8 +146,7 @@ test.describe('SVG Editor Drag Resize E2E Tests', () => {
       const editor = page.locator('#editor');
       const preview = page.locator('#preview');
       const dragbar = page.locator('#dragbar');
-      const flipButton = page.locator('#flip');
-
+      
       // First resize in horizontal layout
       const dragbarBox = await dragbar.boundingBox();
       expect(dragbarBox).toBeTruthy();
@@ -164,7 +163,7 @@ test.describe('SVG Editor Drag Resize E2E Tests', () => {
       await expect(preview).toHaveClass(/resizing/);
 
       // Switch to vertical layout
-      await flipButton.click();
+      await pressMenuItem(page, 'flip');
       await page.waitForTimeout(100);
 
       // Verify resize classes are removed
@@ -273,8 +272,7 @@ test.describe('SVG Editor Drag Resize E2E Tests', () => {
       await page.setViewportSize({ width: 390, height: 844 });
 
       // Switch to vertical layout
-      const flipButton = page.locator('#flip');
-      await flipButton.click();
+            await pressMenuItem(page, 'flip');
 
       const editor = page.locator('#editor');
       const preview = page.locator('#preview');
@@ -343,8 +341,7 @@ test.describe('SVG Editor Drag Resize E2E Tests', () => {
       await expect(dragbar).toHaveAttribute('aria-orientation', 'vertical');
 
       // Switch to vertical layout
-      const flipButton = page.locator('#flip');
-      await flipButton.click();
+            await pressMenuItem(page, 'flip');
 
       // Should update orientation
       await expect(dragbar).toHaveAttribute('aria-orientation', 'horizontal');
@@ -427,12 +424,11 @@ test.describe('SVG Editor Drag Resize E2E Tests', () => {
     });
 
     test('should maintain functionality after multiple layout switches', async ({ page }) => {
-      const flipButton = page.locator('#flip');
-      const dragbar = page.locator('#dragbar');
+            const dragbar = page.locator('#dragbar');
 
       // Switch layouts multiple times
       for (let i = 0; i < 4; i++) {
-        await flipButton.click();
+        await pressMenuItem(page, 'flip');
         await page.waitForTimeout(100);
 
         // Try to drag after each switch

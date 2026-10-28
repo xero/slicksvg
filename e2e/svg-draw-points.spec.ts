@@ -64,6 +64,8 @@ test.describe('SVG Editor drawing lines', () => {
     await expect(page.locator('.svg-container svg')).toBeVisible();
     await setContent(page, FIXTURE);
     await expect(page.locator('.svg-container #box')).toBeVisible();
+    // the shape tools are Shapes'
+    await page.locator('#mode-shapes').click();
   });
 
   test('should draw a line with a drag, stroked a hundredth of the drawing wide', async ({ page }) => {
@@ -100,6 +102,8 @@ test.describe('SVG Editor drawing a point at a time', () => {
     await expect(page.locator('.svg-container svg')).toBeVisible();
     await setContent(page, FIXTURE);
     await expect(page.locator('.svg-container #box')).toBeVisible();
+    // the shape tools are Shapes'
+    await page.locator('#mode-shapes').click();
   });
 
   test('should draw a polyline a point at a click, and finish it with a click on the last point', async ({ page }) => {
@@ -212,6 +216,7 @@ test.describe('SVG Editor drawing a point at a time', () => {
     // a fresh page has no history for the button to undo
     await page.reload();
     await expect(page.locator('.svg-container svg')).toBeVisible();
+    await page.locator('#mode-shapes').click();
     const source = await getSource(page);
     await expect(page.locator('#undo')).toBeDisabled();
     await page.locator('#draw-polyline').click();
@@ -310,6 +315,8 @@ test.describe('SVG Editor drawing paths with the pen', () => {
     await expect(page.locator('.svg-container svg')).toBeVisible();
     await setContent(page, FIXTURE);
     await expect(page.locator('.svg-container #box')).toBeVisible();
+    // the shape tools are Shapes'
+    await page.locator('#mode-shapes').click();
   });
 
   test('should place corners with clicks and end the path open with Enter, stroked', async ({ page }) => {
@@ -388,6 +395,7 @@ test.describe('SVG Editor drawing a point at a time by touch', () => {
     await page.goto('/index.html');
     await expect(page.locator('.svg-container svg')).toBeVisible();
     await setContent(page, FIXTURE);
+    await page.locator('#mode-shapes').tap();
     await page.locator('#draw-polygon').tap();
     for (const [x, y] of [[100, 20], [180, 20], [140, 80]] as [number, number][]) {
       const p = await at(page, x, y);

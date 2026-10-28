@@ -47,11 +47,9 @@ test.describe('SVG Editor Point Editing', () => {
     await expect(page.locator('.svg-container path')).toBeVisible();
   });
 
-  test('should enter point editing with Enter and leave it with Escape, keeping the selection', async ({ page }) => {
+  test('should go into Points with Enter and back to Select with Escape, keeping the selection', async ({ page }) => {
     const button = page.locator('#points');
-    await expect(button).toBeDisabled();
     await page.locator('.svg-container path').click();
-    await expect(button).toBeEnabled();
     await expect(page.locator('[data-handle="se"]')).toBeVisible();
 
     await page.keyboard.press('Enter');
@@ -63,6 +61,7 @@ test.describe('SVG Editor Point Editing', () => {
     await expect(page.locator('.points rect')).toHaveCount(0);
     await expect(page.locator('.select-overlay .select-box')).toBeVisible();
     await expect(button).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.locator('#mode-select')).toHaveAttribute('aria-pressed', 'true');
   });
 
   test('should move a point by dragging its marker, and select its numbers in the editor', async ({ page }) => {
@@ -138,11 +137,15 @@ test.describe('SVG Editor Point Editing', () => {
     expect(await editorSelection(page)).toBe('180 180');
   });
 
-  test('should leave point editing when another element is selected', async ({ page }) => {
+  test('should edit the points of whichever element is tapped in Points, and give back the handles in Select', async ({ page }) => {
     await page.locator('.svg-container path').click();
     await page.keyboard.press('Enter');
     await expect(page.locator('.points rect')).toHaveCount(3);
     await page.locator('.svg-container polygon').click();
+    expect(await editorSelection(page)).toMatch(/^<polygon id="g"/);
+    await expect(page.locator('.points rect')).toHaveCount(3);
+    await expect(page.locator('#points')).toHaveAttribute('aria-pressed', 'true');
+    await page.locator('#mode-select').click();
     await expect(page.locator('.points rect')).toHaveCount(0);
     await expect(page.locator('[data-handle="se"]')).toBeVisible();
   });
@@ -168,15 +171,17 @@ test.describe('SVG Editor Point Editing', () => {
     await expect(page.locator('.points rect')).toHaveCount(4);
   });
 
-  test('should put the point tools in the drawing\'s strip while editing, in place of the shape tools', async ({ page }) => {
+  test('should put the point tools in the drawing\'s strip while editing, in place of the selection\'s', async ({ page }) => {
     const tools = page.locator('#point-tools');
     await expect(tools).toBeHidden();
     await page.locator('.svg-container path').click();
     await page.locator('#points').click();
     await expect(tools).toBeVisible();
-    await expect(page.locator('#shape-tools')).toBeHidden();
+    await expect(page.locator('#select-tools')).toBeHidden();
+    // Turn and Flip are there for picked points too
+    await expect(page.locator('#rotate')).toBeVisible();
     // the app's own buttons stay in its bar
-    await expect(page.locator('#dark')).toBeVisible();
+    await expect(page.locator('#view-menu')).toBeVisible();
     await expect(page.locator('#zoomin')).toBeVisible();
 
     const remove = page.locator('#point-delete');
@@ -188,9 +193,10 @@ test.describe('SVG Editor Point Editing', () => {
     await expect(page.locator('.points rect')).toHaveCount(2);
     await expect(remove).toBeDisabled();
 
-    await page.locator('#point-done').click();
+    // leaving Points is picking another mode
+    await page.locator('#mode-select').click();
     await expect(tools).toBeHidden();
-    await expect(page.locator('#shape-tools')).toBeVisible();
+    await expect(page.locator('#select-tools')).toBeVisible();
     await expect(page.locator('#points')).toHaveAttribute('aria-pressed', 'false');
     await expect(page.locator('[data-handle="se"]')).toBeVisible();
   });
@@ -587,7 +593,7 @@ test.describe('SVG Editor Point Editing on a touch screen', () => {
   test('should make every button a fingertip wide, and scroll a bar too narrow for them, fading where buttons are hidden', async ({ page }) => {
     await page.goto('/index.html');
     await expect(page.locator('.svg-container svg')).toBeVisible();
-    for (const id of ['upload', 'zoomin', 'dark']) {
+    for (const id of ['file-menu', 'zoomin', 'points']) {
       const box = (await page.locator(`#${id}`).boundingBox())!;
       expect(box.width).toBeGreaterThanOrEqual(44);
       expect(box.height).toBeGreaterThanOrEqual(44);

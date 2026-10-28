@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { pressMenuItem } from './toolbar';
 
 async function setContent(page: Page, content: string) {
   await page.evaluate((content) => {
@@ -32,7 +33,7 @@ test.describe('SVG Editor layout', () => {
   test('should put one bar across the top of the app, over both panes, side by side or stacked', async ({ page }) => {
     const viewport = page.viewportSize()!;
     for (const stacked of [false, true]) {
-      if (stacked) await page.locator('#flip').click();
+      if (stacked) await pressMenuItem(page, 'flip');
       const bar = await box(page, '#appbar');
       expect(bar.x).toBe(0);
       expect(bar.y).toBe(0);
@@ -59,11 +60,12 @@ test.describe('SVG Editor layout', () => {
     await page.mouse.move(5, dragbar.y + dragbar.height / 2, { steps: 4 });
     await page.mouse.up();
     expect((await box(page, '#editor')).width).toBeLessThan(page.viewportSize()!.width * 0.15);
-    for (const id of ['undo', 'redo', 'dark', 'flip', 'zoomin', 'zoomout', 'xray']) await expect(page.locator(`#${id}`)).toBeInViewport();
+    for (const id of ['file-menu', 'view-menu', 'undo', 'redo', 'mode-select', 'points', 'mode-shapes', 'zoomin', 'zoomout', 'xray']) await expect(page.locator(`#${id}`)).toBeInViewport();
   });
 
   test('should say what the tool in hand does, what a drag does as it goes, and then what it did', async ({ page }) => {
     const status = page.locator('#preview-status');
+    await page.locator('#mode-shapes').click();
     await page.locator('#draw-rect').click();
     await expect(status).toHaveText('Drag across the drawing to draw a rectangle, or tap to place one');
     await expect(status).toBeVisible();
@@ -75,8 +77,8 @@ test.describe('SVG Editor layout', () => {
     await expect(status).toHaveText('rect x="100" y="20" width="80" height="40"');
     await page.mouse.up();
     await expect(status).toHaveText('rect drawn');
-    // with nothing in hand there is nothing to say once that has been said
-    await expect(status).toHaveText('', { timeout: 5000 });
+    // with nothing in hand, Shapes says how to go on once that has been said
+    await expect(status).toHaveText('Pick a shape, then drag or tap on the drawing', { timeout: 5000 });
   });
 
   test('should bring the standing hint back after what was done has been said', async ({ page }) => {
@@ -89,6 +91,7 @@ test.describe('SVG Editor layout', () => {
 
   test('should say what went wrong, in the colour for it', async ({ page }) => {
     await setContent(page, FIXTURE.replace('</svg>', ''));
+    await page.locator('#mode-shapes').click();
     await page.locator('#draw-rect').click();
     const p = await at(page, 120, 40);
     await page.mouse.click(p.x, p.y);
@@ -103,9 +106,10 @@ test.describe('SVG Editor layout', () => {
 
   test('should take a tool\'s hint away with the tool, and say how to go on before a shape has points enough', async ({ page }) => {
     const status = page.locator('#preview-status');
+    await page.locator('#mode-shapes').click();
     await page.locator('#draw-rect').click();
     await page.locator('#draw-rect').click();
-    await expect(status).toHaveText('', { timeout: 5000 });
+    await expect(status).toHaveText('Pick a shape, then drag or tap on the drawing', { timeout: 5000 });
     await page.locator('#draw-polyline').click();
     const p = await at(page, 100, 20);
     await page.mouse.click(p.x, p.y);
@@ -120,6 +124,7 @@ test.describe('SVG Editor layout on a portrait tablet', () => {
     await page.goto('/index.html');
     await expect(page.locator('.svg-container svg')).toBeVisible();
     await setContent(page, FIXTURE);
+    await page.locator('#mode-shapes').tap();
     await page.locator('#draw-polygon').tap();
     const status = page.locator('#preview-status');
     await expect(status).toHaveClass(/above/);
@@ -128,7 +133,7 @@ test.describe('SVG Editor layout on a portrait tablet', () => {
     expect(said.y + said.height).toBeLessThanOrEqual(strip.y);
     await expect(status).toHaveCSS('pointer-events', 'none');
     // stacked, the strip is the full width, with room beside the tools
-    await page.locator('#flip').tap();
+    await pressMenuItem(page, 'flip', 'tap');
     await expect(status).not.toHaveClass(/above/);
   });
 

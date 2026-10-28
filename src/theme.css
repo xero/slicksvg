@@ -281,12 +281,69 @@
       mask-image: linear-gradient(to right, transparent, #000 3rem, #000 calc(100% - 3rem), transparent);
     }
   }
-  #point-tools, #shape-tools, #sketch-tools {
+  /* the drawing's tools come in groups by what they work on, each shown in
+     the modes it is for, and each set apart from the one before it */
+  #context-bar nav > div {
     @apply flex flex-row items-stretch;
   }
-  /* the shape tools stand apart from the ones for a shape under way */
-  #shape-tools, #sketch-tools {
-    @apply mr-1 pr-1 border-r border-bounds;
+  #context-bar nav > div:not(.hide) ~ div:not(.hide) {
+    @apply ml-1 pl-1 border-l border-bounds;
+  }
+  /* buttons that belong together: one edge round them, a fainter one between */
+  .joined {
+    @apply flex flex-row items-stretch mx-1 border-x border-bounds;
+    & > button + button {
+      border-left: 1px solid color-mix(in srgb, var(--color-bounds) 50%, transparent);
+    }
+  }
+  /* a button that opens a menu has a corner cut in, to say there is more under it */
+  nav button[aria-haspopup] {
+    @apply relative;
+    &::after {
+      content: '';
+      @apply absolute right-1 bottom-1 w-1.5 h-1.5;
+      background: currentColor;
+      clip-path: polygon(100% 0, 100% 100%, 0 100%);
+    }
+    &[aria-expanded="true"] {
+      @apply bg-nav-hover;
+    }
+  }
+  /* a toolbar menu: a column of named rows under its button */
+  .menu {
+    @apply bg-menu p-1 m-0 border-0 min-w-48;
+    position: fixed;
+    inset: auto;
+    box-shadow:
+      0 0 0 1px var(--color-bounds),
+      0 6px 16px rgb(0 0 0 / 0.25);
+    &:popover-open {
+      @apply flex flex-col;
+    }
+    button {
+      @apply flex-row justify-start gap-3 px-3 min-h-11 w-full bg-transparent text-nav-txt text-sm whitespace-nowrap;
+      svg {
+        @apply w-6 h-6 shrink-0 fill-nav-txt;
+      }
+      svg.line {
+        @apply fill-none stroke-nav-txt;
+        stroke-width: 2.5;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      &:hover, &:active {
+        @apply bg-nav-hover;
+      }
+      &:focus-visible {
+        outline: 2px solid var(--color-active) !important;
+        outline-offset: -2px;
+      }
+      /* a setting that is on says so at the end of its row */
+      &[aria-checked="true"]::after {
+        content: '✓';
+        @apply ml-auto pl-4;
+      }
+    }
   }
   #editor,
   #preview {

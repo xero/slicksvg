@@ -77,11 +77,18 @@ test.describe('SVG Editor converting shapes to paths', () => {
     expect(await getSource(page)).toContain('<path id="r" d="M20 20 H100 V80 H20 Z" fill="#6291e0"/>');
   });
 
-  test('should say a rect needs to be a path before its points can be edited', async ({ page }) => {
+  test('should say a rect needs to be a path before its points can be edited, and offer To path in Points', async ({ page }) => {
     await page.locator('.svg-container #r').click();
     await page.keyboard.press('Enter');
-    await expect(page.locator('#error-announcements')).toHaveText('A rect has no points to edit until it is a path: use the to-path button first.');
+    await expect(page.locator('#points')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#error-announcements')).toHaveText('A rect has no points to edit until it is a path: press To path.');
     await expect(page.locator('.points rect')).toHaveCount(0);
+    // the point tools wait for something with points; To path is at hand meanwhile
+    await expect(page.locator('#point-add')).toBeDisabled();
+    await expect(page.locator('#topath')).toBeVisible();
+    await page.locator('#topath').click();
+    await expect(page.locator('.points rect')).toHaveCount(4);
+    await expect(page.locator('#topath')).toBeHidden();
   });
 
   test('should make a line a path when one of its points tools needs curves', async ({ page }) => {
