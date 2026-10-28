@@ -2539,7 +2539,9 @@ class slick {
 				: `point ${fmt(first.point.from.x + v.x, first.decimals)}, ${fmt(first.point.from.y + v.y, first.decimals)}`, false);
 			return;
 		}
-		const readout = Object.entries(first.attrs).map(([name, value])=>value === null ? `no ${name}` : `${name}="${value}"`).join(' ');
+		// a path's whole d can be long, and the start of it says enough of how it is moving
+		const shown = (value: string): string=>value.length > 48 ? `${value.slice(0, 48)}…` : value;
+		const readout = Object.entries(first.attrs).map(([name, value])=>value === null ? `no ${name}` : `${name}="${shown(value)}"`).join(' ');
 		this.updateStatusBar(g.drags.length > 1 ? `${g.drags.length} elements` : `${first.target.tagName.toLowerCase()} ${readout || 'unchanged'}`, false);
 	}
 

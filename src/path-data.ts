@@ -1283,7 +1283,10 @@ export function transformPolygonPoints(value: string, indices: number[], m: Matr
 export function shiftPolygonPoints(value: string, dx: number, dy: number): string | null {
 	const tokens = parsePoints(value);
 	if (!tokens) return null;
-	const splices = tokens.flatMap((t, i)=>((by)=>by === 0 ? [] : [{start: t.start, end: t.end, text: shifted(t.value, by)}])(i % 2 === 0 ? dx : dy));
+	const splices = tokens.flatMap((t, i)=>{
+		const by = i % 2 === 0 ? dx : dy;
+		return by === 0 ? [] : [{start: t.start, end: t.end, text: shifted(t.value, by)}];
+	});
 	return splice(value, splices);
 }
 

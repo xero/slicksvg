@@ -154,6 +154,8 @@ describe('planMove', () => {
   it('should move a path turned about a point of its own together with that point', () => {
     expect(planMove(el('<path d="M20 20 H80 V80 Z" transform="rotate(30 50 50)"/>'), 10, -5))
       .toEqual({ ok: true, attrs: { d: 'M30 15 H90 V75 Z', transform: 'rotate(30 60 45)' } });
+    // an origin of its own box would move with the points, so the move goes in the transform
+    expect(planMove(el('<path d="M20 20 H80 V80 Z" transform="rotate(30 50 50)" style="transform-box: fill-box"/>'), 10, -5)).toEqual({ ok: true, attrs: { transform: 'translate(10 -5) rotate(30 50 50)' } });
   });
 
   it('should take a move into a transform that is more than a turn, or one CSS gives the shape', () => {
@@ -179,6 +181,13 @@ describe('planMove', () => {
       ['<g fill="url(#user)"><path id="t" d="M0 0"/></g>', ''], ['<path class="c" d="M0 0"/>', '<style>.c { stroke: url(#user); }</style>'],
     ]) expect(drawnInItsSpace(el(markup, defs + extra))).toBe(true);
     expect(drawnInItsSpace(el('<g clip-path="url(#clip)"><path id="t" d="M0 0" fill="url(#box)"/></g>', defs))).toBe(false);
+    // a fill of its own is not the group's; a run of text can have its own; a rule inside @media counts
+    expect(drawnInItsSpace(el('<g fill="url(#user)"><path id="t" d="M0 0" fill="red"/></g>', defs))).toBe(false);
+    expect(drawnInItsSpace(el('<g style="stroke: url(#user)"><path id="t" d="M0 0" style="stroke: inherit"/></g>', defs))).toBe(true);
+    expect(drawnInItsSpace(el('<text x="0">a<tspan fill="url(#user)">b</tspan></text>', defs))).toBe(true);
+    expect(drawnInItsSpace(el('<path class="c" d="M0 0"/>', defs + '<style>@media screen { .c { fill: url(#user) } }</style>'))).toBe(true);
+    // a filter's steps can come from one it copies
+    expect(drawnInItsSpace(el('<path d="M0 0" filter="url(#noisy)"/>', defs + '<filter id="noisy" href="#noise"/>'))).toBe(true);
   });
 
   it('should move rotated and scaled rectangles in their own units', () => {

@@ -354,11 +354,12 @@ function escapeRegExp(s: string): string {
 }
 
 /** The rules in the document's own <style> blocks: each selector, and the
- * declarations it sets. */
+ * declarations it sets. A rule inside an at-rule such as @media is read as
+ * the rule it is. */
 function styleRules(doc: Document): {selectors: string[]; body: string}[] {
 	const css = Array.from(doc.getElementsByTagName('style')).map(s=>s.textContent).join('\n');
 	if (!css.trim()) return [];
-	return Array.from(css.matchAll(/([^{}]+)\{([^}]*)\}/g), m=>({selectors: m[1].split(',').map(x=>x.trim()).filter(Boolean), body: m[2]}));
+	return Array.from(css.matchAll(/([^{}]+)\{([^{}]*)\}/g), m=>({selectors: m[1].split(',').map(x=>x.trim()).filter(Boolean), body: m[2]}));
 }
 
 /** Whether a selector picks the element; one this engine cannot parse tells us nothing. */
@@ -397,15 +398,38 @@ export function drawnInItsSpace(el: Element): boolean {
 	const doc = el.ownerDocument;
 	const rules = styleRules(doc);
 	const ids: string[] = [];
-	for (let at: Element | null = el; at; at = at.parentElement) {
-		const names = at === el ? ['fill', 'stroke', 'clip-path', 'mask', 'filter'] : ['fill', 'stroke'];
-		const bodies = [at.getAttribute('style') ?? '', ...rules.filter(r=>r.selectors.some(s=>picks(at, s))).map(r=>r.body)];
-		const said = [
-			...names.map(name=>at.getAttribute(name) ?? ''),
-			...bodies.flatMap(body=>body.split(';').map(d=>/^\s*([\w-]+)\s*:(.*)$/s.exec(d)).filter(m=>m !== null && names.includes(m[1].toLowerCase())).map(m=>m?.[2] ?? '')),
-		];
-		for (const text of said) for (const m of text.matchAll(/url\(\s*['"]?#([^'")\s]+)/g)) ids.push(m[1]);
+	// what an element says for each of `names`: its attributes, its style, and the style sheet's rules for it
+	const said = (at: Element, names: string[]): Map<string, string[]>=>{
+		const out = new Map<string, string[]>();
+		const put = (name: string, text: string): void=>{
+			const value = text.trim();
+			if (!names.includes(name) || value === '' || /^inherit\b/i.test(value)) return;
+			out.set(name, [...(out.get(name) ?? []), value]);
+		};
+		for (const name of names) put(name, at.getAttribute(name) ?? '');
+		for (const body of [at.getAttribute('style') ?? '', ...rules.filter(r=>r.selectors.some(s=>picks(at, s))).map(r=>r.body)]) {
+			for (const declaration of body.split(';')) {
+				const m = /^\s*([\w-]+)\s*:(.*)$/s.exec(declaration);
+				if (m) put(m[1].toLowerCase(), m[2]);
+			}
+		}
+		return out;
+	};
+	const refer = (texts: string[]): void=>{
+		for (const text of texts) for (const m of text.matchAll(/url\(\s*['"]?#([^'")\s]+)/g)) ids.push(m[1]);
+	};
+	// a clip, a mask, or a filter is the element's own
+	for (const texts of said(el, ['clip-path', 'mask', 'filter']).values()) refer(texts);
+	// a fill or a stroke comes from the nearest that says one
+	const open = new Set(['fill', 'stroke']);
+	for (let at: Element | null = el; at && open.size > 0; at = at.parentElement) {
+		for (const [name, texts] of said(at, [...open])) {
+			refer(texts);
+			open.delete(name);
+		}
 	}
+	// a run of text inside it can be painted with its own
+	for (const run of Array.from(el.querySelectorAll('*'))) for (const texts of said(run, ['fill', 'stroke']).values()) refer(texts);
 	const hrefOf = (e: Element): Element | null=>{
 		const ref = e.getAttribute('href') ?? e.getAttributeNS('http://www.w3.org/1999/xlink', 'href');
 		return ref?.startsWith('#') ? doc.getElementById(ref.slice(1)) : null;
@@ -426,8 +450,15 @@ export function drawnInItsSpace(el: Element): boolean {
 		if (tag === 'clippath') return used.getAttribute('clipPathUnits') !== 'objectBoundingBox';
 		if (tag === 'mask') return used.getAttribute('maskContentUnits') !== 'objectBoundingBox' || used.getAttribute('maskUnits') === 'userSpaceOnUse';
 		if (tag === 'filter') {
-			if (used.getAttribute('filterUnits') === 'userSpaceOnUse') return true;
-			return Array.from(used.querySelectorAll('*')).some(step=>!SHIFTLESS_FILTERS.test(step.tagName.toLowerCase()) || ['x', 'y'].some(a=>step.hasAttribute(a)));
+			// a filter takes its region's units and its steps from one it is a copy of, when it has none itself
+			let units: string | null = null;
+			let steps: Element[] = [];
+			for (let from: Element | null = used, hops = 0; from && hops < 8; hops++, from = hrefOf(from)) {
+				units ??= from.getAttribute('filterUnits');
+				if (steps.length === 0) steps = Array.from(from.querySelectorAll('*'));
+			}
+			if (units === 'userSpaceOnUse') return true;
+			return steps.some(step=>!SHIFTLESS_FILTERS.test(step.tagName.toLowerCase()) || ['x', 'y'].some(a=>step.hasAttribute(a)));
 		}
 		return true;
 	});
@@ -527,7 +558,8 @@ const MOVE_ATTRS: Record<string, {x: string[]; y: string[]}> = {
  *      the move taken into its transform, written in its simplest form,
  *      which with nothing there before is a `translate`.
  * Steps 2 and 3 are passed over for an element drawn with something laid out
- * in its user space, which its own numbers would leave behind.
+ * in its user space, which its own numbers would leave behind, and for one
+ * whose transform acts about an origin it sets, which can be its own box.
  * `box` is the element's own box, for the simplest form.
  */
 export function planMove(el: Element, dx: number, dy: number, box: Rect | null = null): EditPlan {
@@ -556,7 +588,14 @@ export function planMove(el: Element, dx: number, dy: number, box: Rect | null =
 		}
 		return {ok: true, attrs};
 	};
-	const own = first?.name !== 'translate' && first?.name !== 'matrix' && !drawnInItsSpace(el);
+	// a transform about an origin set on the element, as of its own box, would
+	// not stay put when its own numbers move that box
+	const ownOrigin = list.length > 0 && ['transform-origin', 'transform-box'].some(p=>el.hasAttribute(p) || cssSets(el, p));
+	const shape = tag === 'path' || tag === 'polygon' || tag === 'polyline';
+	// what it is drawn with is asked last, as that reads the style sheet
+	const own = first?.name !== 'translate' && first?.name !== 'matrix' && !ownOrigin
+		&& Boolean((spec && values && inverse) || (shape && (list.length === 0 || centred)))
+		&& !drawnInItsSpace(el);
 	if (own && spec && values && inverse) {
 		const attrs: Record<string, string | null> = {};
 		const local = centred ? {x: dx, y: dy} : applyToVector(inverse, dx, dy);
