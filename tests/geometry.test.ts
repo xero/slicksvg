@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   parseTransform, listMatrix, multiply, invert, applyToPoint, decimalsFor, fmt, shifted,
-  planMove, planResize, planScaleAbout, axisMaps, resizedBox, planRotate, planFlip, planMatrix, parentCenter,
+  planMove, planResize, planScaleAbout, axisMaps, resizedBox, planRotate, planFlip, planMatrix, parentCenter, drawnInItsSpace,
   simplestTransform, turnMatrix, type ResizeRequest, type Rect, type Matrix,
 } from '../src/geometry';
 
@@ -145,10 +145,40 @@ describe('planMove', () => {
       .toEqual({ ok: true, attrs: { transform: 'translate(-11.57 -23.11) rotate(13 105 104) scale(1.051 1.041)' } });
   });
 
-  it('should put a translate in front of a path or a transform that does not start with one', () => {
-    expect(planMove(el('<path d="M0 0 L5 5"/>'), 7, 8)).toEqual({ ok: true, attrs: { transform: 'translate(7 8)' } });
+  it('should move a path\'s or a polygon\'s own points when it has no transform', () => {
+    expect(planMove(el('<path d="M0 0 L5 5"/>'), 7, 8)).toEqual({ ok: true, attrs: { d: 'M7 8 L12 13' } });
+    expect(planMove(el('<polygon points="0,0 1,1 1,0"/>'), 7, 8)).toEqual({ ok: true, attrs: { points: '7,8 8,9 8,8' } });
+    expect(planMove(el('<polyline points="0.25 0 1 1"/>'), 0.5, 0)).toEqual({ ok: true, attrs: { points: '0.75 0 1.5 1' } });
+  });
+
+  it('should move a path turned about a point of its own together with that point', () => {
+    expect(planMove(el('<path d="M20 20 H80 V80 Z" transform="rotate(30 50 50)"/>'), 10, -5))
+      .toEqual({ ok: true, attrs: { d: 'M30 15 H90 V75 Z', transform: 'rotate(30 60 45)' } });
+  });
+
+  it('should take a move into a transform that is more than a turn, or one CSS gives the shape', () => {
     expect(planMove(el('<polygon points="0,0 1,1 1,0" transform="scale(2)"/>'), 7, 8))
       .toEqual({ ok: true, attrs: { transform: 'translate(7 8) scale(2)' } });
+    expect(planMove(el('<path d="M0 0 L5 5" style="d: path(\'M0 0 L9 9\')"/>'), 7, 8)).toEqual({ ok: true, attrs: { transform: 'translate(7 8)' } });
+  });
+
+  it('should take a move into a transform when what the element is drawn with lies in its user space', () => {
+    const defs = `<defs>
+      <linearGradient id="user" gradientUnits="userSpaceOnUse" x1="0" x2="100"/><linearGradient id="copy" href="#user"/>
+      <linearGradient id="box"/><clipPath id="clip"><rect width="5" height="5"/></clipPath>
+      <filter id="blur"><feGaussianBlur stdDeviation="2"/><feOffset dx="1" dy="1"/></filter><filter id="noise"><feTurbulence baseFrequency="0.1"/></filter>
+    </defs>`;
+    expect(planMove(el('<path d="M0 0 L5 5" fill="url(#user)"/>', defs), 7, 8)).toEqual({ ok: true, attrs: { transform: 'translate(7 8)' } });
+    expect(planMove(el('<rect x="0" y="0" width="5" height="5" fill="url(#user)"/>', defs), 7, 8)).toEqual({ ok: true, attrs: { transform: 'translate(7 8)' } });
+    expect(planMove(el('<path d="M0 0 L5 5" fill="url(#box)"/>', defs), 7, 8)).toEqual({ ok: true, attrs: { d: 'M7 8 L12 13' } });
+    expect(planMove(el('<path d="M0 0 L5 5" filter="url(#blur)"/>', defs), 7, 8)).toEqual({ ok: true, attrs: { d: 'M7 8 L12 13' } });
+    expect(planMove(el('<path d="M0 0 L5 5" filter="url(#noise)"/>', defs), 7, 8)).toEqual({ ok: true, attrs: { transform: 'translate(7 8)' } });
+    // a gradient's units come from the one it copies; a fill comes from a group, or a style sheet
+    for (const [markup, extra] of [
+      ['<path d="M0 0" fill="url(#copy)"/>', ''], ['<path d="M0 0" clip-path="url(#clip)"/>', ''],
+      ['<g fill="url(#user)"><path id="t" d="M0 0"/></g>', ''], ['<path class="c" d="M0 0"/>', '<style>.c { stroke: url(#user); }</style>'],
+    ]) expect(drawnInItsSpace(el(markup, defs + extra))).toBe(true);
+    expect(drawnInItsSpace(el('<g clip-path="url(#clip)"><path id="t" d="M0 0" fill="url(#box)"/></g>', defs))).toBe(false);
   });
 
   it('should move rotated and scaled rectangles in their own units', () => {
@@ -472,7 +502,7 @@ describe('simplestTransform', () => {
 
   it('should keep a scale below nothing along both axes, and a rotate written about 0 0', () => {
     expect(planMove(el('<path d="M0 0" transform="scale(-1)"/>'), 5, 0, box)).toEqual({ ok: true, attrs: { transform: 'translate(5 0) scale(-1)' } });
-    expect(planMove(el('<path d="M0 0" transform="rotate(30 0 0)"/>'), 5, 0, box)).toEqual({ ok: true, attrs: { transform: 'translate(5 0) rotate(30 0 0)' } });
+    expect(planMove(el('<g transform="rotate(30 0 0)"/>'), 5, 0, box)).toEqual({ ok: true, attrs: { transform: 'translate(5 0) rotate(30 0 0)' } });
   });
 
   it('should write a flip and a half turn as a flip the other way, whichever way the flip was', () => {

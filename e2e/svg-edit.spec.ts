@@ -365,6 +365,34 @@ test.describe('SVG Editor Preview Editing', () => {
     expect(await getSource(page)).toBe(stretched);
   });
 
+  test('should move a path\'s and a polygon\'s own points, unless their paint is laid out where they are', async ({ page }) => {
+    const shapes = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+  <defs><linearGradient id="sky" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="200" y2="0"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#00f"/></linearGradient></defs>
+  <path id="p" d="M20 20 L80 20 l0 60 H20 Z" fill="#6291e0"/>
+  <polygon id="g" points="120,20 180,20 150,80" fill="#aa0000"/>
+  <path id="lit" d="M20 120 H80 V180 H20 Z" fill="url(#sky)"/>
+</svg>`;
+    await setContent(page, shapes);
+    const path = page.locator('.svg-container #p');
+    await path.click();
+    await drag(page, path, 10, 5);
+    // only the numbers that place a point absolutely change; there is no transform
+    expect(await getSource(page)).toBe(shapes.replace('d="M20 20 L80 20 l0 60 H20 Z"', 'd="M30 25 L90 25 l0 60 H30 Z"'));
+
+    await page.locator('.svg-container #g').click();
+    await page.keyboard.press('ArrowLeft');
+    expect(await getSource(page)).toContain('points="119,20 179,20 149,80"');
+
+    // a gradient laid out in the drawing's units would stay behind, so the move goes in a transform
+    const lit = page.locator('.svg-container #lit');
+    await lit.click();
+    await drag(page, lit, 10, 0);
+    expect(await getSource(page)).toContain('<path id="lit" d="M20 120 H80 V180 H20 Z" fill="url(#sky)" transform="translate(10 0)"/>');
+
+    for (let i = 0; i < 3; i++) await page.locator('#undo').click();
+    expect(await getSource(page)).toBe(shapes);
+  });
+
   test('should keep a transform short however its handles, drags, and buttons are mixed', async ({ page }) => {
     await setContent(page, `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
   <path id="blob" d="M150 100 C150 128 128 150 100 150 C72 150 50 128 50 100 C50 72 72 50 100 50 C128 50 150 72 150 100 Z" fill="#6291e0"/>

@@ -13,6 +13,7 @@
 //
 // Every function reads the SOURCE element, from a strict parse of the text,
 // never the preview's copy, which carries highlights of its own.
+import {shiftPathData, shiftPolygonPoints} from './path-data';
 
 /** An affine matrix in SVG's order: x' = a·x + c·y + e, y' = b·x + d·y + f. */
 export interface Matrix {a: number; b: number; c: number; d: number; e: number; f: number}
@@ -352,27 +353,84 @@ function escapeRegExp(s: string): string {
 	return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/** The rules in the document's own <style> blocks: each selector, and the
+ * declarations it sets. */
+function styleRules(doc: Document): {selectors: string[]; body: string}[] {
+	const css = Array.from(doc.getElementsByTagName('style')).map(s=>s.textContent).join('\n');
+	if (!css.trim()) return [];
+	return Array.from(css.matchAll(/([^{}]+)\{([^}]*)\}/g), m=>({selectors: m[1].split(',').map(x=>x.trim()).filter(Boolean), body: m[2]}));
+}
+
+/** Whether a selector picks the element; one this engine cannot parse tells us nothing. */
+function picks(el: Element, selector: string): boolean {
+	try {
+		return el.matches(selector);
+	} catch {
+		return false;
+	}
+}
+
 /** CSS selectors in the document's own <style> blocks that set `property` on
  * any of `elements`: rules that will beat a presentation attribute. */
 export function cssRulesOverriding(doc: Document, elements: Element[], property: string): string[] {
-	const css = Array.from(doc.getElementsByTagName('style')).map(s=>s.textContent).join('\n');
-	if (!css.trim()) return [];
 	const hits: string[] = [];
-	for (const m of css.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
-		const selectorText = m[1].trim();
-		const body = m[2];
+	for (const {selectors, body} of styleRules(doc)) {
 		if (!new RegExp(`(^|[;\\s])${escapeRegExp(property)}\\s*:`).test(body)) continue;
-		for (const one of selectorText.split(',').map(x=>x.trim()).filter(Boolean)) {
-			let matches: boolean;
-			try {
-				matches = elements.some(el=>el.matches(one));
-			} catch {
-				continue; // a selector this engine cannot parse tells us nothing
-			}
-			if (matches && !hits.includes(one)) hits.push(one);
-		}
+		for (const one of selectors) if (elements.some(el=>picks(el, one)) && !hits.includes(one)) hits.push(one);
 	}
 	return hits;
+}
+
+/** Filter steps that draw the same wherever what they filter is, as long as
+ * none is given a place of its own. */
+const SHIFTLESS_FILTERS = /^fe(gaussianblur|offset|flood|composite|merge|mergenode|colormatrix|blend|morphology|componenttransfer|func[rgba]|dropshadow|displacementmap|convolvematrix)$/;
+
+/**
+ * Whether something the element is drawn with is laid out in its user
+ * space, so that moving the element's own numbers would leave it behind,
+ * where a transform takes it along: a gradient in user units, which a fill
+ * or stroke it inherits counts for too; a pattern; a clip or a mask whose
+ * contents are in user units; or a filter with a region or a step placed in
+ * them. A blur or a shadow draws the same wherever the element is.
+ */
+export function drawnInItsSpace(el: Element): boolean {
+	const doc = el.ownerDocument;
+	const rules = styleRules(doc);
+	const ids: string[] = [];
+	for (let at: Element | null = el; at; at = at.parentElement) {
+		const names = at === el ? ['fill', 'stroke', 'clip-path', 'mask', 'filter'] : ['fill', 'stroke'];
+		const bodies = [at.getAttribute('style') ?? '', ...rules.filter(r=>r.selectors.some(s=>picks(at, s))).map(r=>r.body)];
+		const said = [
+			...names.map(name=>at.getAttribute(name) ?? ''),
+			...bodies.flatMap(body=>body.split(';').map(d=>/^\s*([\w-]+)\s*:(.*)$/s.exec(d)).filter(m=>m !== null && names.includes(m[1].toLowerCase())).map(m=>m?.[2] ?? '')),
+		];
+		for (const text of said) for (const m of text.matchAll(/url\(\s*['"]?#([^'")\s]+)/g)) ids.push(m[1]);
+	}
+	const hrefOf = (e: Element): Element | null=>{
+		const ref = e.getAttribute('href') ?? e.getAttributeNS('http://www.w3.org/1999/xlink', 'href');
+		return ref?.startsWith('#') ? doc.getElementById(ref.slice(1)) : null;
+	};
+	return ids.some(id=>{
+		const used = doc.getElementById(id);
+		const tag = used?.tagName.toLowerCase();
+		if (!used || !tag) return false;
+		if (tag === 'lineargradient' || tag === 'radialgradient') {
+			// units are taken from a gradient it is a copy of, when it says none itself
+			let from: Element | null = used;
+			for (let hops = 0; from && hops < 8; hops++, from = hrefOf(from)) {
+				const units = from.getAttribute('gradientUnits');
+				if (units !== null) return units === 'userSpaceOnUse';
+			}
+			return false;
+		}
+		if (tag === 'clippath') return used.getAttribute('clipPathUnits') !== 'objectBoundingBox';
+		if (tag === 'mask') return used.getAttribute('maskContentUnits') !== 'objectBoundingBox' || used.getAttribute('maskUnits') === 'userSpaceOnUse';
+		if (tag === 'filter') {
+			if (used.getAttribute('filterUnits') === 'userSpaceOnUse') return true;
+			return Array.from(used.querySelectorAll('*')).some(step=>!SHIFTLESS_FILTERS.test(step.tagName.toLowerCase()) || ['x', 'y'].some(a=>step.hasAttribute(a)));
+		}
+		return true;
+	});
 }
 
 /** Does CSS, the element's own style or a rule in the document, set this property? */
@@ -463,9 +521,13 @@ const MOVE_ATTRS: Record<string, {x: string[]; y: string[]}> = {
  *      the move itself when its transform is one turn about a point, which
  *      moves along with it, or else by the move taken back into its own
  *      units through whatever turn or scale its transform applies;
- *   3. anything else (a path, a polygon, a group) has the move taken into
- *      its transform, written in its simplest form, which with nothing
- *      there before is a `translate`.
+ *   3. a path, polygon, or polyline with no transform, or one turn about a
+ *      point, has its points moved, and the point with them;
+ *   4. anything else (a group, or a shape with more to its transform) has
+ *      the move taken into its transform, written in its simplest form,
+ *      which with nothing there before is a `translate`.
+ * Steps 2 and 3 are passed over for an element drawn with something laid out
+ * in its user space, which its own numbers would leave behind.
  * `box` is the element's own box, for the simplest form.
  */
 export function planMove(el: Element, dx: number, dy: number, box: Rect | null = null): EditPlan {
@@ -485,20 +547,31 @@ export function planMove(el: Element, dx: number, dy: number, box: Rect | null =
 		? plainNumbers(el, [...spec.x, ...spec.y], {lists: tag === 'text'})
 		: null;
 	const inverse = invert(listMatrix(list));
-	if (spec && values && inverse && first?.name !== 'translate' && first?.name !== 'matrix') {
-		const attrs: Record<string, string | null> = {};
-		// a turn about a point of its own: the shape and the point move together, as far as the move
-		const centred = list.length === 1 && first?.name === 'rotate' && first.args.length === 3 ? first : null;
-		const local = centred ? {x: dx, y: dy} : applyToVector(inverse, dx, dy);
-		for (const [names, delta] of [[spec.x, local.x], [spec.y, local.y]] as const) {
-			if (roundTo(delta, 6) === 0) continue;
-			for (const name of names) attrs[name] = shiftedList(values[name], delta);
-		}
+	// a turn about a point of its own: the shape and the point move together, as far as the move
+	const centred = list.length === 1 && first?.name === 'rotate' && first.args.length === 3 ? first : null;
+	const withCentre = (attrs: Record<string, string | null>): EditPlan=>{
 		if (centred) {
 			const [angle, cx, cy] = centred.args;
 			attrs.transform = value.slice(0, centred.start) + `rotate(${joinArgs(value.slice(centred.start, centred.end), [String(angle), shifted(cx, dx), shifted(cy, dy)])})` + value.slice(centred.end);
 		}
 		return {ok: true, attrs};
+	};
+	const own = first?.name !== 'translate' && first?.name !== 'matrix' && !drawnInItsSpace(el);
+	if (own && spec && values && inverse) {
+		const attrs: Record<string, string | null> = {};
+		const local = centred ? {x: dx, y: dy} : applyToVector(inverse, dx, dy);
+		for (const [names, delta] of [[spec.x, local.x], [spec.y, local.y]] as const) {
+			if (roundTo(delta, 6) === 0) continue;
+			for (const name of names) attrs[name] = shiftedList(values[name], delta);
+		}
+		return withCentre(attrs);
+	}
+	if (own && (list.length === 0 || centred)) {
+		// CSS can say a path's shape, which its d would not be heard over
+		const d = tag === 'path' && !cssSets(el, 'd') ? el.getAttribute('d') : null;
+		const points = tag === 'polygon' || tag === 'polyline' ? el.getAttribute('points') : null;
+		const moved = d !== null ? shiftPathData(d, dx, dy) : points !== null ? shiftPolygonPoints(points, dx, dy) : null;
+		if (moved !== null) return withCentre(d !== null ? {d: moved} : {points: moved});
 	}
 
 	const moved = multiply({...IDENTITY, e: dx, f: dy}, listMatrix(list));

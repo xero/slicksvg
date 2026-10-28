@@ -5,7 +5,7 @@
 // relative stays relative, separators stay put, and a number is rewritten
 // only when its value moves. An `H` or `V` becomes an `L` only when the
 // point it reaches can no longer be said with one number.
-import {applyToPoint, fmt, placesOf, roundTo, type Matrix, type Point} from './geometry';
+import {applyToPoint, fmt, placesOf, roundTo, shifted, type Matrix, type Point} from './geometry';
 
 export interface NumberToken {
 	start: number;
@@ -1276,6 +1276,40 @@ export function transformPolygonPoints(value: string, indices: number[], m: Matr
 		splices.push({start: x.start, end: x.end, text: num(to.x, x, decimals)}, {start: y.start, end: y.end, text: num(to.y, y, decimals)});
 	}
 	return splice(value, splices);
+}
+
+/** A polygon's or polyline's points, all moved by (dx, dy), each number
+ * written as finely as it was or the move is. */
+export function shiftPolygonPoints(value: string, dx: number, dy: number): string | null {
+	const tokens = parsePoints(value);
+	if (!tokens) return null;
+	const splices = tokens.flatMap((t, i)=>((by)=>by === 0 ? [] : [{start: t.start, end: t.end, text: shifted(t.value, by)}])(i % 2 === 0 ? dx : dy));
+	return splice(value, splices);
+}
+
+/**
+ * A path moved by (dx, dy). Only the numbers that put a point at a place of
+ * its own change, each written as finely as it was or the move is: an
+ * absolute command's, and those of a relative m that begins the path, which
+ * is from nothing. A relative command says how far from the point before,
+ * which moves with it; of an arc's numbers only its end is a place. Null
+ * when the path does not parse.
+ */
+export function shiftPathData(d: string, dx: number, dy: number): string | null {
+	const segments = parsePathData(d);
+	if (!segments) return null;
+	const splices: Splice[] = [];
+	const shift = (t: NumberToken | undefined, by: number): void=>{
+		if (t && by !== 0) splices.push({start: t.start, end: t.end, text: shifted(t.value, by)});
+	};
+	segments.forEach((seg, i)=>{
+		if (isRelative(seg.letter) && !(i === 0 && seg.letter === 'm')) return;
+		const kind = lower(seg.letter);
+		// which of the segment's numbers are places, and along which axis
+		const places = kind === 'h' ? [[0, dx]] : kind === 'v' ? [[0, dy]] : kind === 'a' ? [[5, dx], [6, dy]] : seg.args.map((_, k)=>[k, k % 2 === 0 ? dx : dy]);
+		for (const [k, by] of places) shift(seg.args.at(k), by);
+	});
+	return splice(d, splices);
 }
 
 /** Add a point after point `index`, written the way the others are. */

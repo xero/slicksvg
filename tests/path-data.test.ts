@@ -3,7 +3,42 @@ import {
   parsePathData, walkPath, pathPoints, movePathPoint, insertPathPoint, removePathPoint, retractPathHandle, nearestPathSegment,
   smoothPathPoint, cornerPathPoint, anchorKind, curvePathSegment, straightenPathSegment, segmentCurved, handleMode, moveHandle, pointsAsPathData, pullHandles, bendPathSegment, symmetricPathPoint, movePathPoints, transformPathPoints,
   parsePoints, polygonPoints, movePolygonPoint, movePolygonPoints, transformPolygonPoints, insertPolygonPoint, removePolygonPoint, nearestPolygonEdge,
+  shiftPathData, shiftPolygonPoints,
 } from '../src/path-data';
+
+describe('shiftPathData', () => {
+  it('should move the absolute numbers and leave the relative ones, which move with the points before them', () => {
+    expect(shiftPathData('M10 10 L20 20 l5 5 H30 h5 V40 v5 Z', 3, -2)).toBe('M13 8 L23 18 l5 5 H33 h5 V38 v5 Z');
+    expect(shiftPathData('M0 0 C1 2 3 4 5 6 S7 8 9 10 Q11 12 13 14 T15 16', 1, 1)).toBe('M1 1 C2 3 4 5 6 7 S8 9 10 11 Q12 13 14 15 T16 17');
+  });
+
+  it('should move a relative m that begins the path, which is from nothing, and none after it', () => {
+    expect(shiftPathData('m10 10 20 0 0 20 z m5 5 l1 1', 2, 3)).toBe('m12 13 20 0 0 20 z m5 5 l1 1');
+    // an M's further pairs are lines to absolute points
+    expect(shiftPathData('M0 0 10 0 10 10', 1, 2)).toBe('M1 2 11 2 11 12');
+  });
+
+  it('should move only the end of an arc', () => {
+    expect(shiftPathData('M0 0 A5 5 30 0 1 10 0 a5 5 0 1 0 10 0', 1, 1)).toBe('M1 1 A5 5 30 0 1 11 1 a5 5 0 1 0 10 0');
+  });
+
+  it('should keep each number\'s digits and its separators, putting a space where two would run together', () => {
+    expect(shiftPathData('M121.31122970581055,-0.511744499206543L5-5', 5, 10)).toBe('M126.31122970581055,9.488255500793457L10 5');
+    expect(shiftPathData('M.5.5', 0.25, 0)).toBe('M0.75.5');
+  });
+
+  it('should refuse a path that does not parse', () => {
+    expect(shiftPathData('M0 0 L1', 1, 1)).toBeNull();
+  });
+});
+
+describe('shiftPolygonPoints', () => {
+  it('should move every pair, keeping the separators', () => {
+    expect(shiftPolygonPoints('0,0 10,0 10,10', 5, -5)).toBe('5,-5 15,-5 15,5');
+    expect(shiftPolygonPoints('0 0, 10 0', 1, 0)).toBe('1 0, 11 0');
+    expect(shiftPolygonPoints('0,0 1', 1, 1)).toBeNull();
+  });
+});
 
 const letters = (d: string) => parsePathData(d)!.map(s => s.letter + (s.letterAt === null ? '*' : ''));
 const values = (d: string) => parsePathData(d)!.map(s => s.args.map(a => a.value));
