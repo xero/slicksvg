@@ -5,6 +5,7 @@
 // says so instead. A paint is written where it shows: an element's own
 // style beats its attributes, so a property its style sets is set there.
 import {fmt} from './geometry';
+import {strokeWidthFor} from './draw';
 
 /** A paint as a swatch shows it: a colour, no paint at all, or something
  * else, such as a gradient, that a colour picker cannot show. */
@@ -34,7 +35,9 @@ export function paintFrom(computed: string): Paint {
 	const value = computed.trim();
 	if (value === 'none') return {kind: 'none'};
 	const hex = toHex(value);
-	return hex ? {kind: 'color', hex} : {kind: 'other'};
+	if (hex) return {kind: 'color', hex};
+	// an rgb() with no colour to it is transparent, which paints nothing
+	return /^rgba?\(/i.test(value) ? {kind: 'none'} : {kind: 'other'};
 }
 
 /** The declarations of an inline style, by name, in their order. */
@@ -73,7 +76,7 @@ export function setStyleProperty(style: string, name: string, value: string): st
  * across: from nothing to twenty times the width a new line is drawn with
  * there, or twice the width now when that is more, in steps a tenth of it. */
 export function widthRange(size: number, now: number): {min: number; max: number; step: number; decimals: number} {
-	const base = size > 0 && Number.isFinite(size) ? Number((size / 100).toPrecision(1)) : 1;
+	const base = Number(strokeWidthFor(size));
 	const step = Number((base / 10).toPrecision(1));
 	const decimals = Math.max(0, -Math.floor(Math.log10(step) + 1e-9));
 	const reach = Math.max(base * 20, Number.isFinite(now) ? now * 2 : 0);

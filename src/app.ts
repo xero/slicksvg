@@ -754,8 +754,9 @@ class slick {
 	private sketchGroup!: SVGGElement;
 	/** What new shapes are painted with; a width not picked yet goes by the drawing's size. */
 	private pen: {fill: string; stroke: string; width: string | null} = {fill: NEW_SHAPE_COLOR, stroke: 'none', width: null};
-	/** The picker or slider the last paint written came from, and when, which
-	 * a quick next one from it joins; null for a paint that joins nothing. */
+	/** The picker or slider the last paint written came from, with what it
+	 * painted, and when, which a quick next one from it on the same joins;
+	 * null for a paint that joins nothing. */
 	private lastPaint: {run: string | null; at: number} | null = null;
 	/** The places the width slider writes to, for the drawing it was set for. */
 	private widthDecimals = 1;
@@ -1925,7 +1926,8 @@ class slick {
 		this.get('topath').toggleAttribute('disabled', !els.some(el=>el.matches(shape) || el.querySelector(shape)));
 		this.refreshPointTools(editing !== null);
 		this.placeSketch();
-		this.refreshPaintTools();
+		// a drag moves or sizes, and leaves the paint as it was
+		if (!this.gesture?.drags.length) this.refreshPaintTools();
 	}
 
 	/** The mode's buttons and the drawing's tools for it: the selection's in
@@ -3776,7 +3778,7 @@ class slick {
 		const now = this.paintNow();
 		for (const prop of ['fill', 'stroke'] as const) {
 			const paint = now[prop];
-			const tool = this.get(prop);
+			const tool = this.get(`paint-${prop}`);
 			tool.classList.toggle('none', paint.kind === 'none');
 			tool.classList.toggle('other', paint.kind === 'other');
 			const picker = this.getTyped<HTMLInputElement>(`#${prop}-color`);
@@ -3788,7 +3790,7 @@ class slick {
 			picker.setAttribute('aria-label', `${name} colour, ${paint.kind === 'color' ? paint.hex : paint.kind === 'none' ? 'none' : 'a gradient or pattern'}`);
 			this.get(`no-${prop}`).setAttribute('aria-pressed', paint.kind === 'none' ? 'true' : 'false');
 		}
-		this.get('stroke-width').setAttribute('aria-label', `Stroke width, ${fmt(now.width, 3)}`);
+		this.get('paint-width').setAttribute('aria-label', `Stroke width, ${fmt(now.width, 3)}`);
 	}
 
 	/** No fill, or No stroke: pressed, the paint goes; pressed again, it comes
@@ -3839,7 +3841,7 @@ class slick {
 		const has = els.length > 1 ? 'have' : 'has';
 		const did = prop === 'stroke-width' ? `stroke width ${value}` : value === 'none' ? `${has} no ${prop}` : `${prop === 'fill' ? 'filled' : 'stroked'} ${value}`;
 		// a width shows only on a stroke
-		const unseen = prop === 'stroke-width' && this.selectedElements().every(el=>getComputedStyle(el).getPropertyValue('stroke') === 'none');
+		const unseen = prop === 'stroke-width' && this.selectedElements().every(el=>[el, ...el.querySelectorAll(PAINTED)].every(e=>getComputedStyle(e).getPropertyValue('stroke') === 'none'));
 		this.announceAction(unseen ? `${what} ${did}, with no stroke to show it: pick a Stroke colour` : `${what} ${did}`);
 	}
 
@@ -3860,9 +3862,12 @@ class slick {
 			plans.push({tag: found.tag, attrs});
 		}
 		if (plans.length === 0) return false;
+		// a picker left open, as Safari's colour panel is, and moved again once
+		// something else is selected, begins a step of its own
+		const key = run === null ? null : `${run}:${this.selected.join(',')}`;
 		const last = this.lastPaint;
-		const joins = run !== null && last?.run === run && Date.now() - last.at < PAINT_JOIN;
-		this.lastPaint = {run, at: Date.now()};
+		const joins = key !== null && last?.run === key && Date.now() - last.at < PAINT_JOIN;
+		this.lastPaint = {run: key, at: Date.now()};
 		return this.commitChanges(parsed.sourceText, plans, undefined, joins ? false : 'before');
 	}
 
@@ -4128,6 +4133,8 @@ class slick {
 	private loadSVGContent(content: string): void {
 		try {
 			this.resetViewState();
+			// a width suits one drawing's scale, where a colour suits any
+			this.pen.width = null;
 			replaceEditorContent(this.editor, content, true);
 		} catch (error) {
 			console.error('Failed to load SVG content:', error);

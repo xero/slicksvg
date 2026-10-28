@@ -58,7 +58,7 @@ test.describe('SVG Editor paint tools', () => {
 
   test('should lay the browser\'s own colour picker over Fill and Stroke, for a press to open', async ({ page }) => {
     for (const id of ['fill', 'stroke']) {
-      const tool = (await page.locator(`#${id}`).boundingBox())!;
+      const tool = (await page.locator(`#paint-${id}`).boundingBox())!;
       const picker = (await page.locator(`#${id}-color`).boundingBox())!;
       expect(picker).toEqual(tool);
       const hit = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.id, [tool.x + tool.width / 2, tool.y + tool.height / 2]);
@@ -72,7 +72,7 @@ test.describe('SVG Editor paint tools', () => {
     for (const mode of ['mode-select', 'points', 'mode-shapes']) {
       await page.locator(`#${mode}`).click();
       await expect(page.locator('#paint-tools')).toBeVisible();
-      const width = (await page.locator('#stroke-width').boundingBox())!;
+      const width = (await page.locator('#paint-width').boundingBox())!;
       expect(Math.abs(width.x + width.width - (strip.x + strip.width))).toBeLessThan(2);
     }
     await page.locator('#draw-polyline').click();
@@ -85,20 +85,45 @@ test.describe('SVG Editor paint tools', () => {
 
   test('should show the selection\'s paint on the swatches, and the colours new shapes get with nothing selected', async ({ page }) => {
     await expect(page.locator('#fill-color')).toHaveValue('#999999');
-    await expect(page.locator('#stroke')).toHaveClass(/none/);
+    await expect(page.locator('#paint-stroke')).toHaveClass(/none/);
     await expect(page.locator('#no-stroke')).toHaveAttribute('aria-pressed', 'true');
     await page.locator('.svg-container #dot').click();
     // painted green by the style sheet, which is what shows
     await expect(page.locator('#fill-color')).toHaveValue('#00aa00');
     await expect(page.locator('#fill-color')).toHaveAttribute('aria-label', 'Fill colour, #00aa00');
-    await expect(page.locator('#fill')).toHaveCSS('--swatch', '#00aa00');
+    await expect(page.locator('#paint-fill')).toHaveCSS('--swatch', '#00aa00');
     await expect(page.locator('#no-fill')).toHaveAttribute('aria-pressed', 'false');
     await page.locator('.svg-container #shaded').click();
-    await expect(page.locator('#fill')).toHaveClass(/other/);
+    await expect(page.locator('#paint-fill')).toHaveClass(/other/);
     await expect(page.locator('#fill-color')).toHaveAttribute('aria-label', 'Fill colour, a gradient or pattern');
   });
 
-  test('should fill the selection with the colour picked, as one step however long the picker is moved', async ({ page }) => {
+  test('should begin a step of its own when a picker left open moves again with something else selected', async ({ page }) => {
+    await page.locator('.svg-container #box').click();
+    await move(page, 'fill-color', ['#110000', '#ff00ff']);
+    await page.locator('.svg-container #dot').click();
+    await move(page, 'fill-color', ['#002200', '#00ffff']);
+    expect(await code(page)).toContain('style="fill: #00ffff"');
+    await page.locator('#undo').click();
+    const undone = await code(page);
+    expect(undone).toContain('<circle id="dot" class="green" cx="150" cy="50" r="30"/>');
+    expect(undone).toContain('fill="#ff00ff"');
+  });
+
+  test('should go back to the drawing\'s own width for new strokes once another file is opened', async ({ page }) => {
+    await page.locator('#paint-width').click();
+    await page.locator('#width-value').fill('3');
+    await page.locator('#width-value').press('Enter');
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => (window as any).svgEditor.loadSVGContent('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 1000 1000"></svg>'));
+    await page.locator('#mode-shapes').click();
+    await page.locator('#draw-line').click();
+    await drag(page, [100, 500], [600, 500]);
+    // a hundredth of a drawing 1000 across
+    expect(await code(page)).toContain('stroke-width="10"');
+  });
+
+  test('should fill the selection with the colour picked, as one step while the picker keeps moving', async ({ page }) => {
     await page.locator('.svg-container #box').click();
     await move(page, 'fill-color', ['#110000', '#220000', '#ff00ff']);
     expect(await code(page)).toContain('<rect id="box" x="10" y="10" width="50" height="50" fill="#ff00ff"/>');
@@ -136,7 +161,7 @@ test.describe('SVG Editor paint tools', () => {
     await page.locator('#no-stroke').click();
     expect(await code(page)).toContain('stroke="none"');
     await expect(page.locator('#message')).toHaveText('rect has no stroke');
-    await expect(page.locator('#stroke')).toHaveClass(/none/);
+    await expect(page.locator('#paint-stroke')).toHaveClass(/none/);
     await page.locator('#no-stroke').click();
     expect(await code(page)).toContain('stroke="#00ff00"');
     await page.locator('#no-fill').click();
@@ -147,10 +172,10 @@ test.describe('SVG Editor paint tools', () => {
   test('should open Width over the strip, its slider set for the drawing, and write the width slid to or typed', async ({ page }) => {
     await page.locator('.svg-container #box').click();
     await page.locator('#stroke-color').fill('#000000');
-    await page.locator('#stroke-width').click();
+    await page.locator('#paint-width').click();
     const pop = page.locator('#width-pop');
     await expect(pop).toBeVisible();
-    await expect(page.locator('#stroke-width')).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.locator('#paint-width')).toHaveAttribute('aria-expanded', 'true');
     const shown = (await pop.boundingBox())!;
     expect(shown.y + shown.height).toBeLessThanOrEqual((await page.locator('#context-bar').boundingBox())!.y);
     // a drawing 200 across: a new line is 2 wide, and the slider runs to twenty times that
@@ -165,11 +190,11 @@ test.describe('SVG Editor paint tools', () => {
     await page.locator('#width-value').fill('7.25');
     await page.locator('#width-value').press('Enter');
     expect(await code(page)).toContain('stroke-width="7.25"');
-    await expect(page.locator('#stroke-width')).toHaveAttribute('aria-label', 'Stroke width, 7.25');
+    await expect(page.locator('#paint-width')).toHaveAttribute('aria-label', 'Stroke width, 7.25');
     // the slide was one step, and the typed width another
     await page.locator('#width-value').press('Escape');
     await expect(pop).toBeHidden();
-    await expect(page.locator('#stroke-width')).toBeFocused();
+    await expect(page.locator('#paint-width')).toBeFocused();
     await page.locator('#undo').click();
     await page.locator('#undo').click();
     expect(await code(page)).toContain('stroke="#000000"/>');
@@ -177,7 +202,7 @@ test.describe('SVG Editor paint tools', () => {
 
   test('should say a width cannot show on what has no stroke', async ({ page }) => {
     await page.locator('.svg-container #box').click();
-    await page.locator('#stroke-width').click();
+    await page.locator('#paint-width').click();
     await page.locator('#width-value').fill('3');
     await page.locator('#width-value').press('Enter');
     expect(await code(page)).toContain('stroke-width="3"');
@@ -188,7 +213,7 @@ test.describe('SVG Editor paint tools', () => {
     await page.locator('#fill-color').fill('#ff0000');
     await expect(page.locator('#message')).toHaveText('New shapes are filled #ff0000');
     await page.locator('#stroke-color').fill('#0000ff');
-    await page.locator('#stroke-width').click();
+    await page.locator('#paint-width').click();
     await page.locator('#width-value').fill('3');
     await page.locator('#width-value').press('Enter');
     await expect(page.locator('#message')).toHaveText('New strokes are 3 wide');

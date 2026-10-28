@@ -20,6 +20,7 @@ describe('Reading a paint', () => {
   it('should say a paint is a colour, none, or something else, such as a gradient', () => {
     expect(paintFrom('rgb(0, 0, 0)')).toEqual({ kind: 'color', hex: '#000000' });
     expect(paintFrom('none')).toEqual({ kind: 'none' });
+    expect(paintFrom('rgba(0, 0, 0, 0)')).toEqual({ kind: 'none' });
     expect(paintFrom('url("#grad") none')).toEqual({ kind: 'other' });
     expect(paintFrom('context-stroke')).toEqual({ kind: 'other' });
   });

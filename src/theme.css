@@ -331,7 +331,7 @@
       stroke-width: 2;
       stroke-linecap: round;
     }
-    &#stroke .chip {
+    &#paint-stroke .chip {
       @apply fill-none;
       stroke: var(--swatch, transparent);
       stroke-width: 3.5;
@@ -342,10 +342,10 @@
     &.none .chip, &.other .chip {
       @apply fill-none;
     }
-    &#stroke.none .chip {
+    &#paint-stroke.none .chip {
       stroke: none;
     }
-    &.other .chip, &#stroke.other .chip {
+    &.other .chip, &#paint-stroke.other .chip {
       @apply stroke-nav-txt;
       stroke-width: 1.5;
       stroke-dasharray: 2 2;
