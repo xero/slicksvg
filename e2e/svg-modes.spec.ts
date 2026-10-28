@@ -171,9 +171,13 @@ test.describe('SVG Editor menus', () => {
     await trigger.click();
     await expect(menu).toBeVisible();
     await expect(trigger).toHaveAttribute('aria-expanded', 'true');
-    const [t, m] = [(await trigger.boundingBox())!, (await menu.boundingBox())!];
-    expect(Math.abs(m.y - (t.y + t.height))).toBeLessThan(1);
-    expect(Math.abs(m.x - t.x)).toBeLessThan(1);
+    // hung from just under the edge drawn below the bar, its outline in line with the button
+    const [t, m, bar] = [(await trigger.boundingBox())!, (await menu.boundingBox())!, (await page.locator('#appbar').boundingBox())!];
+    expect(Math.abs(m.y - (bar.y + bar.height + 2))).toBeLessThan(0.5);
+    expect(Math.abs(m.x - (t.x - 1))).toBeLessThan(0.5);
+    // File's icon is as wide as View's
+    const inks = await page.evaluate(() => ['file-menu', 'view-menu'].map((id) => document.querySelector<SVGGraphicsElement>(`#${id} svg`)!.getBBox().width));
+    expect(inks[0]).toBeCloseTo(inks[1], 0);
     await page.locator('#dark').click();
     await expect(menu).toBeHidden();
     await expect(trigger).toHaveAttribute('aria-expanded', 'false');
@@ -295,17 +299,18 @@ test.describe('SVG Editor app bar on a portrait tablet', () => {
     await expect(bar).not.toHaveClass(/compact/);
     await expect(bar).not.toHaveClass(/more-end/);
     const box = async (s: string) => (await page.locator(s).boundingBox())!;
-    const [nav, file, view, history, zoom] = [await box('#appbar nav'), await box('#file-menu'), await box('#view-menu'), await box('#history'), await box('#zoom')];
+    const [nav, file, view, tools, modes, zoom] = [await box('#appbar nav'), await box('#file-menu'), await box('#view-menu'), await box('#tools'), await box('#modes'), await box('#zoom')];
     expect(file.x - nav.x).toBeLessThan(20);
     expect(nav.x + nav.width - (zoom.x + zoom.width)).toBeLessThan(20);
-    // the gap is in the middle, between the menus and the tools
-    expect(history.x - (view.x + view.width)).toBeGreaterThan(100);
+    // Clean and X-ray follow the menus, and the gap is between them and the modes
+    expect(Math.abs(tools.x - (view.x + view.width))).toBeLessThan(0.5);
+    expect(modes.x - (tools.x + tools.width)).toBeGreaterThan(100);
   });
 
   test('should set each group of the app bar apart by one edge, with none of a gap, and close the last off', async ({ page }) => {
     await page.goto('/index.html');
     await expect(page.locator('.svg-container svg')).toBeVisible();
-    const edges = await page.evaluate(() => ['history', 'modes', 'tools', 'zoom'].map((id) => {
+    const edges = await page.evaluate(() => ['modes', 'history', 'zoom'].map((id) => {
       const el = document.getElementById(id)!;
       const css = getComputedStyle(el);
       const r = el.getBoundingClientRect();
@@ -317,6 +322,9 @@ test.describe('SVG Editor app bar on a portrait tablet', () => {
     }
     expect(edges.every((e) => e.before === '1px')).toBe(true);
     expect(edges.at(-1)!.after).toBe('1px');
+    // the menus are set off from Clean and X-ray, which are closed off before the gap
+    await expect(page.locator('#tools')).toHaveCSS('border-left-width', '1px');
+    await expect(page.locator('#tools')).toHaveCSS('border-right-width', '1px');
   });
 
   test('should close up the gap when the bar is too narrow for it', async ({ page }) => {
@@ -324,7 +332,7 @@ test.describe('SVG Editor app bar on a portrait tablet', () => {
     await page.goto('/index.html');
     await expect(page.locator('.svg-container svg')).toBeVisible();
     await expect(page.locator('#appbar nav')).toHaveClass(/compact/);
-    const [view, history] = [(await page.locator('#view-menu').boundingBox())!, (await page.locator('#history').boundingBox())!];
-    expect(history.x - (view.x + view.width)).toBeLessThanOrEqual(8);
+    const [tools, modes] = [(await page.locator('#tools').boundingBox())!, (await page.locator('#modes').boundingBox())!];
+    expect(modes.x - (tools.x + tools.width)).toBeLessThanOrEqual(8);
   });
 });

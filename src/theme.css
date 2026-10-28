@@ -295,9 +295,13 @@
   #context-bar nav {
     @apply pr-0 border-r border-divider;
   }
-  /* the app's menus at the start of its bar, and its tools at the end; a bar
-     too narrow for both closes the gap, and scrolls */
-  #appbar nav > #history {
+  /* the app's menus, and Clean and X-ray, at the start of its bar, closed off
+     on both sides; the modes, Undo and Redo, and the zoom at the end. A bar too narrow for both
+     closes the gap, and scrolls */
+  #appbar nav > #tools {
+    @apply border-r;
+  }
+  #appbar nav > #modes {
     @apply ml-auto;
   }
   /* buttons that belong together: one edge before them, and the last group

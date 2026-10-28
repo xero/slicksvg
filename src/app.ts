@@ -38,6 +38,8 @@ const HOLD_SLOP = 10;
 // this far above the top edge
 const HANDLE_SIZE = window.matchMedia('(pointer: coarse)').matches ? 14 : 8;
 const ROTATE_OFFSET = 24;
+/** How far below the app bar a menu hangs: under the edge drawn round the bar, not over it. */
+const MENU_DROP = 2;
 /** The room, in pixels, the preview's message needs beside its tools before it moves above them. */
 const STATUS_ROOM = 160;
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -1200,9 +1202,11 @@ class slick {
 		this.closeMenu();
 		menu.showPopover();
 		const r = trigger.getBoundingClientRect();
-		// under its button, kept on the screen
-		menu.style.top = `${r.bottom}px`;
-		menu.style.left = `${Math.max(0, Math.min(r.left, window.innerWidth - menu.offsetWidth))}px`;
+		// under its button, hung from the edge below the bar rather than over
+		// it, its outline in line with the button's side, and kept on the screen
+		const bar = trigger.closest('#appbar')?.getBoundingClientRect().bottom ?? r.bottom;
+		menu.style.top = `${bar + MENU_DROP}px`;
+		menu.style.left = `${Math.max(0, Math.min(r.left - 1, window.innerWidth - menu.offsetWidth))}px`;
 		trigger.setAttribute('aria-expanded', 'true');
 		this.openMenu = {menu, trigger};
 		if (focusFirst) menu.querySelector<HTMLElement>('button')?.focus();
