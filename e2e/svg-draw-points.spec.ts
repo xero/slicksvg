@@ -109,7 +109,8 @@ test.describe('SVG Editor drawing a point at a time', () => {
     // nothing is written until the shape is finished, but it shows as it will be
     expect(await getSource(page)).toBe(FIXTURE);
     await expect(standIn(page, 'polyline')).toHaveAttribute('points', '100,20 140,60 180,20');
-    await expect(page.locator('#svg-status-bar')).toHaveText('polyline points="100,20 140,60 180,20"');
+    // between presses, the strip says how to finish
+    await expect(page.locator('#preview-status')).toHaveText('Tap the last point again, or press Done, to finish the polyline');
     await expect(page.locator('.sketch rect')).toHaveCount(3);
     await clicks(page, [180, 20]);
     const markup = `<polyline points="100,20 140,60 180,20" ${STROKE}/>`;
@@ -186,7 +187,6 @@ test.describe('SVG Editor drawing a point at a time', () => {
     await tool.click();
     await clicks(page, [100, 20], [180, 20], [140, 80], [120, 100]);
     await expect(page.locator('#sketch-tools')).toBeVisible();
-    await expect(page.locator('#dark')).toBeHidden();
     // the shape's own tool stays, the others make room
     await expect(page.locator('#draw-rect')).toBeHidden();
     await expect(tool).toBeVisible();
@@ -201,7 +201,6 @@ test.describe('SVG Editor drawing a point at a time', () => {
     await page.keyboard.press('Escape');
     await expect(standIn(page, 'polygon')).toHaveCount(0);
     await expect(page.locator('#sketch-tools')).toBeHidden();
-    await expect(page.locator('#dark')).toBeVisible();
     await expect(page.locator('#draw-rect')).toBeVisible();
     await expect(tool).toHaveAttribute('aria-pressed', 'true');
     await page.keyboard.press('Escape');

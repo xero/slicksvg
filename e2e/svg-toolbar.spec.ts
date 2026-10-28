@@ -36,7 +36,7 @@ async function colours(page: Page, id: string) {
   return page.evaluate((id) => {
     const b = document.getElementById(id)!;
     const css = getComputedStyle(b);
-    return { bg: css.backgroundColor, text: getComputedStyle(b.querySelector('span')!).color, bar: getComputedStyle(b.closest('nav')!).backgroundColor };
+    return { bg: css.backgroundColor, text: getComputedStyle(b.querySelector('span')!).color, bar: getComputedStyle(b.closest('#appbar, .strip')!).backgroundColor };
   }, id);
 }
 
@@ -50,8 +50,8 @@ test.describe('SVG Editor toolbar buttons', () => {
   });
 
   test('should name every button under its icon, a fingertip or more in size, filling its bar from top to bottom', async ({ page }) => {
-    await expect(page.locator('#editor nav')).not.toHaveClass(/compact/);
-    await expect(page.locator('#preview nav')).not.toHaveClass(/compact/);
+    await expect(page.locator('#appbar nav')).not.toHaveClass(/compact/);
+    await expect(page.locator('#context-bar nav')).not.toHaveClass(/compact/);
     const all = await buttons(page);
     expect(all.length).toBeGreaterThan(20);
     for (const b of all) {
@@ -133,8 +133,8 @@ test.describe('SVG Editor dialog buttons', () => {
 });
 
 test.describe('SVG Editor toolbars too narrow for their names', () => {
-  // side by side, each pane is too narrow for all its buttons' names
-  test.use({ viewport: { width: 1100, height: 800 } });
+  // too narrow for the names of all the app's buttons
+  test.use({ viewport: { width: 800, height: 800 } });
 
   test.beforeEach(async ({ page }) => {
     await page.goto('/index.html');
@@ -142,17 +142,27 @@ test.describe('SVG Editor toolbars too narrow for their names', () => {
   });
 
   test('should show the icons alone, still a fingertip wide and still named, and the names again when there is room', async ({ page }) => {
-    await expect(page.locator('#editor nav')).toHaveClass(/compact/);
+    await expect(page.locator('#appbar nav')).toHaveClass(/compact/);
     const optimize = (await buttons(page)).find((b) => b.id === 'optimize')!;
     expect(optimize.spanWidth).toBeLessThanOrEqual(1);
     expect(optimize.width).toBeGreaterThanOrEqual(44);
     await expect(page.getByRole('button', { name: 'Clean', exact: true })).toBeVisible();
     await page.setViewportSize({ width: 2000, height: 800 });
-    await expect(page.locator('#editor nav')).not.toHaveClass(/compact/);
+    await expect(page.locator('#appbar nav')).not.toHaveClass(/compact/);
+  });
+});
+
+test.describe('SVG Editor drawing tools too narrow for their names', () => {
+  // side by side, the preview is too narrow for the names of all the shape tools
+  test.use({ viewport: { width: 700, height: 800 } });
+
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/index.html');
+    await expect(page.locator('.svg-container svg')).toBeVisible();
   });
 
   test('should name the buttons again when the ones that crowded the bar make way', async ({ page }) => {
-    const bar = page.locator('#preview nav');
+    const bar = page.locator('#context-bar nav');
     await expect(bar).toHaveClass(/compact/);
     // a shape under way leaves its own tool, take-back, Done, and the zoom
     await page.locator('#draw-polygon').click();

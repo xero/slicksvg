@@ -59,7 +59,7 @@ test.describe('zooming the preview', () => {
     // the page itself did not zoom or scroll
     expect(await page.evaluate(() => [window.visualViewport?.scale ?? 1, window.scrollX, window.scrollY])).toEqual([1, 0, 0]);
 
-    await expect(page.locator('#svg-status-bar')).toHaveText(/^Zoom \d+%$/);
+    await expect(page.locator('#preview-status')).toHaveText(/^Zoom(ed to)? \d+%$/);
     await expect(page.locator('#test-announcements')).toHaveText(/^Zoomed to \d+%$/);
   });
 
@@ -131,7 +131,7 @@ test.describe('pinching the preview', () => {
     const spot = { x: (mx - cx - before.panX) / before.zoom, y: (my - cy - before.panY) / before.zoom };
     near(v.panX + v.zoom * spot.x + cx, mx);
     near(v.panY + v.zoom * spot.y + cy, my + 30);
-    await expect(page.locator('#svg-status-bar')).toHaveText('Zoom 300%');
+    await expect(page.locator('#preview-status')).toHaveText(/^Zoom(ed to)? 300%$/);
 
     // lift the left finger; the right one drags on and pans
     await touch.up([{ x: mx - 60, y: my + 30, id: 0 }]);
@@ -160,7 +160,7 @@ test.describe('pinching the preview', () => {
 
     await touch.down([{ x: px, y: py }]);
     await touch.move([{ x: px + 30, y: py }]);
-    await expect(page.locator('#svg-status-bar')).toHaveText(/^circle cx=/);
+    await expect(page.locator('#preview-status')).toHaveText(/^circle cx=/);
     const second = { x: cx + 100, y: cy };
     await touch.down([{ x: px + 30, y: py }, second]);
     const spread = Math.hypot(second.x - (px + 30), second.y - py);

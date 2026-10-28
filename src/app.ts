@@ -38,6 +38,8 @@ const HOLD_SLOP = 10;
 // this far above the top edge
 const HANDLE_SIZE = window.matchMedia('(pointer: coarse)').matches ? 14 : 8;
 const ROTATE_OFFSET = 24;
+/** The room, in pixels, the preview's message needs beside its tools before it moves above them. */
+const STATUS_ROOM = 240;
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 /** Safari's pinch event, which the DOM typings leave out. */
@@ -668,6 +670,12 @@ class slick {
 	/** The shape under way, drawn a point at a time. */
 	private sketch: Sketch | null = null;
 	private sketchGroup!: SVGGElement;
+	/** What the preview's strip says, and until when a message keeps the standing hint away. */
+	private previewStatus!: HTMLElement;
+	private heldUntil = 0;
+	private hintTimer: ReturnType<typeof setTimeout> | undefined;
+	/** Whether the pencil is down on the drawing, while which a touch on a bar is a resting hand. */
+	private stylusDown = false;
 	/** Set when the last press drew a shape, so a double-click it began does not edit points. */
 	private drewOnPress = false;
 	private pointsGroup!: SVGGElement;
@@ -693,6 +701,7 @@ class slick {
 	constructor() {
 		this.modal = this.getTyped('dialog');
 		this.statusBar = this.get('svg-status-bar');
+		this.previewStatus = this.get('preview-status');
 		statusBarUpdateCallback = this.updateStatusBar.bind(this);
 		this.initializeEditor();
 		this.initializePreview();
@@ -875,10 +884,54 @@ class slick {
 
 	private announceAction(message: string): void {
 		announce(message, 'action');
+		this.sayInPreview(message);
 	}
 
 	public announceError(message: string): void {
 		announce(message, 'error');
+		this.sayInPreview(message, 'error');
+	}
+
+	/** Say in the preview's strip, where the eye is while drawing, what just
+	 * happened or went wrong, for a while; then the standing hint comes back.
+	 * Screen readers have heard it already, from the live regions. */
+	private sayInPreview(message: string, kind: 'note' | 'error' = 'note'): void {
+		const ms = kind === 'error' ? 6000 : 2500;
+		this.previewStatus.textContent = message;
+		this.previewStatus.classList.toggle('error', kind === 'error');
+		this.heldUntil = Date.now() + ms;
+		clearTimeout(this.hintTimer);
+		this.hintTimer = setTimeout(()=>this.restoreHint(), ms);
+	}
+
+	/** Read out an edit in the preview's strip as a drag makes it, until the drag ends. */
+	private readOut(message: string): void {
+		this.previewStatus.textContent = message;
+		this.previewStatus.classList.remove('error');
+		this.heldUntil = Infinity;
+		clearTimeout(this.hintTimer);
+	}
+
+	/** Put back what the preview's strip says between messages: how to use the
+	 * tool in hand, or the points being edited, or nothing. A message still
+	 * being shown is left be, unless `force` says the moment for it is over. */
+	private restoreHint(force = false): void {
+		if (!force && Date.now() < this.heldUntil) return;
+		this.heldUntil = 0;
+		clearTimeout(this.hintTimer);
+		this.previewStatus.textContent = this.standingHint();
+		this.previewStatus.classList.remove('error');
+	}
+
+	/** What the preview's strip says while nothing else is to be said. */
+	private standingHint(): string {
+		const s = this.sketch;
+		if (s?.kind === 'polygon') return s.anchors.length < 3 ? 'Tap to place each corner' : 'Tap the first corner to close the polygon, or press Done';
+		if (s?.kind === 'polyline') return 'Tap the last point again, or press Done, to finish the polyline';
+		if (s?.kind === 'path') return 'Tap the first point to close the path, or the last to end it open; drag to pull a curve';
+		if (this.drawTool) return toolHint(this.drawTool);
+		if (this.pointMode) return 'Drag a point; tap the outline to pick a segment, or double-click it to add a point';
+		return '';
 	}
 
 	public updateStatusBar(message: string, isError: boolean = false): void {
@@ -994,16 +1047,58 @@ class slick {
 		this.previewContainer.addEventListener('gestureend', (e)=>this.onGestureEnd(e), {passive: false});
 		this.setupResizeDragbar();
 		for (const nav of document.querySelectorAll('nav')) this.fitBar(nav);
+		this.guardBarsFromPalm();
+		// the preview's message sits beside its tools while there is room there,
+		// and above the strip, across the foot of the drawing, while there is not
+		const strip = this.get('context-bar');
+		const tools = strip.querySelector('nav');
+		const placeStatus = (): void=>{
+			this.previewStatus.classList.toggle('above', strip.clientWidth - (tools?.offsetWidth ?? 0) < STATUS_ROOM);
+		};
+		const sizes = new ResizeObserver(placeStatus);
+		sizes.observe(strip);
+		if (tools) sizes.observe(tools);
+	}
+
+	/** A hand drawing with a pencil rests on the screen, and iPadOS lets the
+	 * drawing ignore it but not a toolbar under it. While the pencil is down
+	 * on the drawing, a finger's touch on a bar is taken for that hand and
+	 * goes no further, so it presses nothing. */
+	private guardBarsFromPalm(): void {
+		const stylus = (t: Touch): boolean=>(t as Touch & {touchType?: string}).touchType === 'stylus';
+		const track = (e: TouchEvent): void=>{
+			this.stylusDown = Array.from(e.touches).some(t=>stylus(t) && t.target instanceof Node && this.previewContainer.contains(t.target) && !this.inBar(t.target));
+		};
+		for (const type of ['touchstart', 'touchend', 'touchcancel'] as const) document.addEventListener(type, track, {capture: true, passive: true});
+		for (const bar of [this.get('appbar'), this.get('context-bar')]) {
+			bar.addEventListener('touchstart', (e)=>{
+				if (!this.stylusDown || Array.from(e.changedTouches).some(stylus)) return;
+				e.preventDefault();
+				e.stopPropagation();
+			}, {capture: true, passive: false});
+		}
+	}
+
+	/** Whether a node is in one of the toolbars. */
+	private inBar(node: Node): boolean {
+		return node instanceof Element && node.closest('#appbar, .strip') !== null;
 	}
 
 	/** Keep a toolbar's buttons named while their names fit, and fall back to
 	 * their icons alone when the bar is too narrow for them: when the bar is
 	 * resized, and when buttons in it come and go. */
 	private fitBar(nav: HTMLElement): void {
+		// an edge with buttons scrolled past it fades, to say there are more that way
+		const edges = (): void=>{
+			nav.classList.toggle('more-start', nav.scrollLeft > 1);
+			nav.classList.toggle('more-end', nav.scrollLeft + nav.clientWidth < nav.scrollWidth - 1);
+		};
 		const fit = (): void=>{
 			nav.classList.remove('compact');
 			if (nav.scrollWidth > nav.clientWidth) nav.classList.add('compact');
+			edges();
 		};
+		nav.addEventListener('scroll', edges, {passive: true});
 		new ResizeObserver(fit).observe(nav);
 		// the bar's own class is what fitting changes, so only its buttons' changes count
 		new MutationObserver((records)=>{
@@ -1185,7 +1280,7 @@ class slick {
 	 * settled: a pinch changes it dozens of times a second. */
 	private showZoom(): void {
 		const pct = `${Math.round(this.zoomLevel * 100)}%`;
-		this.updateStatusBar(`Zoom ${pct}`, false);
+		this.sayInPreview(`Zoom ${pct}`);
 		clearTimeout(this.zoomTimer);
 		this.zoomTimer = setTimeout(()=>this.announceAction(`Zoomed to ${pct}`), ZOOM_SETTLE);
 	}
@@ -1551,7 +1646,7 @@ class slick {
 	private refreshPointTools(editing: boolean): void {
 		this.get('point-tools').classList.toggle('hide', !editing);
 		this.get('shape-tools').classList.toggle('hide', editing);
-		this.refreshSketchTools(editing);
+		this.refreshSketchTools();
 		this.get('point-several').setAttribute('aria-pressed', this.pointMode?.several ? 'true' : 'false');
 		// the tools wait for a drag to end before they look again
 		if (this.gesture?.drags.length) return;
@@ -2705,20 +2800,20 @@ class slick {
 			const m = first.transform?.last;
 			const scaled = m ? `${Math.round(Math.hypot(m.a, m.b) * 100)}% × ${Math.round(Math.hypot(m.c, m.d) * 100)}%` : 'scaled';
 			const what = first.transform ? `${first.transform.refs.length} points` : `${g.drags.length} elements`;
-			this.updateStatusBar(`${what} ${g.mode === 'rotate' ? `turned ${g.turn ?? 0}°` : scaled}`, false);
+			this.readOut(`${what} ${g.mode === 'rotate' ? `turned ${g.turn ?? 0}°` : scaled}`);
 			return;
 		}
 		if (first.point) {
 			const v = applyToVector(first.toUnits, sx, sy);
 			const count = first.point.group?.refs.length ?? 1;
-			this.updateStatusBar(count > 1
+			this.readOut(count > 1
 				? `${count} points moved ${fmt(v.x, first.decimals)}, ${fmt(v.y, first.decimals)}`
-				: `point ${fmt(first.point.from.x + v.x, first.decimals)}, ${fmt(first.point.from.y + v.y, first.decimals)}`, false);
+				: `point ${fmt(first.point.from.x + v.x, first.decimals)}, ${fmt(first.point.from.y + v.y, first.decimals)}`);
 			return;
 		}
 		// a path's whole d can be long, and the start of it says enough of how it is moving
 		const readout = Object.entries(first.attrs).map(([name, value])=>value === null ? `no ${name}` : `${name}="${clipped(value)}"`).join(' ');
-		this.updateStatusBar(g.drags.length > 1 ? `${g.drags.length} elements` : `${first.target.tagName.toLowerCase()} ${readout || 'unchanged'}`, false);
+		this.readOut(g.drags.length > 1 ? `${g.drags.length} elements` : `${first.target.tagName.toLowerCase()} ${readout || 'unchanged'}`);
 	}
 
 	/** End the gesture: a drag is written to the code; a press that did not
@@ -2729,6 +2824,8 @@ class slick {
 		this.clearHold();
 		// a shape drawn a point at a time keeps its tool, and its crosshair, between points
 		this.svgPreview.style.cursor = this.drawTool ? 'crosshair' : '';
+		// the drag's readout is over; what it did is announced in its place
+		if (this.heldUntil === Infinity) this.restoreHint(true);
 		if (!g) return;
 		if (g.pull && g.drags.length === 0) this.refreshSelection();
 		if (g.mode === 'marquee') {
@@ -2812,6 +2909,7 @@ class slick {
 		this.clearHold();
 		this.placeMarquee(null);
 		this.svgPreview.style.cursor = this.drawTool ? 'crosshair' : '';
+		if (this.heldUntil === Infinity) this.restoreHint(true);
 		if (g?.draft) {
 			g.draft.el.remove();
 			forceLinting(this.editor);
@@ -3056,7 +3154,7 @@ class slick {
 		const to = applyToPoint(draft.toUnits, g.to.x, g.to.y);
 		draft.attrs = drawnShape(kind, draft.from, to, {constrain, fromCenter, decimals: draft.decimals});
 		for (const [name, value] of Object.entries(draft.attrs)) draft.el.setAttribute(name, value);
-		this.updateStatusBar(`${kind} ${Object.entries(draft.attrs).map(([name, value])=>`${name}="${value}"`).join(' ')}`, false);
+		this.readOut(`${kind} ${Object.entries(draft.attrs).map(([name, value])=>`${name}="${value}"`).join(' ')}`);
 	}
 
 	/** Write the shape a drag drew, or for a tap one a quarter the size of
@@ -3271,7 +3369,9 @@ class slick {
 		const [name, value] = s.kind === 'path' ? ['d', penPathData(anchors, closed, s.decimals)] : ['points', pointsList(anchors, s.decimals)];
 		s.draft.el.setAttribute(name, value);
 		paintDraft(s.draft.el, paintOf(s.kind, closed, strokeWidthFor(s.draft.size)));
-		this.updateStatusBar(`${s.kind} ${name}="${clipped(value)}"`, false);
+		// a press reads out what it does; between presses, the hint says what to do next
+		if (s.press) this.readOut(`${s.kind} ${name}="${clipped(value)}"`);
+		else this.restoreHint();
 		this.placeSketch();
 	}
 
@@ -3321,15 +3421,13 @@ class slick {
 		if (s.press?.does === 'add') square(s.press.anchor, HANDLE_SIZE - 1, ['aimed']);
 	}
 
-	/** While a shape is drawn a point at a time, the preview bar holds its
+	/** While a shape is drawn a point at a time, the drawing's tools are its
 	 * own tool and the buttons that take a point back and finish it, in place
-	 * of the other tools and the view's own, so they are in reach on a narrow
-	 * screen; while points are edited, the point tools have that place. */
-	private refreshSketchTools(editing = this.pointMode !== null): void {
+	 * of the other tools, so they are in reach on a narrow screen. */
+	private refreshSketchTools(): void {
 		const s = this.sketch;
 		this.get('sketch-tools').classList.toggle('hide', !s);
 		for (const kind of SHAPE_KINDS) this.get(`draw-${kind}`).classList.toggle('hide', s !== null && kind !== s.kind);
-		for (const id of ['dark', 'flip']) this.get(id).classList.toggle('hide', editing || s !== null);
 		this.get('draw-done').toggleAttribute('disabled', !s || s.anchors.length < pointsNeeded(s.kind));
 		this.updateHistoryButtons();
 	}

@@ -168,14 +168,15 @@ test.describe('SVG Editor Point Editing', () => {
     await expect(page.locator('.points rect')).toHaveCount(4);
   });
 
-  test('should put the point tools in the preview bar while editing', async ({ page }) => {
+  test('should put the point tools in the drawing\'s strip while editing, in place of the shape tools', async ({ page }) => {
     const tools = page.locator('#point-tools');
     await expect(tools).toBeHidden();
     await page.locator('.svg-container path').click();
     await page.locator('#points').click();
     await expect(tools).toBeVisible();
-    await expect(page.locator('#dark')).toBeHidden();
-    await expect(page.locator('#flip')).toBeHidden();
+    await expect(page.locator('#shape-tools')).toBeHidden();
+    // the app's own buttons stay in its bar
+    await expect(page.locator('#dark')).toBeVisible();
     await expect(page.locator('#zoomin')).toBeVisible();
 
     const remove = page.locator('#point-delete');
@@ -189,7 +190,7 @@ test.describe('SVG Editor Point Editing', () => {
 
     await page.locator('#point-done').click();
     await expect(tools).toBeHidden();
-    await expect(page.locator('#dark')).toBeVisible();
+    await expect(page.locator('#shape-tools')).toBeVisible();
     await expect(page.locator('#points')).toHaveAttribute('aria-pressed', 'false');
     await expect(page.locator('[data-handle="se"]')).toBeVisible();
   });
@@ -583,7 +584,7 @@ test.describe('SVG Editor Point Editing', () => {
 test.describe('SVG Editor Point Editing on a touch screen', () => {
   test.use({ viewport: { width: 820, height: 1180 }, hasTouch: true, isMobile: true });
 
-  test('should make every button a fingertip wide, and scroll a bar too narrow for them', async ({ page }) => {
+  test('should make every button a fingertip wide, and scroll a bar too narrow for them, fading where buttons are hidden', async ({ page }) => {
     await page.goto('/index.html');
     await expect(page.locator('.svg-container svg')).toBeVisible();
     for (const id of ['upload', 'zoomin', 'dark']) {
@@ -591,12 +592,19 @@ test.describe('SVG Editor Point Editing on a touch screen', () => {
       expect(box.width).toBeGreaterThanOrEqual(44);
       expect(box.height).toBeGreaterThanOrEqual(44);
     }
-    // side by side on a portrait tablet, the code's bar is narrower than its buttons
-    const bar = page.locator('#editor nav');
+    // on a phone, the app's bar is narrower than even its buttons' icons
+    await page.setViewportSize({ width: 390, height: 844 });
+    const bar = page.locator('#appbar nav');
+    await expect(bar).toHaveClass(/compact/);
     const [scroll, width] = await bar.evaluate((nav) => [nav.scrollWidth, nav.clientWidth]);
     expect(scroll).toBeGreaterThan(width);
-    await page.locator('#xray').scrollIntoViewIfNeeded();
-    await expect(page.locator('#xray')).toBeInViewport();
+    // its far edge fades, to say there is more that way, and once scrolled there its near edge does
+    await expect(bar).toHaveClass(/more-end/);
+    await expect(bar).not.toHaveClass(/more-start/);
+    await page.locator('#zoomout').scrollIntoViewIfNeeded();
+    await expect(page.locator('#zoomout')).toBeInViewport();
+    await expect(bar).toHaveClass(/more-start/);
+    await expect(bar).not.toHaveClass(/more-end/);
   });
 
   test('should take hold of a point a fingertip away from its marker', async ({ page }) => {

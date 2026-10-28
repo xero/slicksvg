@@ -106,7 +106,8 @@ test.describe('preview cursors', () => {
   test('the canvas shows an open hand, which closes while it pans', async ({ page }) => {
     const pane = await canvas(page).boundingBox();
     if (!pane) throw new Error('no canvas');
-    const [x, y] = [pane.x + pane.width - 40, pane.y + pane.height - 40];
+    // above the strip of tools at the foot of the preview
+    const [x, y] = [pane.x + pane.width - 40, pane.y + pane.height - 100];
     await page.mouse.move(x, y);
     expect(await cursorOf(canvas(page))).toBe('grab');
     await page.mouse.down();

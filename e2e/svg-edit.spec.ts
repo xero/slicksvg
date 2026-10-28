@@ -87,7 +87,7 @@ test.describe('SVG Editor Preview Editing', () => {
     await page.mouse.move(box.x + 30, box.y + 30);
     await page.mouse.down();
     await page.mouse.move(box.x + 55, box.y + 40, { steps: 5 });
-    await expect(page.locator('#svg-status-bar')).toHaveText('rect x="45" y="30"');
+    await expect(page.locator('#preview-status')).toHaveText('rect x="45" y="30"');
     await page.mouse.up();
     await expect(page.locator('#svg-status-bar')).toHaveText('SVG valid');
   });

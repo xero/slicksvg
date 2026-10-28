@@ -110,7 +110,7 @@
     overscroll-behavior: none;
   }
   body {
-    @apply flex flex-row h-screen w-screen m-0 p-0 bg-preview;
+    @apply flex flex-col h-screen w-screen m-0 p-0 bg-preview;
 		&.drag-over {
 			@apply relative;
 			&::after {
@@ -128,24 +128,23 @@
 				outline: none !important;
 			}
 		}
-		/* view direction swap magic */
+		/* view direction swap magic: the app's bar on top, and the panes under
+		   it side by side, or one over the other */
+    #panes {
+      @apply flex flex-row flex-1 min-h-0;
+    }
     #editor,
     #preview {
       @apply w-1/2 z-10;
     }
-		/* the end, unless the buttons outgrow the bar: then they scroll from the start */
-		#preview nav {
-			justify-content: safe flex-end;
-		}
     &.vertical {
-      @apply flex-col;
+      #panes {
+        @apply flex-col;
+      }
       #editor,
       #preview {
         @apply w-full;
       }
-			#preview nav {
-				justify-content: flex-start;
-			}
     }
 		.cm-editor {
 			@apply h-full;
@@ -233,45 +232,82 @@
 		}
   }
 /* <--//---------------------------------------------------------[interface] */
+  /* the app's bar, one for both panes, so a pane squeezed away takes none of
+     its buttons with it */
+  #appbar {
+    @apply relative z-20 bg-menu;
+    padding-top: env(safe-area-inset-top, 0px);
+    box-shadow:
+      0 0 0 2px var(--color-menu-outside),
+      0 0 0 3px var(--color-bounds);
+  }
+  /* each pane's foot, one height for both: what is going on in it, and for
+     the drawing, the tools at hand; clear of the strip a home gesture takes */
+  .strip {
+    @apply flex flex-row items-stretch w-full absolute bottom-0 left-0 z-10 bg-menu m-0;
+    height: calc(var(--bar-height) + env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    box-shadow:
+      0 0 0 2px var(--color-menu-outside),
+      0 0 0 3px var(--color-bounds);
+  }
+  /* a bar too narrow for its buttons' names shows their icons alone, and one
+     too narrow even for those scrolls, fading at an edge with buttons past it */
+  nav {
+    @apply flex flex-row overflow-x-auto items-stretch py-0 px-1 m-0;
+    height: var(--bar-height);
+    scrollbar-width: none;
+    &::-webkit-scrollbar {
+      @apply hidden;
+    }
+    &.compact button > span {
+      @apply sr-only;
+    }
+    &.more-end {
+      mask-image: linear-gradient(to right, #000 calc(100% - 3rem), transparent);
+    }
+    &.more-start {
+      mask-image: linear-gradient(to left, #000 calc(100% - 3rem), transparent);
+    }
+    &.more-start.more-end {
+      mask-image: linear-gradient(to right, transparent, #000 3rem, #000 calc(100% - 3rem), transparent);
+    }
+  }
+  #point-tools, #shape-tools, #sketch-tools {
+    @apply flex flex-row items-stretch;
+  }
+  /* the shape tools stand apart from the ones for a shape under way */
+  #shape-tools, #sketch-tools {
+    @apply mr-1 pr-1 border-r border-bounds;
+  }
   #editor,
   #preview {
 		@apply relative flex-1 flex flex-col overflow-hidden min-w-[9%] min-h-[9%];
-		.svg-status-bar {
-			@apply top-[unset]! bottom-0!;
-		}
-		nav,
-		.svg-status-bar{
-			@apply
-				flex flex-row w-full absolute top-0 left-0 z-10
-				items-center bg-menu m-0 p-2;
-			box-shadow:
-				0 0 0 2px var(--color-menu-outside),
-				0 0 0 3px var(--color-bounds);
-		}
-		/* a bar too narrow for its buttons' names shows their icons alone, and
-		   one too narrow even for those scrolls rather than hiding them */
-		nav {
-			@apply overflow-x-auto items-stretch py-0 px-1;
-			height: var(--bar-height);
-			&.compact button > span {
-				@apply sr-only;
-			}
-			scrollbar-width: none;
-			&::-webkit-scrollbar {
-				@apply hidden;
-			}
-		}
-		#point-tools, #shape-tools, #sketch-tools {
-			@apply flex flex-row items-stretch;
-		}
-		/* the shape tools stand apart from the view's own buttons */
-		#shape-tools, #sketch-tools {
-			@apply mr-1 pr-1 border-r border-bounds;
-		}
+  }
+  /* the drawing's tools keep their width, and what is going on takes what is left */
+  #context-bar nav {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+  #preview-status {
+    @apply flex-1 min-w-0 m-0 px-3 self-center truncate text-sm text-nav-txt;
+    &.error {
+      @apply text-err-fg;
+    }
+    /* with no room beside the tools, the message rises above them, whole,
+       and lets presses through to the drawing */
+    &.above {
+      @apply absolute left-2 right-2 py-2 bg-menu rounded-sm pointer-events-none whitespace-normal overflow-visible;
+      bottom: calc(100% + 0.5rem);
+      box-shadow: 0 0 0 1px var(--color-bounds);
+      &:empty {
+        @apply hidden;
+      }
+    }
   }
   #editor {
 		.svg-status-bar {
-			@apply text-sm bg-menu text-lbl align-middle items-center min-h-6;
+			@apply px-3 text-sm text-lbl items-center;
 		}
 		.svg-status-bar.error {
 			@apply bg-err-bg text-err-fg;
@@ -280,8 +316,8 @@
 				0 0 0 3px var(--color-err-bg);
 		}
 		.cm-editor {
-			@apply flex-1 min-h-0 overflow-auto mb-10;
-			margin-top: var(--bar-height);
+			@apply flex-1 min-h-0 overflow-auto;
+			margin-bottom: calc(var(--bar-height) + env(safe-area-inset-bottom, 0px));
 		}
 		.cm-editor .cm-selectionBackground
 		.cm-editor.cm-focused .cm-selectionBackground {
