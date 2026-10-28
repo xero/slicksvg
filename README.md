@@ -16,11 +16,11 @@ A **Node.js**-based, web SVG editor written in **TypeScript**, with no frontend 
 
 ## Screenshots
 
-**Light Mode with Xray Highlighting:**
-![Light Mode Vertical](https://github.com/user-attachments/assets/918073fb-28b3-4814-be49-0e171aeedf43)
+**Light Mode with an Error in the Code:**
+![Light mode: the light bulb's code with an error, its line number and tag in red, and the error said in the code's strip](preview-light.png)
 
-**Dark Mode with Error State:**
-![Dark Mode with Error](https://github.com/user-attachments/assets/61278330-a2af-4e2b-8005-134819008bfd)
+**Dark Mode Editing Points:**
+![Dark mode: Points editing the anchors and handles of the light bulb's highlight, with the point tools in the drawing's strip](preview-dark.png)
 
 ## Features
 
