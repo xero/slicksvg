@@ -12,7 +12,7 @@ import {
 	SHAPE_KINDS, SHAPE_NAMES, NEW_SHAPE_COLOR, byPoints, pointsNeeded, paintOf, strokeWidthFor, snapAngle, drawnShape, placedShape, pointsList, draggedAnchor, penPathData, shapeMarkup, spacedClose,
 	type ShapeKind, type PointKind, type Anchor, type Pen,
 } from './draw';
-import {paintFrom, setStyleProperty, widthRange, writtenWidth, type Paint} from './paint';
+import {paintFrom, setStyleProperty, removeStyleProperty, strokeFirst, widthRange, writtenWidth, type Paint} from './paint';
 import {GEOMETRY, SHAPES, plainLength, shapePathData, asPathChanges, conversionBlocked, type Length, type ShapePath} from './shapes';
 import {findSvgTarget, selectionChain, nextInChain, ordinalOf, boxCorners, handleCursor} from './select';
 import {planMove, planResize, planScaleAbout, planRotate, planMatrix, mirrorAbout, parentCenter, simplestTransform, parseTransform, listMatrix, commaIn, axisMaps, scaleMatrix, multiply, invert, applyToVector, applyToPoint, pixelsPerUnit, decimalsFor, roundTo, fmt, placesOf, IDENTITY, type Matrix, type Point, type Rect, type Handle, type EditPlan} from './geometry';
@@ -396,18 +396,20 @@ function closable(s: Sketch): boolean {
 
 /** Paint a stand-in as its shape will be painted, taking off what it no longer has. */
 function paintDraft(el: Element, paint: Record<string, string>): void {
-	for (const name of ['fill', 'stroke', 'stroke-width']) {
+	for (const name of ['fill', 'stroke', 'stroke-width', 'style']) {
 		const value = Object.hasOwn(paint, name) ? paint[name] : null;
 		if (value === null) el.removeAttribute(name);
 		else el.setAttribute(name, value);
 	}
 }
 
-/** What the paint tools set. */
+/** What the paint tools set, and what else of the paint they set: which of
+ * the fill and the stroke is painted first. */
 type PaintProp = 'fill' | 'stroke' | 'stroke-width';
+type ProbedProp = PaintProp | 'paint-order';
 
 /** A value for each paint no drawing uses, to try where a paint shows. */
-const PAINT_PROBE: Record<PaintProp, string> = {fill: 'rgb(1, 2, 3)', stroke: 'rgb(1, 2, 3)', 'stroke-width': '1234.5px'};
+const PAINT_PROBE: Record<ProbedProp, string> = {fill: 'rgb(1, 2, 3)', stroke: 'rgb(1, 2, 3)', 'stroke-width': '1234.5px', 'paint-order': 'markers'};
 /** What inside a group takes its paint from the group, unless it paints itself. */
 const PAINTED = 'g, a, switch, path, rect, circle, ellipse, line, polyline, polygon, text, tspan, textPath, use';
 /** What a group holds that it does not paint: what is drawn only when used elsewhere. */
@@ -416,14 +418,14 @@ const UNPAINTED = 'defs, clipPath, mask, marker, pattern, symbol';
 const PAINT_JOIN = 500;
 
 /** Whether an element is painted with a value, as the browser computed it. */
-function paintedWith(el: Element, prop: PaintProp, value: string): boolean {
+function paintedWith(el: Element, prop: ProbedProp, value: string): boolean {
 	const now = getComputedStyle(el).getPropertyValue(prop).trim();
 	return prop === 'stroke-width' ? parseFloat(now) === parseFloat(value) : now === value;
 }
 
 /** Whether a paint written as an attribute shows on an element: neither its
  * own style nor a style sheet's rule sets the property over it. */
-function attributeShows(el: Element, prop: PaintProp): boolean {
+function attributeShows(el: Element, prop: ProbedProp): boolean {
 	const was = el.getAttribute(prop);
 	el.setAttribute(prop, PAINT_PROBE[prop]);
 	const shows = paintedWith(el, prop, PAINT_PROBE[prop]);
@@ -437,7 +439,7 @@ function attributeShows(el: Element, prop: PaintProp): boolean {
  * and inside a group each element that paints itself otherwise than the
  * group would have it, so the whole of what was selected takes the paint.
  * They are found by painting the preview's copies with a probe for a moment. */
-function paintTargets(els: Element[], prop: PaintProp): {el: Element; inStyle: boolean}[] {
+function paintTargets(els: Element[], prop: ProbedProp): {el: Element; inStyle: boolean}[] {
 	const found: Element[] = [];
 	for (const top of topLevelOf(els)) {
 		found.push(top);
@@ -459,6 +461,20 @@ function paintTargets(els: Element[], prop: PaintProp): {el: Element; inStyle: b
 		}
 	}
 	return found.map(el=>({el, inStyle: !attributeShows(el, prop)}));
+}
+
+/** Whether an element would paint its stroke under its fill without a paint
+ * order of its own: from its group, or a style sheet. */
+function behindWithout(el: Element): boolean {
+	const style = el.getAttribute('style');
+	const attr = el.getAttribute('paint-order');
+	if (el instanceof SVGElement) el.style.removeProperty('paint-order');
+	el.removeAttribute('paint-order');
+	const behind = strokeFirst(getComputedStyle(el).getPropertyValue('paint-order'));
+	if (style === null) el.removeAttribute('style');
+	else el.setAttribute('style', style);
+	if (attr !== null) el.setAttribute('paint-order', attr);
+	return behind;
 }
 
 /** What each shape tool says it does, when it is taken up. */
@@ -753,7 +769,7 @@ class slick {
 	private sketch: Sketch | null = null;
 	private sketchGroup!: SVGGElement;
 	/** What new shapes are painted with; a width not picked yet goes by the drawing's size. */
-	private pen: {fill: string; stroke: string; width: string | null} = {fill: NEW_SHAPE_COLOR, stroke: 'none', width: null};
+	private pen: {fill: string; stroke: string; width: string | null; behind: boolean} = {fill: NEW_SHAPE_COLOR, stroke: 'none', width: null, behind: false};
 	/** The picker or slider the last paint written came from, with what it
 	 * painted, and when, which a quick next one from it on the same joins;
 	 * null for a paint that joins nothing. */
@@ -1117,7 +1133,8 @@ class slick {
 			['draw-back', ()=>this.backSketch()],
 			['draw-done', ()=>this.endSketch()],
 			['no-fill', ()=>this.toggleNone('fill')],
-			['no-stroke', ()=>this.toggleNone('stroke')]
+			['no-stroke', ()=>this.toggleNone('stroke')],
+			['stroke-behind', ()=>this.toggleBehind()]
 		]);
 		this.setupPaint();
 		document.addEventListener('keydown', this.handleHistoryKeys);
@@ -3746,7 +3763,7 @@ class slick {
 
 	/** What a new shape drawn across a drawing `size` wide is painted with. */
 	private penFor(size: number): Pen {
-		return {fill: this.pen.fill, stroke: this.pen.stroke, width: this.pen.width ?? strokeWidthFor(size)};
+		return {fill: this.pen.fill, stroke: this.pen.stroke, width: this.pen.width ?? strokeWidthFor(size), behind: this.pen.behind};
 	}
 
 	/** The drawing's size in its own units, the shorter side of its <svg>,
@@ -3762,13 +3779,16 @@ class slick {
 
 	/** The paint the tools show: the primary selection's, as the browser
 	 * paints it, or with nothing selected, or a shape under way, the pen's. */
-	private paintNow(): {fill: Paint; stroke: Paint; width: number} {
+	private paintNow(): {fill: Paint; stroke: Paint; width: number; behind: boolean} {
 		const el = this.sketch ? null : this.selectedElement();
 		if (el) {
 			const css = getComputedStyle(el);
-			return {fill: paintFrom(css.getPropertyValue('fill')), stroke: paintFrom(css.getPropertyValue('stroke')), width: parseFloat(css.getPropertyValue('stroke-width')) || 0};
+			return {
+				fill: paintFrom(css.getPropertyValue('fill')), stroke: paintFrom(css.getPropertyValue('stroke')),
+				width: parseFloat(css.getPropertyValue('stroke-width')) || 0, behind: strokeFirst(css.getPropertyValue('paint-order')),
+			};
 		}
-		return {fill: paintFrom(this.pen.fill), stroke: paintFrom(this.pen.stroke), width: Number(this.pen.width ?? strokeWidthFor(this.drawingSize()))};
+		return {fill: paintFrom(this.pen.fill), stroke: paintFrom(this.pen.stroke), width: Number(this.pen.width ?? strokeWidthFor(this.drawingSize())), behind: this.pen.behind};
 	}
 
 	/** Show the paint now on the tools: each swatch in its colour, struck
@@ -3791,6 +3811,55 @@ class slick {
 			this.get(`no-${prop}`).setAttribute('aria-pressed', paint.kind === 'none' ? 'true' : 'false');
 		}
 		this.get('paint-width').setAttribute('aria-label', `Stroke width, ${fmt(now.width, 3)}`);
+		this.get('stroke-behind').setAttribute('aria-pressed', now.behind ? 'true' : 'false');
+	}
+
+	/** Behind: the stroke painted first, under the fill, which covers its
+	 * inner half, as paint-order in the style; pressed again, the stroke goes
+	 * back over the fill. For the selection and the shapes drawn next. */
+	private toggleBehind(): void {
+		const behind = !this.paintNow().behind;
+		this.pen.behind = behind;
+		const where = behind ? 'behind' : 'in front of';
+		const els = this.selectedElements();
+		if (els.length === 0) {
+			this.refreshPaintTools();
+			this.announceAction(`New shapes' strokes go ${where} their fills`);
+			return;
+		}
+		if (this.orderElements(els, behind) === null) return;
+		const what = els.length > 1 ? `${els.length} elements` : els[0].tagName.toLowerCase();
+		// the order shows only where there is a stroke
+		const unseen = this.selectedElements().every(el=>[el, ...el.querySelectorAll(PAINTED)].every(e=>getComputedStyle(e).getPropertyValue('stroke') === 'none'));
+		this.announceAction(`${what}: stroke ${where} the fill${unseen ? ', with no stroke to show it: pick a Stroke colour' : ''}`);
+	}
+
+	/** Write which of the stroke and the fill is painted first, in the style
+	 * of each element, and of what inside them has an order of its own. The
+	 * stroke put back in front takes the order out, unless the element would
+	 * still have it behind from its group or a style sheet. A paint-order
+	 * attribute goes, its say taken over by the style. */
+	private orderElements(els: Element[], behind: boolean): boolean | null {
+		const parsed = this.parseOnce();
+		if (!parsed) return null;
+		const tops = topLevelOf(els);
+		const plans: Planned[] = [];
+		for (const {el} of paintTargets(els, 'paint-order')) {
+			const found = this.sourceFor(el, parsed);
+			if (!found) return null;
+			const style = found.source.getAttribute('style');
+			// what is inside a selected element follows it, once it has changed
+			const next = behind ? setStyleProperty(style ?? '', 'paint-order', 'stroke')
+				: tops.includes(el) && behindWithout(el) ? setStyleProperty(style ?? '', 'paint-order', 'normal')
+					: removeStyleProperty(style ?? '', 'paint-order');
+			const attrs: Record<string, string | null> = {style: next};
+			if (found.source.hasAttribute('paint-order')) attrs['paint-order'] = null;
+			else if (next === style) continue;
+			plans.push({tag: found.tag, attrs});
+		}
+		if (plans.length === 0) return false;
+		this.lastPaint = {run: null, at: Date.now()};
+		return this.commitChanges(parsed.sourceText, plans, 'slick.paint');
 	}
 
 	/** No fill, or No stroke: pressed, the paint goes; pressed again, it comes

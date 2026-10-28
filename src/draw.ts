@@ -29,12 +29,17 @@ export const pointsNeeded = (kind: PointKind): number=>kind === 'polygon' ? 3 : 
 export const NEW_SHAPE_COLOR = '#999';
 
 /** What new shapes are painted with: the fill and the stroke last picked,
- * each a colour or "none", and the stroke's width. */
+ * each a colour or "none", the stroke's width, and whether the stroke goes
+ * behind the fill. */
 export interface Pen {
 	fill: string;
 	stroke: string;
 	width: string;
+	behind?: boolean;
 }
+
+/** The style that paints a stroke behind its fill, which then covers its inner half. */
+export const STROKE_BEHIND = 'paint-order: stroke';
 
 /** How a new shape is painted with the pen. One that closes round an area
  * is filled, and stroked as well while the pen has a stroke; a line, a
@@ -49,7 +54,8 @@ export function paintOf(kind: ShapeKind, closed: boolean, pen: Pen): Record<stri
 		const seen = stroke ?? (pen.fill === 'none' ? NEW_SHAPE_COLOR : pen.fill);
 		return kind === 'line' ? {stroke: seen, 'stroke-width': pen.width} : {fill: 'none', stroke: seen, 'stroke-width': pen.width};
 	}
-	if (stroke) return {fill: pen.fill, stroke, 'stroke-width': pen.width};
+	// behind the fill only means something when there is a fill to be behind
+	if (stroke) return {fill: pen.fill, stroke, 'stroke-width': pen.width, ...(pen.behind && pen.fill !== 'none' ? {style: STROKE_BEHIND} : {})};
 	return pen.fill === 'none' ? {fill: 'none', stroke: NEW_SHAPE_COLOR, 'stroke-width': pen.width} : {fill: pen.fill};
 }
 

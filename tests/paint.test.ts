@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { toHex, paintFrom, styleSets, setStyleProperty, widthRange, writtenWidth } from '../src/paint';
+import { toHex, paintFrom, styleSets, setStyleProperty, removeStyleProperty, strokeFirst, widthRange, writtenWidth } from '../src/paint';
 
 describe('Reading a paint', () => {
   it('should give a colour as the #rrggbb a colour picker takes, from the forms a browser computes and the hex ones written by hand', () => {
@@ -66,5 +66,22 @@ describe('The stroke width slider', () => {
     expect(writtenWidth(0, 1)).toBe('0');
     expect(writtenWidth(-1, 1)).toBeNull();
     expect(writtenWidth(NaN, 1)).toBeNull();
+  });
+});
+
+describe('Taking a paint out of a style', () => {
+  it('should take a property out of a style, keeping the rest as written, and leave nothing when it was all', () => {
+    expect(removeStyleProperty('paint-order: stroke', 'paint-order')).toBeNull();
+    expect(removeStyleProperty('paint-order: stroke;', 'paint-order')).toBeNull();
+    expect(removeStyleProperty('opacity: .5; paint-order: stroke', 'paint-order')).toBe('opacity: .5');
+    expect(removeStyleProperty('paint-order:stroke; fill: red', 'paint-order')).toBe('fill: red');
+    expect(removeStyleProperty('fill: red', 'paint-order')).toBe('fill: red');
+  });
+
+  it('should tell a paint order that puts the stroke under the fill', () => {
+    expect(strokeFirst('stroke')).toBe(true);
+    expect(strokeFirst('stroke fill markers')).toBe(true);
+    expect(strokeFirst('normal')).toBe(false);
+    expect(strokeFirst('fill stroke')).toBe(false);
   });
 });

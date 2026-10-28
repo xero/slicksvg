@@ -230,4 +230,57 @@ test.describe('SVG Editor paint tools', () => {
     // a line has no fill, so with no stroke it takes the fill's colour
     expect(await code(page)).toContain('<line x1="100" y1="180" x2="140" y2="180" stroke="#ff0000" stroke-width="3"/>');
   });
+
+  test('should put the selection\'s stroke behind its fill from Width, as paint-order in its style, and back in front again', async ({ page }) => {
+    await page.locator('.svg-container #box').click();
+    await page.locator('#stroke-color').fill('#000000');
+    await page.locator('#paint-width').click();
+    const behind = page.locator('#stroke-behind');
+    await expect(behind).toHaveAttribute('aria-pressed', 'false');
+    await behind.click();
+    expect(await code(page)).toContain('<rect id="box" x="10" y="10" width="50" height="50" fill="#6291e0" stroke="#000000" style="paint-order: stroke"/>');
+    await expect(page.locator('.svg-container #box')).toHaveCSS('paint-order', 'stroke');
+    await expect(behind).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#message')).toHaveText('rect: stroke behind the fill');
+    // the popup stays open for the width
+    await expect(page.locator('#width-pop')).toBeVisible();
+    await behind.click();
+    expect(await code(page)).toContain('<rect id="box" x="10" y="10" width="50" height="50" fill="#6291e0" stroke="#000000"/>');
+    await expect(page.locator('#message')).toHaveText('rect: stroke in front of the fill');
+    await page.keyboard.press('Escape');
+    await page.locator('#undo').click();
+    expect(await code(page)).toContain('style="paint-order: stroke"');
+  });
+
+  test('should keep a style\'s other declarations, and hold a stroke in front against its group\'s order', async ({ page }) => {
+    await setContent(page, `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+  <g id="behind" style="paint-order: stroke" stroke="#000"><rect id="inner" x="10" y="10" width="50" height="50" fill="#6291e0" style="opacity: .5"/></g>
+  <ellipse id="oval" cx="150" cy="150" rx="30" ry="20" fill="red" stroke="#000" paint-order="stroke"/>
+</svg>`);
+    await page.locator('.svg-container #inner').click();
+    await page.locator('.svg-container #inner').click();
+    await page.locator('#paint-width').click();
+    await expect(page.locator('#stroke-behind')).toHaveAttribute('aria-pressed', 'true');
+    await page.locator('#stroke-behind').click();
+    // its group would still put it behind, so it says otherwise for itself
+    expect(await code(page)).toContain('<rect id="inner" x="10" y="10" width="50" height="50" fill="#6291e0" style="opacity: .5; paint-order: normal"/>');
+    await page.keyboard.press('Escape');
+    // an attribute's order is taken over by the style
+    await page.locator('.svg-container #oval').click();
+    await page.locator('#paint-width').click();
+    await page.locator('#stroke-behind').click();
+    expect(await code(page)).toContain('<ellipse id="oval" cx="150" cy="150" rx="30" ry="20" fill="red" stroke="#000"/>');
+  });
+
+  test('should put the strokes of the shapes drawn next behind their fills', async ({ page }) => {
+    await page.locator('#stroke-color').fill('#0000ff');
+    await page.locator('#paint-width').click();
+    await page.locator('#stroke-behind').click();
+    await expect(page.locator('#message')).toHaveText('New shapes\' strokes go behind their fills');
+    await page.keyboard.press('Escape');
+    await page.locator('#mode-shapes').click();
+    await page.locator('#draw-rect').click();
+    await drag(page, [20, 160], [60, 190]);
+    expect(await code(page)).toContain('<rect x="20" y="160" width="40" height="30" fill="#999" stroke="#0000ff" stroke-width="2" style="paint-order: stroke"/>');
+  });
 });

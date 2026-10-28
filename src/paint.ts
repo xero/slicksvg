@@ -72,6 +72,19 @@ export function setStyleProperty(style: string, name: string, value: string): st
 	return kept ? `${kept}; ${name}: ${value}` : `${name}: ${value}`;
 }
 
+/** An inline style without a property, the rest as they were written; null
+ * when nothing is left of it, for the attribute to go. */
+export function removeStyleProperty(style: string, name: string): string | null {
+	const kept = style.split(';').filter(part=>{
+		const colon = part.indexOf(':');
+		return part.trim() !== '' && (colon === -1 || part.slice(0, colon).trim().toLowerCase() !== name);
+	});
+	return kept.length > 0 ? kept.map((part, i)=>i === 0 ? part.trimStart() : part).join(';') : null;
+}
+
+/** Whether a computed paint-order paints the stroke first, under the fill. */
+export const strokeFirst = (order: string): boolean=>order.trim().startsWith('stroke');
+
 /** The stroke widths the width slider runs over for a drawing `size`
  * across: from nothing to twenty times the width a new line is drawn with
  * there, or twice the width now when that is more, in steps a tenth of it. */

@@ -361,9 +361,20 @@
   /* the stroke's width: a slider over the widths that suit the drawing, and
      the width itself to type, at a size iOS does not zoom in to */
   #width-pop:popover-open {
-    @apply flex-row items-center gap-3 p-3;
+    @apply flex-row flex-wrap items-center gap-3 p-3;
   }
+  /* and Behind, which puts the stroke under the fill; a phone wraps it under them */
   #width-pop {
+    max-width: calc(100vw - 1rem);
+    button {
+      @apply w-auto;
+    }
+    button[aria-pressed="true"] {
+      @apply bg-active text-active-txt;
+      svg.line {
+        @apply stroke-active-txt;
+      }
+    }
     input[type="range"] {
       @apply w-48 h-11 m-0;
       accent-color: var(--color-active);
