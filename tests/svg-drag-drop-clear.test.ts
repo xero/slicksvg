@@ -54,7 +54,7 @@ describe('SVG Drag and Drop Content Clearing', () => {
 
     // Set up global objects
     global.window = window;
-    global.document = document;
+    Object.defineProperty(globalThis, 'document', {value: document, writable: true, configurable: true});
     global.Element = window.Element;
     global.HTMLElement = window.HTMLElement;
     global.HTMLDialogElement = window.HTMLDialogElement;

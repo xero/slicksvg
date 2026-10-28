@@ -37,7 +37,7 @@ describe('SVGEditor Error Handling and Edge Cases', () => {
 
     window = dom.window as unknown as Window;
     document = window.document;
-    global.document = document;
+    Object.defineProperty(globalThis, 'document', {value: document, writable: true, configurable: true});
     global.window = window;
     global.Element = window.Element;
     global.HTMLElement = window.HTMLElement;

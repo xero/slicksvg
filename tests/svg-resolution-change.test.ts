@@ -21,7 +21,7 @@ describe('SVG Resolution Change', () => {
       </html>
     `);
     document = dom.window.document;
-    global.document = document;
+    Object.defineProperty(globalThis, 'document', {value: document, writable: true, configurable: true});
     global.window = dom.window as any;
     container = document.getElementById('container')!;
   });

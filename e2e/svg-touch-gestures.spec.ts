@@ -441,7 +441,7 @@ test.describe('SVG Editor Advanced Touch Gestures E2E Tests', () => {
     test('should handle 3D Touch / Force Touch simulation', async ({ page }) => {
       await page.setViewportSize({ width: 375, height: 667 });
       
-      const uploadButton = page.locator('#upload');
+      const uploadButton = page.locator('#file-menu');
       await expect(uploadButton).toBeVisible();
       
       // Simulate force touch (deep press)

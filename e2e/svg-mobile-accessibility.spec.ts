@@ -1,3 +1,4 @@
+import { pressMenuItem, MENU_OF } from './toolbar';
 import { test, expect } from '@playwright/test';
 
 test.describe('SVG Editor Mobile Accessibility E2E Tests', () => {
@@ -43,7 +44,7 @@ test.describe('SVG Editor Mobile Accessibility E2E Tests', () => {
       await page.setViewportSize({ width: 375, height: 667 });
       
       // Test with resolution modal inputs
-      await page.locator('#resolution').click();
+      await pressMenuItem(page, 'resolution');
       const modal = page.locator('dialog');
       await expect(modal).toBeVisible();
       
@@ -109,13 +110,16 @@ test.describe('SVG Editor Mobile Accessibility E2E Tests', () => {
       
       // Check that main controls have accessible labels
       const controls = [
-        { selector: '#upload', expectedContent: /upload|file|import/i },
+        { selector: '#upload', expectedContent: /open|upload|file|import/i },
         { selector: '#dark', expectedContent: /dark|theme|mode/i },
         { selector: '#flip', expectedContent: /flip|layout|screen/i },
-        { selector: '#rotate', expectedContent: /rotate/i }
+        { selector: '#rotate', expectedContent: /turn|rotate/i }
       ];
       
       for (const control of controls) {
+        // an item in one of the app bar's menus is looked at with its menu open
+        const menu = MENU_OF[control.selector.slice(1)];
+        if (menu) await page.locator(`#${menu}`).click();
         const element = page.locator(control.selector);
         await expect(element).toBeVisible();
         
@@ -131,6 +135,7 @@ test.describe('SVG Editor Mobile Accessibility E2E Tests', () => {
         if (control.expectedContent && accessibleName) {
           expect(accessibleName).toMatch(control.expectedContent);
         }
+        if (menu) await page.keyboard.press('Escape');
       }
     });
 
@@ -175,7 +180,7 @@ test.describe('SVG Editor Mobile Accessibility E2E Tests', () => {
       await page.setViewportSize({ width: 375, height: 667 });
       
       // Test that status changes are announced
-      const statusBar = page.locator('#svg-status-bar');
+      const statusBar = page.locator('#svg-status');
       await expect(statusBar).toBeVisible();
       
       // Check for live region attributes
@@ -186,7 +191,7 @@ test.describe('SVG Editor Mobile Accessibility E2E Tests', () => {
       const editor = page.locator('#editor .cm-content');
       await editor.click();
       
-      await page.keyboard.press('Control+a');
+      await page.keyboard.press('ControlOrMeta+a');
       await page.keyboard.type('<invalid>not closed');
       
       // Wait for status update
@@ -203,7 +208,7 @@ test.describe('SVG Editor Mobile Accessibility E2E Tests', () => {
       await page.setViewportSize({ width: 375, height: 667 });
       
       // Test that elements can be activated via accessibility API
-      const uploadButton = page.locator('#upload');
+      const uploadButton = page.locator('#file-menu');
       
       // Simulate voice command "Click Upload"
       await uploadButton.focus();
@@ -213,7 +218,7 @@ test.describe('SVG Editor Mobile Accessibility E2E Tests', () => {
       await expect(page.getByRole('main')).toBeVisible();
       
       // Test voice command "Click Dark Mode"
-      const darkButton = page.locator('#dark');
+      const darkButton = page.locator('#view-menu');
       await darkButton.focus();
       await page.keyboard.press('Space');
       
@@ -226,8 +231,8 @@ test.describe('SVG Editor Mobile Accessibility E2E Tests', () => {
       
       // Test that focused elements are clearly visible
       const interactiveElements = [
-        '#upload', '#dark', '#flip', '#rotate', '#flipx', '#flipy',
-        '#zoomin', '#zoomout', '#resolution'
+        '#file-menu', '#view-menu', '#rotate', '#flipx', '#flipy',
+        '#zoomin', '#zoomout'
       ];
       
       for (const selector of interactiveElements) {
@@ -262,8 +267,8 @@ test.describe('SVG Editor Mobile Accessibility E2E Tests', () => {
       
       // Test sequential navigation through all interactive elements
       const interactiveSelectors = [
-        '#upload', '#dark', '#flip', '#rotate', '#flipx', '#flipy',
-        '#zoomin', '#zoomout', '#resolution'
+        '#file-menu', '#view-menu', '#rotate', '#flipx', '#flipy',
+        '#zoomin', '#zoomout'
       ];
       
       // Start navigation
@@ -295,7 +300,7 @@ test.describe('SVG Editor Mobile Accessibility E2E Tests', () => {
       await page.setViewportSize({ width: 375, height: 667 });
       
       // Test that elements remain focusable for adequate time
-      const uploadButton = page.locator('#upload');
+      const uploadButton = page.locator('#file-menu');
       await uploadButton.focus();
       
       // Wait for typical switch control dwell time
@@ -303,7 +308,7 @@ test.describe('SVG Editor Mobile Accessibility E2E Tests', () => {
       
       // Element should still be focused and activatable
       const stillFocused = await page.evaluate(() => 
-        document.activeElement?.id === 'upload'
+        document.activeElement?.id === 'file-menu'
       );
       expect(stillFocused).toBeTruthy();
       
@@ -344,7 +349,7 @@ test.describe('SVG Editor Mobile Accessibility E2E Tests', () => {
       await expect(page.getByRole('complementary')).toBeVisible();
       
       // Test that controls are still accessible
-      await page.locator('#dark').click();
+      await pressMenuItem(page, 'dark');
       await page.locator('#rotate').click();
       
       await expect(page.getByRole('main')).toBeVisible();
@@ -365,7 +370,7 @@ test.describe('SVG Editor Mobile Accessibility E2E Tests', () => {
       await expect(page.getByRole('complementary')).toBeVisible();
       
       // Controls should still be accessible when zoomed
-      const controls = ['#upload', '#dark', '#flip', '#rotate'];
+      const controls = ['#file-menu', '#view-menu', '#rotate'];
       
       for (const control of controls) {
         const element = page.locator(control);
@@ -430,8 +435,8 @@ test.describe('SVG Editor Mobile Accessibility E2E Tests', () => {
       await expect(page.getByRole('main')).toBeVisible();
       
       // Controls should remain accessible
-      await page.locator('#upload').click();
-      await page.locator('#dark').click();
+      await pressMenuItem(page, 'upload');
+      await pressMenuItem(page, 'dark');
       
       await expect(page.getByRole('main')).toBeVisible();
     });
@@ -471,7 +476,7 @@ test.describe('SVG Editor Mobile Accessibility E2E Tests', () => {
       await expect(page.getByRole('complementary')).toBeVisible();
       
       // Test controls in landscape
-      await page.locator('#flip').click();
+      await pressMenuItem(page, 'flip');
       await expect(page.getByRole('main')).toBeVisible();
     });
 
@@ -513,7 +518,7 @@ test.describe('SVG Editor Mobile Accessibility E2E Tests', () => {
       const dictatedSVG = '<svg width="100" height="100"><circle cx="50" cy="50" r="30" fill="blue"/></svg>';
       
       // Clear existing content
-      await page.keyboard.press('Control+a');
+      await page.keyboard.press('ControlOrMeta+a');
       
       // Simulate dictated input (all at once, like voice input)
       await page.evaluate((content) => {
@@ -533,7 +538,7 @@ test.describe('SVG Editor Mobile Accessibility E2E Tests', () => {
       await page.setViewportSize({ width: 375, height: 667 });
       
       // Test modal inputs with handwriting
-      await page.locator('#resolution').click();
+      await pressMenuItem(page, 'resolution');
       const modal = page.locator('dialog');
       await expect(modal).toBeVisible();
       
@@ -568,7 +573,7 @@ test.describe('SVG Editor Mobile Accessibility E2E Tests', () => {
       await editor.click();
       
       // Test common keyboard shortcuts
-      await page.keyboard.press('Control+a'); // Select all
+      await page.keyboard.press('ControlOrMeta+a'); // Select all
       await page.keyboard.type('<rect x="10" y="10" width="50" height="30"/>');
       
       // Test navigation shortcuts

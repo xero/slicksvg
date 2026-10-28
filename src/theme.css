@@ -27,12 +27,26 @@
 	--color-btn: #d2d7ec;
 	--color-btn-h: #e5f1fe;
 	--color-btn-txt: #565f89;
+	/* toolbars: names that read at a small size, a hover that tints, and an
+	   active state that stands out in either theme, 4.7:1 against the bar here */
+	--color-nav-txt: #3b4261;
+	--color-nav-hover: #c6c9dc;
+	--color-active: #2959aa;
+	--color-active-txt: #ffffff;
+	/* the edges between the bars' groups and round the app's sections, clearer
+	   than the faint ones between a group's buttons */
+	--color-divider: #8a90a5;
 	--color-dragbar: #b3b4d1;
+	/* the bar's grip: darker than the bar, at rest or under the pointer, and
+	   than the code and the drawing beside it, with lighter dots */
+	--color-grip: #8a90a5;
+	--color-grip-dot: #faf8ff;
 	--color-bounds:#c0c6dd;
 	--color-err: #fb2c36;
 	--color-err-bg: #fef2f2;
 	--color-err-fg:#9f0712;
-	--color-err-br: #ffe7e7;
+	/* code that draws: a green that reads on the bar, 4.2:1 here */
+	--color-ok: #2f6f33;
   --color-svg: #151b2c;
 	--color-selection: rgba(93, 95, 239, 0.35);
   --breakpoint-xs: 30rem;
@@ -56,14 +70,23 @@
 	--color-btn: #24283b;
 	--color-btn-h: #1a1b26;
 	--color-btn-txt: #565f89;
+	--color-nav-txt: #a9b1d6;
+	--color-nav-hover: #2c3048;
+	--color-active: #7dcfff;
+	--color-active-txt: #1a1b26;
+	--color-divider: #565f89;
 	--color-dragbar: #565f89;
+	--color-grip: #16161e;
+	--color-grip-dot: #a9b1d6;
 	--color-err-bg:#82181a;
 	--color-err-fg: #ffc9c9;
-	--color-err-br: #8b060f;
+	--color-ok: #9ece6a;
 	--color-selection: rgba(125, 207, 255, 0.35);
 }
 /* <--//----------------------------------------------------------[document] */
 :root {
+  /* every toolbar is this tall: a fingertip, with room for a button's name under its icon */
+  --bar-height: 3.25rem;
   overscroll-behavior: none;
   overflow-x: hidden;
   overflow-x: clip;
@@ -98,7 +121,7 @@
     overscroll-behavior: none;
   }
   body {
-    @apply flex flex-row h-screen w-screen m-0 p-0 bg-preview;
+    @apply flex flex-col h-screen w-screen m-0 p-0 bg-preview;
 		&.drag-over {
 			@apply relative;
 			&::after {
@@ -116,23 +139,31 @@
 				outline: none !important;
 			}
 		}
-		/* view direction swap magic */
+		/* view direction swap magic: the app's bar on top, and the panes under
+		   it side by side, or one over the other */
+    #panes {
+      @apply flex flex-row flex-1 min-h-0;
+    }
     #editor,
     #preview {
       @apply w-1/2 z-10;
     }
-		#preview nav {
-			@apply justify-end;
-		}
     &.vertical {
-      @apply flex-col;
+      #panes {
+        @apply flex-col;
+      }
       #editor,
       #preview {
         @apply w-full;
       }
-			#preview nav {
-				@apply justify-start;
-			}
+      /* stacked, the code's strip is mid-screen, far from the home gesture's */
+      #editor .strip {
+        height: var(--bar-height);
+        padding-bottom: 0;
+      }
+      #editor .cm-editor {
+        margin-bottom: var(--bar-height);
+      }
     }
 		.cm-editor {
 			@apply h-full;
@@ -148,9 +179,34 @@
 			&:active {
 				@apply bg-dragbar/35;
 			}
+			/* a grip in its middle, to say it can be dragged, and a little more
+			   of it to take hold of: a block wider than the bar, with three dots
+			   7px apart in its middle */
+			&::after {
+				content: '';
+				@apply absolute top-1/2 left-1/2;
+				width: 10px;
+				height: 50px;
+				transform: translate(-50%, -50%);
+				background:
+					radial-gradient(circle at 50% calc(50% - 7px), var(--color-grip-dot) 1.5px, transparent 2px),
+					radial-gradient(circle at 50% 50%, var(--color-grip-dot) 1.5px, transparent 2px),
+					radial-gradient(circle at 50% calc(50% + 7px), var(--color-grip-dot) 1.5px, transparent 2px),
+					var(--color-grip);
+			}
 		}
 		&.vertical #dragbar {
 			@apply w-full h-1.5 cursor-row-resize;
+			/* the grip turned with the bar */
+			&::after {
+				width: 50px;
+				height: 10px;
+				background:
+					radial-gradient(circle at calc(50% - 7px) 50%, var(--color-grip-dot) 1.5px, transparent 2px),
+					radial-gradient(circle at 50% 50%, var(--color-grip-dot) 1.5px, transparent 2px),
+					radial-gradient(circle at calc(50% + 7px) 50%, var(--color-grip-dot) 1.5px, transparent 2px),
+					var(--color-grip);
+			}
 		}
 		&.vertical #editor, &.vertical #preview {
 			min-height: 10%;
@@ -163,46 +219,333 @@
 		}
 	}
   button {
-    @apply flex cursor-pointer items-center text-face bg-btn mr-2;
+    @apply flex shrink-0 cursor-pointer items-center justify-center text-face bg-btn;
     &:hover,
-    &:active,
-    &:focus,
-    &:focus-within {
+    &:active {
       @apply bg-btn-h;
     }
+		&:disabled {
+			@apply opacity-40 cursor-default;
+			&:hover {
+				@apply bg-btn;
+			}
+		}
+  }
+  /* a toolbar button: its icon over its name, as tall as the bar and at least
+     a fingertip wide, with nothing round it but its padding, so a hover or an
+     active state fills the bar from top to bottom */
+  nav button {
+    @apply flex-col gap-1 px-2 min-w-11 bg-transparent text-nav-txt whitespace-nowrap;
+    font-size: 0.6875rem;
+    line-height: 1;
 		svg {
-			@apply w-8 h-8 fill-btn-txt;
+			@apply w-6 h-6 shrink-0 fill-nav-txt;
+		}
+		svg.line {
+			@apply fill-none stroke-nav-txt;
+			stroke-width: 2.5;
+			stroke-linecap: round;
+			stroke-linejoin: round;
+		}
+    &:hover,
+    &:active {
+      @apply bg-nav-hover;
+    }
+		&[aria-pressed="true"] {
+			@apply bg-active text-active-txt;
+			svg {
+				@apply fill-active-txt;
+			}
+			svg.line {
+				@apply fill-none stroke-active-txt;
+			}
+		}
+		&:disabled {
+			@apply opacity-50;
+			&:hover {
+				@apply bg-transparent;
+			}
+		}
+		/* the keys show where they are, which a pointer has no need of */
+		&:focus-visible {
+			outline: 2px solid var(--color-active) !important;
+			outline-offset: -2px;
+		}
+		&[aria-pressed="true"]:focus-visible {
+			outline-color: var(--color-active-txt) !important;
 		}
   }
 /* <--//---------------------------------------------------------[interface] */
+  /* the app's bar, one for both panes, so a pane squeezed away takes none of
+     its buttons with it */
+  #appbar {
+    @apply relative z-20 bg-menu;
+    padding-top: env(safe-area-inset-top, 0px);
+    box-shadow:
+      0 0 0 2px var(--color-divider);
+  }
+  /* each pane's foot, one height for both: what is going on in it, and for
+     the drawing, the tools at hand; clear of the strip a home gesture takes */
+  .strip {
+    @apply flex flex-row items-stretch w-full absolute bottom-0 left-0 z-10 bg-menu m-0;
+    height: calc(var(--bar-height) + env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    box-shadow:
+      0 0 0 2px var(--color-divider);
+  }
+  /* a bar too narrow for its buttons' names shows their icons alone, and one
+     too narrow even for those scrolls, fading at an edge with buttons past it */
+  nav {
+    @apply flex flex-row overflow-x-auto items-stretch py-0 px-1 m-0;
+    height: var(--bar-height);
+    scrollbar-width: none;
+    &::-webkit-scrollbar {
+      @apply hidden;
+    }
+    &.compact :is(button, .picker) > span {
+      @apply sr-only;
+    }
+    &.more-end {
+      mask-image: linear-gradient(to right, #000 calc(100% - 3rem), transparent);
+    }
+    &.more-start {
+      mask-image: linear-gradient(to left, #000 calc(100% - 3rem), transparent);
+    }
+    &.more-start.more-end {
+      mask-image: linear-gradient(to right, transparent, #000 3rem, #000 calc(100% - 3rem), transparent);
+    }
+  }
+  /* the drawing's tools come in groups by what they work on, each shown in
+     the modes it is for, and each set apart from the one before it */
+  #context-bar nav > div {
+    @apply flex flex-row items-stretch;
+  }
+  #context-bar nav > div:not(.hide) ~ div:not(.hide) {
+    @apply border-l border-divider;
+  }
+  /* the bar closed off at its end, after the paint tools */
+  #context-bar nav {
+    @apply pr-0 border-r border-divider;
+  }
+  /* the paint tools at the end, in every mode, where they stay put as the
+     mode's tools come and go; the mode's last group is closed off where the
+     gap before them begins, with a line the paint tools' own edge covers
+     when the gap closes up */
+  #paint-tools {
+    @apply ml-auto;
+  }
+  #context-bar nav > div:not(.hide, #paint-tools):not(:has(~ div:not(.hide, #paint-tools))) {
+    box-shadow: 1px 0 0 var(--color-divider);
+  }
+  /* Fill and Stroke: a swatch of the paint, with the browser's own colour
+     picker laid over it, unseen, for a press to open. No paint is a swatch
+     struck through, and a gradient or pattern an empty one with a dashed edge */
+  nav .picker {
+    @apply relative flex flex-col shrink-0 items-center justify-center gap-1 px-2 min-w-11 cursor-pointer text-nav-txt whitespace-nowrap;
+    font-size: 0.6875rem;
+    line-height: 1;
+    input {
+      @apply absolute inset-0 w-full h-full m-0 p-0 border-0 opacity-0 cursor-pointer;
+    }
+    svg {
+      @apply w-6 h-6 shrink-0 fill-none stroke-nav-txt;
+      stroke-width: 1.5;
+    }
+    .chip {
+      fill: var(--swatch, transparent);
+    }
+    .edge {
+      stroke-width: 1;
+    }
+    .slash {
+      @apply hidden stroke-err;
+      stroke-width: 2;
+      stroke-linecap: round;
+    }
+    &#paint-stroke .chip {
+      @apply fill-none;
+      stroke: var(--swatch, transparent);
+      stroke-width: 3.5;
+    }
+    &.none .slash {
+      @apply inline;
+    }
+    &.none .chip, &.other .chip {
+      @apply fill-none;
+    }
+    &#paint-stroke.none .chip {
+      stroke: none;
+    }
+    &.other .chip, &#paint-stroke.other .chip {
+      @apply stroke-nav-txt;
+      stroke-width: 1.5;
+      stroke-dasharray: 2 2;
+    }
+    &:hover, &:active {
+      @apply bg-nav-hover;
+    }
+    &:has(input:focus-visible) {
+      outline: 2px solid var(--color-active) !important;
+      outline-offset: -2px;
+    }
+  }
+  /* the stroke's width: a slider over the widths that suit the drawing, and
+     the width itself to type, at a size iOS does not zoom in to */
+  #width-pop:popover-open {
+    @apply flex-row flex-wrap items-center gap-3 p-3;
+  }
+  /* and Behind, which puts the stroke under the fill; a phone wraps it under them */
+  #width-pop {
+    max-width: calc(100vw - 1rem);
+    button {
+      @apply w-auto;
+    }
+    button[aria-pressed="true"] {
+      @apply bg-active text-active-txt;
+      svg.line {
+        @apply stroke-active-txt;
+      }
+    }
+    input[type="range"] {
+      @apply w-48 h-11 m-0;
+      accent-color: var(--color-active);
+    }
+    input[type="number"] {
+      @apply w-24 h-11 px-2 text-base bg-menu-alt text-nav-txt rounded-sm;
+      box-shadow: inset 0 0 0 1px var(--color-divider);
+    }
+  }
+  /* the app's menus, and Clean and X-ray, at the start of its bar, closed off
+     on both sides; the modes, Undo and Redo, and the zoom at the end. A bar too narrow for both
+     closes the gap, and scrolls */
+  #appbar nav > #tools {
+    @apply border-r;
+  }
+  #appbar nav > #modes {
+    @apply ml-auto;
+  }
+  /* buttons that belong together: one edge before them, and the last group
+     in the bar an edge after it too; joined ones have a fainter one between */
+  .group, .joined {
+    @apply flex flex-row items-stretch border-l border-divider;
+  }
+  #appbar nav > :last-child {
+    @apply border-r;
+  }
+  .joined > button + button {
+    border-left: 1px solid color-mix(in srgb, var(--color-bounds) 50%, transparent);
+  }
+  /* a button that opens a menu has a corner cut in, to say there is more under it */
+  nav button[aria-haspopup] {
+    @apply relative;
+    &::after {
+      content: '';
+      @apply absolute right-1 bottom-1 w-1.5 h-1.5;
+      background: currentColor;
+      clip-path: polygon(100% 0, 100% 100%, 0 100%);
+    }
+    &[aria-expanded="true"] {
+      @apply bg-nav-hover;
+    }
+  }
+  /* a toolbar menu: a column of named rows under its button */
+  .menu {
+    @apply bg-menu p-1 m-0 border-0 min-w-48;
+    position: fixed;
+    inset: auto;
+    box-shadow:
+      0 0 0 1px var(--color-divider),
+      0 6px 16px rgb(0 0 0 / 0.25);
+    &:popover-open {
+      @apply flex flex-col;
+    }
+    button {
+      @apply flex-row justify-start gap-3 px-3 min-h-11 w-full bg-transparent text-nav-txt text-sm whitespace-nowrap;
+      svg {
+        @apply w-6 h-6 shrink-0 fill-nav-txt;
+      }
+      svg.line {
+        @apply fill-none stroke-nav-txt;
+        stroke-width: 2.5;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      &:hover, &:active {
+        @apply bg-nav-hover;
+      }
+      &:focus-visible {
+        outline: 2px solid var(--color-active) !important;
+        outline-offset: -2px;
+      }
+      /* a setting that is on says so at the end of its row */
+      &[aria-checked="true"]::after {
+        content: '✓';
+        @apply ml-auto pl-4;
+      }
+    }
+  }
   #editor,
   #preview {
 		@apply relative flex-1 flex flex-col overflow-hidden min-w-[9%] min-h-[9%];
-		.svg-status-bar {
-			@apply top-[unset]! bottom-0!;
-		}
-		nav,
-		.svg-status-bar{
-			@apply
-				flex flex-row w-full absolute top-0 left-0 z-10
-				items-center bg-menu m-0 p-2;
-			box-shadow:
-				0 0 0 2px var(--color-menu-outside),
-				0 0 0 3px var(--color-bounds);
-		}
+  }
+  /* the drawing's tools fill their strip, and scroll when they must */
+  #context-bar nav {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  /* the code's strip: whether the code draws, as an icon in the colour for
+     it, at the start, and the app's one message line in the rest. Only the
+     icon's corner takes the error's colours; the message takes them for an
+     error, and reads as ever for anything else */
+  #svg-status {
+    @apply flex shrink-0 items-center justify-center w-12 border-r border-divider;
+    svg {
+      @apply hidden w-6 h-6 fill-none;
+      stroke-width: 2.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    &.valid .ok {
+      @apply block stroke-ok;
+    }
+    &.empty .blank {
+      @apply block stroke-nav-txt;
+    }
+    &.error {
+      @apply bg-err-bg;
+      .bad {
+        @apply block stroke-err-fg;
+      }
+    }
+  }
+  /* up to three lines at the size of the buttons' names */
+  #message {
+    @apply flex-1 min-w-0 m-0 px-2 self-center overflow-hidden leading-tight text-nav-txt;
+    font-size: 0.6875rem;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    overflow-wrap: break-word;
+    &.error {
+      @apply text-err-fg;
+    }
+    /* too long for the strip, or with no room in it, the message rises
+       above a strip, whole, and lets presses through to what is under it */
+    &.above {
+      @apply absolute left-2 right-2 py-2 bg-menu rounded-sm pointer-events-none overflow-visible text-sm leading-normal;
+      display: block;
+      -webkit-line-clamp: unset;
+      bottom: calc(100% + 0.5rem);
+      box-shadow: 0 0 0 1px var(--color-bounds);
+      &:empty {
+        @apply hidden;
+      }
+    }
   }
   #editor {
-		.svg-status-bar {
-			@apply text-sm bg-menu text-lbl align-middle items-center min-h-6;
-		}
-		.svg-status-bar.error {
-			@apply bg-err-bg text-err-fg;
-			box-shadow:
-				0 0 0 2px var(--color-err-br),
-				0 0 0 3px var(--color-err-bg);
-		}
 		.cm-editor {
-			@apply flex-1 min-h-0 overflow-auto mb-10 mt-12;
+			@apply flex-1 min-h-0 overflow-auto;
+			margin-bottom: calc(var(--bar-height) + env(safe-area-inset-bottom, 0px));
 		}
 		.cm-editor .cm-selectionBackground
 		.cm-editor.cm-focused .cm-selectionBackground {
@@ -216,10 +559,24 @@
 		.cm-tooltip-below {
 			@apply hidden! pointer-events-none!;
 		}
-		.cm-lint-marker,
-		.cm-lint-marker-error,
-		.cm-lint-marker-warning {
-			@apply pointer-events-none cursor-auto;
+		/* a parse error reads as a red span of bold white text, not an underline */
+		.cm-lintRange-error {
+			/* important: CodeMirror injects its token colors outside any cascade layer */
+			@apply bg-err! font-bold! rounded-xs;
+			background-image: none !important;
+			&, * {
+				@apply text-white!;
+			}
+		}
+		/* the line numbers as wide as the longest needs, one figure for the one
+		   line a cleaned drawing is on, not the editor's two-figure least; a
+		   line with an error has its number in the error's red, where the
+		   editor's own gutter for it would take its width with nothing in it */
+		.cm-lineNumbers .cm-gutterElement {
+			min-width: 0 !important;
+		}
+		.cm-gutterElement.cm-error-line {
+			@apply bg-err! text-white! font-bold;
 		}
 		&:not(.dark) .cm-activeLine {
 			@apply bg-preview!;
@@ -230,6 +587,8 @@
   }
   #preview {
     @apply bg-preview;
+    /* every touch on the pane is the app's: a pinch zooms the drawing, never the page */
+    touch-action: none;
     &.resizing {
       flex: none;
     }
@@ -240,14 +599,124 @@
         cursor: grabbing;
       }
     }
+    /* selection and hover boxes, drawn over the drawing but never inside it */
+    .select-overlay {
+      @apply absolute inset-0 w-full h-full overflow-visible pointer-events-none z-[5];
+      polygon {
+        @apply fill-none stroke-header;
+      }
+      .select-box, .select-more {
+        stroke-width: 1.5;
+        stroke-dasharray: 5 3;
+      }
+      /* one box round several selected elements or points, which its handles turn and scale together */
+      .group-box {
+        stroke-width: 1;
+        stroke-dasharray: 1 3;
+      }
+      .hover-box {
+        stroke-width: 1;
+        stroke-dasharray: 2 3;
+        opacity: 0.7;
+      }
+      /* point editing: squares on anchors, circles on handles, lines between */
+      .points {
+        rect, circle {
+          @apply fill-menu-alt stroke-header pointer-events-auto;
+          stroke-width: 1.5;
+          touch-action: none;
+          cursor: move;
+        }
+        circle {
+          @apply stroke-btn-txt;
+        }
+        .selected {
+          @apply fill-header;
+        }
+        .pulling {
+          stroke-width: 5;
+          paint-order: stroke;
+        }
+        line {
+          @apply stroke-btn-txt;
+          stroke-width: 1;
+          stroke-dasharray: 2 2;
+        }
+      }
+      /* a shape drawn a point at a time: its points, the first ringed once a
+         press there would close it, the one a press would place, close, or
+         end it on filled, and a path's handles */
+      .sketch {
+        rect, circle {
+          @apply fill-menu-alt stroke-header;
+          stroke-width: 1.5;
+        }
+        circle {
+          @apply stroke-btn-txt;
+        }
+        .first {
+          stroke-width: 2.5;
+        }
+        .aimed {
+          @apply fill-header;
+        }
+        line {
+          @apply stroke-btn-txt;
+          stroke-width: 1;
+          stroke-dasharray: 2 2;
+        }
+      }
+      /* the box a drag across the drawing covers, taking in the points inside */
+      .marquee {
+        @apply fill-header/10 stroke-header;
+        stroke-width: 1;
+        stroke-dasharray: 4 3;
+      }
+      /* the segment picked for the point tools, and the spot on it */
+      .spot {
+        path {
+          @apply fill-none stroke-header;
+          stroke-width: 4;
+          stroke-linecap: round;
+          opacity: 0.45;
+          vector-effect: non-scaling-stroke;
+        }
+        circle {
+          @apply fill-header stroke-menu-alt;
+          stroke-width: 1.5;
+        }
+      }
+      /* resize and rotate handles take the pointer; the rest passes through */
+      .handles {
+        rect, circle {
+          @apply fill-menu-alt stroke-header pointer-events-auto;
+          stroke-width: 1.5;
+          touch-action: none;
+        }
+        /* the rotate handle; each resize handle is given the arrow for the way it faces */
+        circle {
+          cursor: move;
+        }
+        line {
+          @apply stroke-header;
+          stroke-width: 1;
+        }
+      }
+    }
     .svg-container {
 			color: var(--color-svg);
 			fill: var(--color-svg);
 			--current-color: var(--color-svg);
       @apply flex items-center justify-center
 						 border-4 border-dashed border-bounds;
+      /* the drawing's colours change at once, as it is painted, not with the
+         app's own fade, which a paint read back mid-change would catch */
+      * {
+        transition: none;
+      }
     }
-    .error {
+    /* the drawing's own error, not the strip's message, which is in the pane too */
+    .svg-preview-wrapper > .error {
       @apply text-err p-4 text-center;
     }
   }
@@ -290,7 +759,13 @@
       }
     }
 		button {
-			@apply px-3 py-1 bg-frm text-lbl;
+			/* as big as a fingertip, as every button is */
+			@apply px-3 py-1 min-w-11 min-h-11 bg-frm text-lbl;
+			/* the keys show where they are, which a pointer has no need of */
+			&:focus-visible {
+				outline: 2px solid var(--color-active) !important;
+				outline-offset: -2px;
+			}
 		}
     header,
     article,
@@ -316,7 +791,7 @@
 			}
 		}
     footer {
-      @apply bg-menu;
+      @apply bg-menu gap-2;
     }
   }
 }

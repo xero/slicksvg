@@ -1,3 +1,4 @@
+import { pressMenuItem } from './toolbar';
 import { test, expect } from '@playwright/test';
 
 test.describe('SVG Editor Error Handling E2E Tests', () => {
@@ -12,7 +13,7 @@ test.describe('SVG Editor Error Handling E2E Tests', () => {
     // Clear the editor and enter invalid content
     const editor = page.locator('#editor .cm-content');
     await editor.click();
-    await page.keyboard.press('Control+a');
+    await page.keyboard.press('ControlOrMeta+a');
     await page.keyboard.type('This is not valid SVG content');
 
     // The preview should handle this gracefully without crashing
@@ -90,7 +91,7 @@ test.describe('SVG Editor Error Handling E2E Tests', () => {
 
   test('should handle modal input validation errors', async ({ page }) => {
     // Open resolution modal
-    await page.getByRole('button', { name: /resize|resolution/i }).click();
+    await pressMenuItem(page, 'resolution');
 
     const dialog = page.locator('dialog');
     await expect(dialog).toBeVisible();
@@ -166,8 +167,8 @@ test.describe('SVG Editor Error Handling E2E Tests', () => {
     });
 
     // Try to interact with the application
-    await page.getByRole('button', { name: /dark mode/i }).click();
-    await page.getByRole('button', { name: /flip screen/i }).click();
+    await pressMenuItem(page, 'dark');
+    await pressMenuItem(page, 'flip');
 
     // Application should still be responsive
     await expect(page.getByRole('main')).toBeVisible();
@@ -211,7 +212,7 @@ test.describe('SVG Editor Error Handling E2E Tests', () => {
 
   test('should handle rapid user interactions', async ({ page }) => {
     // Rapid clicking should not crash the application
-    const rotateButton = page.getByRole('button', { name: /rotate/i });
+    const rotateButton = page.getByRole('button', { name: 'Turn' });
 
     // Click rapidly multiple times
     for (let i = 0; i < 10; i++) {
@@ -291,7 +292,7 @@ test.describe('SVG Editor Error Handling E2E Tests', () => {
     await expect(page.getByRole('main')).toBeVisible();
 
     // Try to interact with other controls
-    await page.getByRole('button', { name: /dark mode/i }).click();
+    await pressMenuItem(page, 'dark');
 
     // Should remain responsive
     await expect(page.getByRole('complementary')).toBeVisible();
@@ -316,8 +317,8 @@ test.describe('SVG Editor Error Handling E2E Tests', () => {
     await expect(page.getByRole('main')).toBeVisible();
 
     // Try operations that might use localStorage
-    await page.getByRole('button', { name: /dark mode/i }).click();
-    await page.getByRole('button', { name: /flip screen/i }).click();
+    await pressMenuItem(page, 'dark');
+    await pressMenuItem(page, 'flip');
 
     // Should continue working
     await expect(page.getByRole('complementary')).toBeVisible();
@@ -343,7 +344,7 @@ test.describe('SVG Editor Error Handling E2E Tests', () => {
 
     for (const svgContent of edgeCaseSVGs) {
       await editor.click();
-      await page.keyboard.press('Control+a');
+      await page.keyboard.press('ControlOrMeta+a');
       await page.keyboard.type(svgContent);
 
       // Wait a moment for processing

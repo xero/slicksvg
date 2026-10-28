@@ -36,7 +36,7 @@ describe('SVG Drag Resize Functionality', () => {
 
     // Set up global objects
     global.window = window;
-    global.document = document;
+    Object.defineProperty(globalThis, 'document', {value: document, writable: true, configurable: true});
     global.Element = window.Element;
     global.HTMLElement = window.HTMLElement;
     

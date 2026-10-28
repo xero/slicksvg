@@ -1,3 +1,4 @@
+import { pressMenuItem } from './toolbar';
 import { test, expect } from '@playwright/test';
 
 test.describe('SVG Editor Mobile and Touch E2E Tests', () => {
@@ -13,8 +14,8 @@ test.describe('SVG Editor Mobile and Touch E2E Tests', () => {
     await expect(page.getByRole('complementary')).toBeVisible();
 
     // Check that buttons are still accessible
-    await expect(page.locator('#upload')).toBeVisible();
-    await expect(page.locator('#dark')).toBeVisible();
+    await expect(page.locator('#file-menu')).toBeVisible();
+    await expect(page.locator('#view-menu')).toBeVisible();
   });
 
   test('should handle touch interactions for zoom', async ({ page }) => {
@@ -121,7 +122,7 @@ test.describe('SVG Editor Mobile and Touch E2E Tests', () => {
     await expect(page.getByRole('complementary')).toBeVisible();
 
     // Test flip screen functionality on tablet
-    await page.locator('#flip').click();
+    await pressMenuItem(page, 'flip');
 
     // Should toggle layout
     const body = page.locator('body');
@@ -247,7 +248,7 @@ test.describe('SVG Editor Performance E2E Tests', () => {
     // Perform many repeated operations
     for (let i = 0; i < 20; i++) {
       // Toggle dark mode
-      await page.locator('#dark').click();
+      await pressMenuItem(page, 'dark');
 
       // Rotate
       await page.locator('#rotate').click();
@@ -290,7 +291,7 @@ test.describe('SVG Editor Cross-Browser Compatibility E2E Tests', () => {
       await expect(page.getByRole('complementary')).toBeVisible();
 
       // Test basic functionality
-      await page.locator('#dark').click();
+      await pressMenuItem(page, 'dark');
       await page.locator('#rotate').click();
     }
   });
@@ -358,7 +359,7 @@ test.describe('SVG Editor Integration E2E Tests', () => {
     await editor.click();
 
     // Clear existing content
-    await page.keyboard.press('Control+a');
+    await page.keyboard.press('ControlOrMeta+a');
 
     // Add new SVG content
     const newSVG = '<svg width="200" height="200"><circle cx="100" cy="100" r="50" fill="red"/></svg>';
@@ -379,7 +380,7 @@ test.describe('SVG Editor Integration E2E Tests', () => {
     // Perform a series of operations and verify state is maintained
 
     // Start with dark mode
-    await page.locator('#dark').click();
+    await pressMenuItem(page, 'dark');
     const body = page.locator('body');
 
     // Check dark mode is applied
@@ -392,7 +393,7 @@ test.describe('SVG Editor Integration E2E Tests', () => {
     await page.locator('#zoomin').click();
 
     // Flip layout
-    await page.locator('#flip').click();
+    await pressMenuItem(page, 'flip');
 
     // All operations should be preserved
     await expect(page.getByRole('main')).toBeVisible();
@@ -406,7 +407,7 @@ test.describe('SVG Editor Integration E2E Tests', () => {
     // Simulate a complete user workflow
 
     // 1. User opens resolution modal
-    await page.locator('#resolution').click();
+    await pressMenuItem(page, 'resolution');
     const modal = page.locator('dialog');
     await expect(modal).toBeVisible();
 
@@ -425,10 +426,10 @@ test.describe('SVG Editor Integration E2E Tests', () => {
     await page.locator('#zoomin').click();
 
     // 6. User toggles dark mode
-    await page.locator('#dark').click();
+    await pressMenuItem(page, 'dark');
 
     // 7. User toggles layout
-    await page.locator('#flip').click();
+    await pressMenuItem(page, 'flip');
 
     // Application should handle the complete workflow smoothly
     await expect(page.getByRole('main')).toBeVisible();

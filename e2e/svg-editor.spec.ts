@@ -1,3 +1,5 @@
+import { useHello } from './fixtures';
+import { pressMenuItem } from './toolbar';
 import { test, expect } from '@playwright/test';
 
 test.describe('SVG Editor', () => {
@@ -14,11 +16,20 @@ test.describe('SVG Editor', () => {
     await expect(page.locator('#editor .cm-content')).toBeVisible();
     await expect(page.locator('.svg-preview-wrapper svg')).toBeVisible();
 
-    // Check for the "Hello SVG" text specifically in the SVG preview area
-    await expect(page.locator('#preview svg text').filter({ hasText: 'Hello SVG' })).toBeVisible();
+    // the light bulb, drawn in paths
+    await expect(page.locator('.svg-container svg')).toHaveAttribute('viewBox', '0 0 110 135');
+    await expect(page.locator('.svg-container svg path')).toHaveCount(4);
+  });
+
+  test('should offer the drawing\'s own size to change, read from its root, not a stroke-width inside it', async ({ page }) => {
+    // the light bulb has no width or height, only a viewBox, and strokes with widths
+    await pressMenuItem(page, 'resolution');
+    await expect(page.locator('dialog #width')).toHaveValue('110');
+    await expect(page.locator('dialog #height')).toHaveValue('135');
   });
 
   test('should update SVG preview when code changes', async ({ page }) => {
+    await useHello(page);
     // Get the initial color
     const initialSvg = page.locator('.svg-preview-wrapper svg circle');
     await expect(initialSvg).toHaveAttribute('fill', '#6291e0');
@@ -26,7 +37,7 @@ test.describe('SVG Editor', () => {
     // Change the SVG code - use more specific selector for CodeMirror editor
     const editor = page.locator('#editor .cm-content');
     await editor.click();
-    await page.keyboard.press('Control+a');
+    await page.keyboard.press('ControlOrMeta+a');
     await page.keyboard.type(`<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
   <circle cx="100" cy="100" r="80" fill="#ff0000" stroke="#aa0000" stroke-width="2"/>
   <text x="100" y="110" text-anchor="middle" fill="white" font-family="Arial" font-size="16">
@@ -56,11 +67,11 @@ test.describe('SVG Editor', () => {
 
   test('should have flip screen button', async ({ page }) => {
     // Check that flip button exists
-    const flipButton = page.getByRole('button', { name: 'flip screen' });
+    const flipButton = page.locator('#view-menu');
     await expect(flipButton).toBeVisible();
 
     // Click the flip button
-    await flipButton.click();
+    await pressMenuItem(page, 'flip');
 
     // Elements should still be visible after flip
     await expect(page.getByRole('main')).toBeVisible();
@@ -78,12 +89,12 @@ test.describe('SVG Editor', () => {
 
   test('should have SVG transform controls', async ({ page }) => {
     // Check that transform controls exist
-    await expect(page.getByRole('button', { name: /rotate/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Turn' })).toBeVisible();
     await expect(page.getByRole('button', { name: /flip.*horizontal/i })).toBeVisible();
     await expect(page.getByRole('button', { name: /flip.*vertical/i })).toBeVisible();
 
     // Test rotation functionality
-    const rotateButton = page.getByRole('button', { name: /rotate/i });
+    const rotateButton = page.getByRole('button', { name: 'Turn' });
     await rotateButton.click();
 
     // SVG should still be visible after rotation
@@ -92,7 +103,7 @@ test.describe('SVG Editor', () => {
 
   test('should have SVG optimization button', async ({ page }) => {
     // Check that optimize button exists
-    const optimizeButton = page.getByRole('button', { name: /optimize/i });
+    const optimizeButton = page.getByRole('button', { name: 'Clean' });
     await expect(optimizeButton).toBeVisible();
 
     // Click the optimize button
@@ -195,7 +206,7 @@ test.describe('SVG Editor', () => {
 
     // Add very long text to test line wrapping
     await editor.click();
-    await page.keyboard.press('Control+a');
+    await page.keyboard.press('ControlOrMeta+a');
     await page.keyboard.type(`<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
   <circle cx="100" cy="100" r="80" fill="#6291e0" stroke="#295da9" stroke-width="2"/>
   <text x="100" y="110" text-anchor="middle" fill="white" font-family="Arial" font-size="16">This is a very long line of text that should demonstrate the line wrapping feature when it is enabled, because it will wrap within the editor instead of creating horizontal scrollbars</text>

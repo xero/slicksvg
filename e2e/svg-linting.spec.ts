@@ -12,18 +12,18 @@ test.describe('SVG Editor Linting', () => {
 
 		// Clear editor and type malformed SVG
 		await editor.click();
-		await page.keyboard.press('Control+a');
+		await page.keyboard.press('ControlOrMeta+a');
 		await page.keyboard.type('<svg><rect width="100" height="100"></svg>'); // Missing closing rect tag
 
 		// Wait a moment for linting to process
 		await page.waitForTimeout(1000);
 
 		// Check for lint gutter
-		const lintGutter = page.locator('.cm-gutter-lint');
-		await expect(lintGutter).toBeVisible();
+		// marked on its line's number, with no gutter of its own to take room
+		await expect(page.locator('.cm-gutter-lint')).toHaveCount(0);
 
 		// Look for error markers in the gutter
-		const lintMarkers = page.locator('.cm-lint-marker-error');
+		const lintMarkers = page.locator('.cm-lineNumbers .cm-error-line');
 		await expect(lintMarkers.first()).toBeVisible();
 	});
 
@@ -34,23 +34,23 @@ test.describe('SVG Editor Linting', () => {
 
 		// First, add malformed SVG to trigger errors
 		await editor.click();
-		await page.keyboard.press('Control+a');
+		await page.keyboard.press('ControlOrMeta+a');
 		await page.keyboard.type('<svg><rect width="100" height="100"></svg>'); // Missing closing rect tag
 
 		// Wait for lint errors to appear
 		await page.waitForTimeout(1000);
 
 		// Verify errors are present
-		const lintGutter = page.locator('.cm-gutter-lint');
-		await expect(lintGutter).toBeVisible();
+		// marked on its line's number, with no gutter of its own to take room
+		await expect(page.locator('.cm-gutter-lint')).toHaveCount(0);
 
 		// Check that there are error markers initially
-		const initialErrorMarkers = page.locator('.cm-lint-marker-error');
+		const initialErrorMarkers = page.locator('.cm-lineNumbers .cm-error-line');
 		await expect(initialErrorMarkers.first()).toBeVisible();
 
 		// Now fix the SVG with a fully valid, complete SVG
 		await editor.click();
-		await page.keyboard.press('Control+a');
+		await page.keyboard.press('ControlOrMeta+a');
 		await page.keyboard.type('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="100" height="100" fill="blue"/></svg>'); // Valid SVG
 
 		// Wait for linting to reprocess and check preview works
@@ -80,17 +80,17 @@ test.describe('SVG Editor Linting', () => {
 
 		// Type invalid XML
 		await editor.click();
-		await page.keyboard.press('Control+a');
+		await page.keyboard.press('ControlOrMeta+a');
 		await page.keyboard.type('<svg><rect width="100" height="100" <invalid></svg>'); // Invalid syntax
 
 		// Wait for linting
 		await page.waitForTimeout(1000);
 
 		// Check for lint errors
-		const lintGutter = page.locator('.cm-gutter-lint');
-		await expect(lintGutter).toBeVisible();
+		// marked on its line's number, with no gutter of its own to take room
+		await expect(page.locator('.cm-gutter-lint')).toHaveCount(0);
 
-		const lintMarkers = page.locator('.cm-lint-marker-error');
+		const lintMarkers = page.locator('.cm-lineNumbers .cm-error-line');
 		await expect(lintMarkers.first()).toBeVisible();
 	});
 
@@ -101,18 +101,18 @@ test.describe('SVG Editor Linting', () => {
 
 		// Type valid XML but not SVG
 		await editor.click();
-		await page.keyboard.press('Control+a');
+		await page.keyboard.press('ControlOrMeta+a');
 		await page.keyboard.type('<html><body>Not an SVG</body></html>');
 
 		// Wait for linting
 		await page.waitForTimeout(1000);
 
 		// Check for lint warnings/errors
-		const lintGutter = page.locator('.cm-gutter-lint');
-		await expect(lintGutter).toBeVisible();
+		// marked on its line's number, with no gutter of its own to take room
+		await expect(page.locator('.cm-gutter-lint')).toHaveCount(0);
 
 		// Should have warning indicators (our linter shows warnings for non-SVG content)
-		const lintMarkers = page.locator('.cm-lint-marker');
+		const lintMarkers = page.locator('.cm-lineNumbers .cm-error-line');
 		await expect(lintMarkers.first()).toBeVisible();
 	});
 
@@ -123,14 +123,14 @@ test.describe('SVG Editor Linting', () => {
 
 		// Clear all content
 		await editor.click();
-		await page.keyboard.press('Control+a');
+		await page.keyboard.press('ControlOrMeta+a');
 		await page.keyboard.press('Delete');
 
 		// Wait for linting
 		await page.waitForTimeout(1000);
 
 		// Empty content should not show lint errors
-		const lintMarkers = page.locator('.cm-lint-marker');
+		const lintMarkers = page.locator('.cm-lineNumbers .cm-error-line');
 		await expect(lintMarkers).toHaveCount(0);
 	});
 
@@ -141,18 +141,18 @@ test.describe('SVG Editor Linting', () => {
 
 		// Add malformed SVG
 		await editor.click();
-		await page.keyboard.press('Control+a');
+		await page.keyboard.press('ControlOrMeta+a');
 		await page.keyboard.type('<svg><rect></svg>'); // Missing closing rect tag
 
 		// Wait for linting
 		await page.waitForTimeout(1000);
 
 		// Check for lint markers
-		const lintMarkers = page.locator('.cm-lint-marker-error');
+		const lintMarkers = page.locator('.cm-lineNumbers .cm-error-line');
 		await expect(lintMarkers.first()).toBeVisible();
 
 		// Verify error information is shown in status bar instead of tooltips
-		const statusBar = page.locator('#svg-status-bar');
+		const statusBar = page.locator('#svg-status');
 		await expect(statusBar).toHaveClass(/error/);
 		await expect(statusBar).not.toHaveText('svg valid');
 
@@ -177,17 +177,17 @@ test.describe('SVG Editor Linting', () => {
 		</svg>`; // Missing closing rect tag
 
 		await editor.click();
-		await page.keyboard.press('Control+a');
+		await page.keyboard.press('ControlOrMeta+a');
 		await page.keyboard.type(complexSVG);
 
 		// Wait for linting
 		await page.waitForTimeout(1000);
 
 		// Should detect the error
-		const lintGutter = page.locator('.cm-gutter-lint');
-		await expect(lintGutter).toBeVisible();
+		// marked on its line's number, with no gutter of its own to take room
+		await expect(page.locator('.cm-gutter-lint')).toHaveCount(0);
 
-		const lintMarkers = page.locator('.cm-lint-marker-error');
+		const lintMarkers = page.locator('.cm-lineNumbers .cm-error-line');
 		await expect(lintMarkers.first()).toBeVisible();
 	});
 
@@ -198,25 +198,25 @@ test.describe('SVG Editor Linting', () => {
 
 		// Type valid SVG
 		await editor.click();
-		await page.keyboard.press('Control+a');
+		await page.keyboard.press('ControlOrMeta+a');
 		await page.keyboard.type('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><circle cx="100" cy="100" r="50" fill="red"/></svg>');
 
 		// Wait for preview update and linting with more time
 		await page.waitForTimeout(3000);
 
 		// Verify preview updates (core functionality still works)
-		await expect(page.locator('svg circle')).toHaveAttribute('fill', 'red');
+		await expect(page.locator('.svg-container circle')).toHaveAttribute('fill', 'red');
 
 		// Test editing still works
 		await editor.click();
-		await page.keyboard.press('Control+a');
+		await page.keyboard.press('ControlOrMeta+a');
 		await page.keyboard.type('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><circle cx="100" cy="100" r="50" fill="blue"/></svg>');
 
 		// Wait for update with more time
 		await page.waitForTimeout(3000);
 
 		// Verify preview updates
-		await expect(page.locator('svg circle')).toHaveAttribute('fill', 'blue');
+		await expect(page.locator('.svg-container circle')).toHaveAttribute('fill', 'blue');
 
 		// Verify linting doesn't interfere with basic editing functionality
 		await editor.click();
@@ -225,12 +225,27 @@ test.describe('SVG Editor Linting', () => {
 		await page.keyboard.press('Backspace'); // Remove the space
 
 		// Preview should still work correctly
-		await expect(page.locator('svg circle')).toHaveAttribute('fill', 'blue');
+		await expect(page.locator('.svg-container circle')).toHaveAttribute('fill', 'blue');
 
 		// Verify the content is still editable
 		await editor.click();
-		await page.keyboard.press('Control+a');
+		await page.keyboard.press('ControlOrMeta+a');
 		const finalContent = await editor.textContent();
 		expect(finalContent).toContain('fill="blue"');
+	});
+
+	test('should paint the parse error as a red span of bold white text', async ({ page }) => {
+		await expect(page.locator('#editor .cm-content')).toBeVisible();
+		await page.evaluate(() => {
+			const view = (window as any).svgEditor.editor;
+			view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: '<svg><rect width="100" height="100"></svg>' } });
+		});
+
+		// the whole offending tag is marked, not just the character the parser stopped at
+		const range = page.locator('#editor .cm-lintRange-error');
+		await expect.poll(async () => (await range.allTextContents()).join('')).toBe('</svg>');
+		await expect(range.first()).toHaveCSS('background-color', 'rgb(251, 44, 54)');
+		await expect(range.first()).toHaveCSS('color', 'rgb(255, 255, 255)');
+		await expect(range.first()).toHaveCSS('font-weight', '700');
 	});
 });

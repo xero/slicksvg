@@ -1,6 +1,18 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { JSDOM } from 'jsdom';
 
+// jsdom cannot expand a `background` shorthand whose value is a var(), so the
+// selection tests inspect the matching stylesheet rule instead of computed style
+function findSelectionRule(doc: Document): CSSStyleRule | undefined {
+  for (const sheet of Array.from(doc.styleSheets)) {
+    const rule = Array.from(sheet.cssRules).find(
+      (r) => 'selectorText' in r && (r as CSSStyleRule).selectorText.includes('.cm-selectionBackground')
+    );
+    if (rule) return rule as CSSStyleRule;
+  }
+  return undefined;
+}
+
 describe('Text Selection Highlighting', () => {
   let dom: JSDOM;
   let document: Document;
@@ -77,7 +89,7 @@ describe('Text Selection Highlighting', () => {
 
     document = dom.window.document;
     window = dom.window as unknown as Window & typeof globalThis;
-    global.document = document;
+    Object.defineProperty(globalThis, 'document', {value: document, writable: true, configurable: true});
     global.window = window;
   });
 
@@ -108,8 +120,10 @@ describe('Text Selection Highlighting', () => {
     const selectionBackground = document.querySelector('.cm-selectionBackground');
     expect(selectionBackground).toBeTruthy();
     
-    const styles = getComputedStyle(selectionBackground as Element);
-    expect(styles.background).toContain('var(--color-selection)');
+    const rule = findSelectionRule(document);
+    expect(rule).toBeDefined();
+    expect(selectionBackground?.matches(rule!.selectorText)).toBe(true);
+    expect(rule!.style.background).toContain('var(--color-selection)');
   });
 
   it('should have CSS rules for text selection pseudo-elements', () => {
@@ -142,7 +156,9 @@ describe('Text Selection Highlighting', () => {
     expect(selectionBg).toBeTruthy();
     
     // Our CSS uses !important to ensure it overrides theme defaults
-    const styles = getComputedStyle(selectionBg as Element);
-    expect(styles.background).toContain('var(--color-selection)');
+    const rule = findSelectionRule(document);
+    expect(rule).toBeDefined();
+    expect(rule!.selectorText).toContain('.cm-editor.cm-focused .cm-selectionBackground');
+    expect(rule!.style.getPropertyPriority('background')).toBe('important');
   });
 });

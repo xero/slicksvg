@@ -1,3 +1,4 @@
+import { pressMenuItem, MENU_OF } from './toolbar';
 import { test, expect } from '@playwright/test';
 
 test.describe('SVG Editor Tablet-Specific E2E Tests', () => {
@@ -28,7 +29,7 @@ test.describe('SVG Editor Tablet-Specific E2E Tests', () => {
       }
       
       // Test enhanced functionality available with more space
-      await page.locator('#resolution').click();
+      await pressMenuItem(page, 'resolution');
       const modal = page.locator('dialog');
       await expect(modal).toBeVisible();
       
@@ -63,11 +64,11 @@ test.describe('SVG Editor Tablet-Specific E2E Tests', () => {
       }
       
       // Test flip screen functionality on tablet landscape
-      await page.locator('#flip').click();
+      await pressMenuItem(page, 'flip');
       await expect(page.getByRole('main')).toBeVisible();
       
       // Should adapt layout when flipped
-      await page.locator('#flip').click(); // Flip back
+      await pressMenuItem(page, 'flip'); // Flip back
     });
 
     test('should handle iPad Mini size efficiently', async ({ page }) => {
@@ -79,7 +80,7 @@ test.describe('SVG Editor Tablet-Specific E2E Tests', () => {
       await expect(page.getByRole('complementary')).toBeVisible();
       
       // Test that controls are appropriately sized
-      const controls = ['#upload', '#dark', '#flip', '#rotate', '#flipx', '#flipy'];
+      const controls = ['#file-menu', '#view-menu', '#rotate', '#flipx', '#flipy'];
       
       for (const control of controls) {
         const element = page.locator(control);
@@ -115,8 +116,8 @@ test.describe('SVG Editor Tablet-Specific E2E Tests', () => {
       await page.setViewportSize({ width: 356, height: 1138 }); // Half width
       
       // Should still be usable in split-screen mode
-      await expect(page.locator('#upload')).toBeVisible();
-      await expect(page.locator('#dark')).toBeVisible();
+      await expect(page.locator('#file-menu')).toBeVisible();
+      await expect(page.locator('#view-menu')).toBeVisible();
       
       // Restore full size
       await page.setViewportSize({ width: 712, height: 1138 });
@@ -167,14 +168,14 @@ test.describe('SVG Editor Tablet-Specific E2E Tests', () => {
       await expect(page.getByRole('complementary')).toBeVisible();
       
       // Test that functionality remains intact
-      await page.locator('#flip').click();
+      await pressMenuItem(page, 'flip');
       await expect(page.getByRole('main')).toBeVisible();
       
       // Test very narrow split-screen
       await page.setViewportSize({ width: 320, height: 1366 });
       
       // Should still be usable
-      await expect(page.locator('#upload')).toBeVisible();
+      await expect(page.locator('#file-menu')).toBeVisible();
       
       // Restore full width
       await page.setViewportSize({ width: 1024, height: 1366 });
@@ -191,7 +192,7 @@ test.describe('SVG Editor Tablet-Specific E2E Tests', () => {
       await expect(page.getByRole('main')).toBeVisible();
       
       // Essential controls should still be accessible
-      await expect(page.locator('#upload')).toBeVisible();
+      await expect(page.locator('#file-menu')).toBeVisible();
       
       // Restore normal size
       await page.setViewportSize({ width: 768, height: 1024 });
@@ -210,7 +211,7 @@ test.describe('SVG Editor Tablet-Specific E2E Tests', () => {
       
       // Test keyboard shortcuts work when docked
       await page.locator('#editor .cm-content').click();
-      await page.keyboard.press('Control+a');
+      await page.keyboard.press('ControlOrMeta+a');
       
       // Simulate undocking (portrait)
       await page.setViewportSize({ width: 1024, height: 1366 });
@@ -328,7 +329,7 @@ test.describe('SVG Editor Tablet-Specific E2E Tests', () => {
       expect(focusedElement).toBeTruthy();
       
       // Test that all controls are reachable via keyboard/voice
-      const controls = ['#upload', '#dark', '#flip', '#rotate'];
+      const controls = ['#file-menu', '#view-menu', '#rotate'];
       
       for (const control of controls) {
         await page.locator(control).focus();
@@ -346,8 +347,8 @@ test.describe('SVG Editor Tablet-Specific E2E Tests', () => {
       
       // Simulate switch control navigation (sequential focus)
       const interactiveElements = [
-        '#upload', '#dark', '#flip', '#rotate', '#flipx', '#flipy',
-        '#zoomin', '#zoomout', '#resolution'
+        '#file-menu', '#view-menu', '#rotate', '#flipx', '#flipy',
+        '#zoomin', '#zoomout'
       ];
       
       for (const element of interactiveElements) {
@@ -377,6 +378,9 @@ test.describe('SVG Editor Tablet-Specific E2E Tests', () => {
       ];
       
       for (const control of controls) {
+        // an item in one of the app bar's menus is looked at with its menu open
+        const menu = MENU_OF[control.selector.slice(1)];
+        if (menu) await page.locator(`#${menu}`).click();
         const element = page.locator(control.selector);
         await expect(element).toBeVisible();
         
@@ -387,6 +391,7 @@ test.describe('SVG Editor Tablet-Specific E2E Tests', () => {
         if (control.expectedRole === 'button') {
           expect(role === 'button' || await element.evaluate(el => el.tagName.toLowerCase() === 'button')).toBeTruthy();
         }
+        if (menu) await page.keyboard.press('Escape');
       }
       
       // Test landmark navigation
