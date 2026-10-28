@@ -152,7 +152,7 @@ test.describe('SVG Editor Linting', () => {
 		await expect(lintMarkers.first()).toBeVisible();
 
 		// Verify error information is shown in status bar instead of tooltips
-		const statusBar = page.locator('#svg-status-bar');
+		const statusBar = page.locator('#svg-status');
 		await expect(statusBar).toHaveClass(/error/);
 		await expect(statusBar).not.toHaveText('svg valid');
 

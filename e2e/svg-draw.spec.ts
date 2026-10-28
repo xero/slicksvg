@@ -83,10 +83,10 @@ test.describe('SVG Editor drawing shapes', () => {
     await page.mouse.down();
     await page.mouse.move(b.x, b.y, { steps: 4 });
     await expect(page.locator('.svg-container ellipse')).toHaveAttribute('rx', '30');
-    await expect(page.locator('#preview-status')).toHaveText('ellipse cx="130" cy="40" rx="30" ry="20"');
+    await expect(page.locator('#message')).toHaveText('ellipse cx="130" cy="40" rx="30" ry="20"');
     await page.mouse.up();
     expect(await getSource(page)).toBe(withShape('<ellipse cx="130" cy="40" rx="30" ry="20" fill="#999"/>'));
-    await expect(page.locator('#svg-status-bar')).toHaveText('SVG valid');
+    await expect(page.locator('#svg-status')).toHaveText('SVG valid');
   });
 
   test('should draw over another shape rather than select or move it', async ({ page }) => {

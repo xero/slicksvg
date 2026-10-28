@@ -114,7 +114,7 @@ test.describe('SVG Editor drawing a point at a time', () => {
     expect(await getSource(page)).toBe(FIXTURE);
     await expect(standIn(page, 'polyline')).toHaveAttribute('points', '100,20 140,60 180,20');
     // between presses, the strip says how to finish
-    await expect(page.locator('#preview-status')).toHaveText('Tap the last point again, or press Done, to finish the polyline');
+    await expect(page.locator('#message')).toHaveText('Tap the last point again, or press Done, to finish the polyline');
     await expect(page.locator('.sketch rect')).toHaveCount(3);
     await clicks(page, [180, 20]);
     const markup = `<polyline points="100,20 140,60 180,20" ${STROKE}/>`;

@@ -85,7 +85,15 @@
 		</header>
 		<div id="panes">
 			<main id="editor" aria-label="SVG Code Editor">
-				<div id="svg-status-bar" class="svg-status-bar strip" aria-live="polite" aria-atomic="true">svg valid</div>
+				<div id="code-bar" class="strip">
+					<div id="svg-status" class="valid" role="status" aria-live="polite" aria-atomic="true">
+						<svg class="ok" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M7.5 12.5l3 3 6-6.5"/></svg>
+						<svg class="bad" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M8.75 8.75l6.5 6.5M15.25 8.75l-6.5 6.5"/></svg>
+						<svg class="blank" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5" stroke-dasharray="3.5 3.95"/></svg>
+						<span class="sr-only">SVG valid</span>
+					</div>
+					<p id="message" aria-hidden="true"></p>
+				</div>
 			</main>
 			<div id="dragbar" tabindex="0" aria-orientation="vertical" role="separator" aria-label="Resize Panel"></div>
 			<aside id="preview" role="complementary" aria-label="SVG Preview">
@@ -125,7 +133,6 @@
 							<button id="draw-done" disabled><svg class="line" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 12.5l5 5L20 6.5"/></svg><span>Done</span></button>
 						</div>
 					</nav>
-					<p id="preview-status" aria-hidden="true"></p>
 				</div>
 			</aside>
 		</div>

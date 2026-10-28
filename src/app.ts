@@ -40,15 +40,18 @@ const HANDLE_SIZE = window.matchMedia('(pointer: coarse)').matches ? 14 : 8;
 const ROTATE_OFFSET = 24;
 /** How far below the app bar a menu hangs: under the edge drawn round the bar, not over it. */
 const MENU_DROP = 2;
-/** The room, in pixels, the preview's message needs beside its tools before it moves above them. */
+/** The room, in pixels, the message needs in the code's strip before it moves over the drawing. */
 const STATUS_ROOM = 160;
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 /** Safari's pinch event, which the DOM typings leave out. */
 type SafariGesture = Event & {scale?: number; clientX?: number; clientY?: number};
 
+/** What the code's check found: a drawing, nothing at all, or an error. */
+type CodeState = 'valid' | 'empty' | 'error';
+
 // Global variable to hold status bar update callback
-let statusBarUpdateCallback: ((message: string, isError: boolean) => void) | null = null;
+let statusBarUpdateCallback: ((state: CodeState, message: string) => void) | null = null;
 
 const svgLinter = linter(view=>{
 	const text = view.state.doc.toString();
@@ -57,7 +60,7 @@ const svgLinter = linter(view=>{
 	try {
 		if (!text.trim()) {
 			if (statusBarUpdateCallback) {
-				statusBarUpdateCallback('Buffer empty', false);
+				statusBarUpdateCallback('empty', 'Buffer empty');
 			}
 			return [];
 		}
@@ -92,10 +95,7 @@ const svgLinter = linter(view=>{
 			}
 			message = message.match(/: ([^\n]+)\n/)?.[1] || '';
 			if (statusBarUpdateCallback) {
-				statusBarUpdateCallback(
-					message ? `SVG error: ${message}` : 'SVG parsing error',
-					true
-				);
+				statusBarUpdateCallback('error', message ? `SVG error: ${message}` : 'SVG parsing error');
 			}
 			diagnostics.push({
 				from,
@@ -107,7 +107,7 @@ const svgLinter = linter(view=>{
 		if (text.trim() && !text.includes('<svg')) {
 			const warningMessage = 'invalid contents';
 			if (statusBarUpdateCallback) {
-				statusBarUpdateCallback(`SVG error: ${warningMessage}`, true);
+				statusBarUpdateCallback('error', `SVG error: ${warningMessage}`);
 			}
 			diagnostics.push({
 				from: 0,
@@ -117,12 +117,12 @@ const svgLinter = linter(view=>{
 			});
 		}
 		if (diagnostics.length === 0 && statusBarUpdateCallback) {
-			statusBarUpdateCallback('SVG valid', false);
+			statusBarUpdateCallback('valid', 'SVG valid');
 		}
 	} catch (error) {
 		const errorMessage = `Parse Error: ${error instanceof Error ? error.message : 'Unknown error'}`;
 		if (statusBarUpdateCallback) {
-			statusBarUpdateCallback(errorMessage, true);
+			statusBarUpdateCallback('error', errorMessage);
 		}
 
 		diagnostics.push({
@@ -141,7 +141,7 @@ declare global {
 	interface Window {
 		announceError?: (message: string) => void;
 		svgEditor?: slick;
-		updateStatusBar?: (message: string, isError?: boolean) => void;
+		updateStatusBar?: (state: CodeState, message: string) => void;
 	}
 }
 
@@ -410,7 +410,7 @@ function toolHint(kind: ShapeKind): string {
 	return `Drag across the drawing to draw a ${SHAPE_NAMES[kind]}, or tap to place one`;
 }
 
-/** A value for the status bar: the start of a long one says enough. */
+/** A value for the message: the start of a long one says enough. */
 const clipped = (value: string): string=>value.length > 48 ? `${value.slice(0, 48)}…` : value;
 
 /** What a gesture shows on screen until it is written or taken back. */
@@ -648,7 +648,9 @@ class slick {
 	private previewContainer!: HTMLElement;
 	private svgPreview!: HTMLElement;
 	private modal!: HTMLDialogElement;
-	private statusBar!: HTMLElement;
+	/** The code's state, as an icon and its colour, which a screen reader hears as words. */
+	private codeStatus!: HTMLElement;
+	private code: {state: CodeState; message: string} = {state: 'valid', message: 'SVG valid'};
 	private isVerticalLayout = false;
 	private isDarkMode = false;
 	private zoomLevel = 1;
@@ -688,8 +690,10 @@ class slick {
 	/** The shape under way, drawn a point at a time. */
 	private sketch: Sketch | null = null;
 	private sketchGroup!: SVGGElement;
-	/** What the preview's strip says, and until when a message keeps the standing hint away. */
-	private previewStatus!: HTMLElement;
+	/** The app's one message line, in the code's strip: what was just said,
+	 * and until when it keeps the standing hint away. */
+	private message!: HTMLElement;
+	private said: {text: string; error: boolean} | null = null;
 	/** The name of the button between Out and In, which says how far in the view is. */
 	private zoomShown!: HTMLElement;
 	private heldUntil = 0;
@@ -720,8 +724,8 @@ class slick {
 
 	constructor() {
 		this.modal = this.getTyped('dialog');
-		this.statusBar = this.get('svg-status-bar');
-		this.previewStatus = this.get('preview-status');
+		this.codeStatus = this.get('svg-status');
+		this.message = this.get('message');
 		this.zoomShown = this.getTyped('#zoom-reset > span');
 		statusBarUpdateCallback = this.updateStatusBar.bind(this);
 		this.initializeEditor();
@@ -905,55 +909,67 @@ class slick {
 
 	private announceAction(message: string): void {
 		announce(message, 'action');
-		this.sayInPreview(message);
+		this.say(message);
 	}
 
 	public announceError(message: string): void {
 		announce(message, 'error');
-		this.sayInPreview(message, 'error');
+		this.say(message, 'error');
 	}
 
-	/** Say in the preview's strip, where the eye is while drawing, what just
-	 * happened or went wrong, for a while; then the standing hint comes back.
-	 * Screen readers have heard it already, from the live regions. */
-	private sayInPreview(message: string, kind: 'note' | 'error' = 'note'): void {
+	/** Say what just happened or went wrong, for a while; then the standing
+	 * hint comes back. Screen readers have heard it already, from the live
+	 * regions. */
+	private say(message: string, kind: 'note' | 'error' = 'note'): void {
 		const ms = kind === 'error' ? 6000 : 2500;
-		this.previewStatus.textContent = message;
-		this.previewStatus.classList.toggle('error', kind === 'error');
-		this.placeStatus();
+		this.said = {text: message, error: kind === 'error'};
 		this.heldUntil = Date.now() + ms;
 		clearTimeout(this.hintTimer);
 		// a timer can fire a moment before the clock says it is due, and the
 		// message it ends is the last one said, as each clears the one before
 		this.hintTimer = setTimeout(()=>this.restoreHint(true), ms);
+		this.showMessage();
 	}
 
-	/** Read out an edit in the preview's strip as a drag makes it, until the drag ends. */
+	/** Read out an edit as a drag makes it, until the drag ends. */
 	private readOut(message: string): void {
-		this.previewStatus.textContent = message;
-		this.previewStatus.classList.remove('error');
-		this.placeStatus();
+		this.said = {text: message, error: false};
 		this.heldUntil = Infinity;
 		clearTimeout(this.hintTimer);
+		this.showMessage();
 	}
 
-	/** Put back what the preview's strip says between messages: how to use the
-	 * tool in hand, or the points being edited, or nothing. A message still
-	 * being shown is left be, unless `force` says the moment for it is over. */
+	/** Put back what the message says between messages: how to use the tool
+	 * in hand, or the points being edited, or nothing. A message still being
+	 * shown is left be, unless `force` says the moment for it is over. */
 	private restoreHint(force = false): void {
 		if (!force && Date.now() < this.heldUntil) return;
 		this.heldUntil = 0;
 		clearTimeout(this.hintTimer);
-		const hint = this.standingHint();
-		// a pointer hovering over a shape under way asks for this at every move
-		if (this.previewStatus.textContent !== hint) {
-			this.previewStatus.textContent = hint;
-			this.placeStatus();
-		}
-		this.previewStatus.classList.remove('error');
+		this.said = null;
+		this.showMessage();
 	}
 
-	/** What the preview's strip says while nothing else is to be said. */
+	/** Show the message that matters most: what a tool has just said, if it
+	 * is an error; then the code's own error, which no note or hint covers up
+	 * while it stands; then a note or readout, then the standing hint, or that
+	 * there is no code. The last thing said is the one a tool says. */
+	private showMessage(): void {
+		const said = this.said;
+		const codeError = this.code.state === 'error' ? this.code.message : null;
+		const [text, error] = said?.error ? [said.text, true]
+			: codeError !== null ? [codeError, true]
+				: said ? [said.text, false]
+					: [this.standingHint() || (this.code.state === 'empty' ? this.code.message : ''), false];
+		// a pointer hovering over a shape under way asks for this at every move
+		if (this.message.textContent !== text) {
+			this.message.textContent = text;
+			this.placeMessage();
+		}
+		this.message.classList.toggle('error', error);
+	}
+
+	/** What the message says while nothing else is to be said. */
 	private standingHint(): string {
 		const s = this.sketch;
 		if (s && s.anchors.length < pointsNeeded(s.kind)) return s.kind === 'polygon' ? 'Tap to place each corner' : s.kind === 'path' ? 'Tap to place the next point, or drag to pull a curve' : 'Tap to place the next point';
@@ -970,9 +986,16 @@ class slick {
 		return '';
 	}
 
-	public updateStatusBar(message: string, isError: boolean = false): void {
-		this.statusBar.textContent = message;
-		this.statusBar.classList.toggle('error', isError);
+	/** Take the code check's finding: its icon, the words a screen reader
+	 * hears for it, and the message, which shows an error first. */
+	public updateStatusBar(state: CodeState, message: string): void {
+		const same = this.code.state === state && this.code.message === message;
+		this.code = {state, message};
+		if (same) return;
+		for (const each of ['valid', 'empty', 'error'] as const) this.codeStatus.classList.toggle(each, each === state);
+		const words = this.codeStatus.querySelector('span');
+		if (words) words.textContent = message;
+		this.showMessage();
 	}
 
 	private setupReducedMotion(): void {
@@ -1088,27 +1111,26 @@ class slick {
 		for (const nav of document.querySelectorAll('nav')) this.fitBar(nav);
 		this.guardBarsFromPalm();
 		this.setupMenus();
-		const strip = this.get('context-bar');
-		const tools = strip.querySelector('nav');
-		const sizes = new ResizeObserver(()=>this.placeStatus());
-		sizes.observe(strip);
-		if (tools) sizes.observe(tools);
+		const sizes = new ResizeObserver(()=>this.placeMessage());
+		sizes.observe(this.get('code-bar'));
+		sizes.observe(this.codeStatus);
 	}
 
-	/** The preview's message sits beside its tools, on two lines at most,
-	 * while that is room enough for it, and above the strip, whole, across
-	 * the foot of the drawing, while it is not. */
-	private placeStatus(): void {
-		const el = this.previewStatus;
-		const strip = el.parentElement;
-		const tools = strip?.querySelector('nav');
-		if (!strip || !tools) return;
-		if (strip.clientWidth - tools.offsetWidth < STATUS_ROOM) {
+	/** The message sits in the code's strip, beside the code's icon, on three
+	 * lines at most. One longer than that rises above the strip, whole; and
+	 * with the code pane squeezed too narrow to say anything in, it goes over
+	 * the foot of the drawing instead, where the eye is. */
+	private placeMessage(): void {
+		const el = this.message;
+		const strip = this.get('code-bar');
+		const home = strip.clientWidth - this.codeStatus.offsetWidth < STATUS_ROOM ? this.get('context-bar') : strip;
+		if (el.parentElement !== home) home.appendChild(el);
+		if (home !== strip) {
 			el.classList.add('above');
 			return;
 		}
 		el.classList.remove('above');
-		// held to two lines, a message with more has some hidden below them
+		// held to three lines, a message with more has some hidden below them
 		if (el.scrollHeight > el.clientHeight + 1) el.classList.add('above');
 	}
 
@@ -1431,11 +1453,11 @@ class slick {
 		const r = this.svgPreview.getBoundingClientRect();
 		return [clientX - (r.left + r.width / 2), clientY - (r.top + r.height / 2)];
 	}
-	/** The zoom in the status bar as it changes, and announced once it has
+	/** The zoom in the message as it changes, and announced once it has
 	 * settled: a pinch changes it dozens of times a second. */
 	private showZoom(): void {
 		const pct = `${Math.round(this.zoomLevel * 100)}%`;
-		this.sayInPreview(`Zoom ${pct}`);
+		this.say(`Zoom ${pct}`);
 		clearTimeout(this.zoomTimer);
 		this.zoomTimer = setTimeout(()=>this.announceAction(`Zoomed to ${pct}`), ZOOM_SETTLE);
 	}
@@ -2964,7 +2986,7 @@ class slick {
 			d.live.show(plan.attrs);
 		}
 		this.refreshSelection();
-		// the status bar reads out the edit as it will be written
+		// the message reads out the edit as it will be written
 		const first = g.drags[0];
 		if (first.transform || (g.box && g.drags.length > 1)) {
 			const m = first.transform?.last;
@@ -3093,7 +3115,7 @@ class slick {
 		for (const d of g.drags) d.live.revert();
 		this.tapTarget = null;
 		this.refreshSelection();
-		// the lint status takes the status bar back
+		// the code's check is run again, for the message
 		forceLinting(this.editor);
 	}
 
@@ -3317,7 +3339,7 @@ class slick {
 		return true;
 	}
 
-	/** Show the shape a drag draws, and read it out in the status bar. The
+	/** Show the shape a drag draws, and read it out in the message. The
 	 * press stays where it was in the drawing, however the view has moved
 	 * since, and the pointer is read in the view as it is now. */
 	private drawDraft(g: Gesture, constrain: boolean, fromCenter: boolean): void {

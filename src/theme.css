@@ -42,6 +42,8 @@
 	--color-err-bg: #fef2f2;
 	--color-err-fg:#9f0712;
 	--color-err-br: #ffe7e7;
+	/* code that draws: a green that reads on the bar, 4.2:1 here */
+	--color-ok: #2f6f33;
   --color-svg: #151b2c;
 	--color-selection: rgba(93, 95, 239, 0.35);
   --breakpoint-xs: 30rem;
@@ -74,6 +76,7 @@
 	--color-err-bg:#82181a;
 	--color-err-fg: #ffc9c9;
 	--color-err-br: #8b060f;
+	--color-ok: #9ece6a;
 	--color-selection: rgba(125, 207, 255, 0.35);
 }
 /* <--//----------------------------------------------------------[document] */
@@ -368,13 +371,38 @@
   #preview {
 		@apply relative flex-1 flex flex-col overflow-hidden min-w-[9%] min-h-[9%];
   }
-  /* the drawing's tools keep their width, and what is going on takes what is left */
+  /* the drawing's tools keep their width, and shrink to scroll when they must */
   #context-bar nav {
     flex: 0 1 auto;
     min-width: 0;
   }
-  /* the message beside the tools: up to three lines at the size of the buttons' names */
-  #preview-status {
+  /* the code's strip: whether the code draws, as an icon in the colour for
+     it, at the start, and the app's one message line in the rest. Only the
+     icon's corner takes the error's colours; the message takes them for an
+     error, and reads as ever for anything else */
+  #svg-status {
+    @apply flex shrink-0 items-center justify-center w-12 border-r border-divider;
+    svg {
+      @apply hidden w-6 h-6 fill-none;
+      stroke-width: 2.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    &.valid .ok {
+      @apply block stroke-ok;
+    }
+    &.empty .blank {
+      @apply block stroke-nav-txt;
+    }
+    &.error {
+      @apply bg-err-bg;
+      .bad {
+        @apply block stroke-err-fg;
+      }
+    }
+  }
+  /* up to three lines at the size of the buttons' names */
+  #message {
     @apply flex-1 min-w-0 m-0 px-2 self-center overflow-hidden leading-tight text-nav-txt;
     font-size: 0.6875rem;
     display: -webkit-box;
@@ -384,8 +412,8 @@
     &.error {
       @apply text-err-fg;
     }
-    /* with no room beside the tools for it, the message rises above them,
-       whole, and lets presses through to the drawing */
+    /* too long for the strip, or with no room in it, the message rises
+       above a strip, whole, and lets presses through to what is under it */
     &.above {
       @apply absolute left-2 right-2 py-2 bg-menu rounded-sm pointer-events-none overflow-visible text-sm leading-normal;
       display: block;
@@ -398,15 +426,6 @@
     }
   }
   #editor {
-		.svg-status-bar {
-			@apply px-3 text-sm text-lbl items-center;
-		}
-		.svg-status-bar.error {
-			@apply bg-err-bg text-err-fg;
-			box-shadow:
-				0 0 0 2px var(--color-err-br),
-				0 0 0 3px var(--color-err-bg);
-		}
 		.cm-editor {
 			@apply flex-1 min-h-0 overflow-auto;
 			margin-bottom: calc(var(--bar-height) + env(safe-area-inset-bottom, 0px));

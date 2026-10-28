@@ -180,7 +180,7 @@ test.describe('SVG Editor Mobile Accessibility E2E Tests', () => {
       await page.setViewportSize({ width: 375, height: 667 });
       
       // Test that status changes are announced
-      const statusBar = page.locator('#svg-status-bar');
+      const statusBar = page.locator('#svg-status');
       await expect(statusBar).toBeVisible();
       
       // Check for live region attributes

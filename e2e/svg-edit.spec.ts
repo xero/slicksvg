@@ -77,7 +77,7 @@ test.describe('SVG Editor Preview Editing', () => {
     await drag(page, rect, 40, 30, { cancel: true });
     expect(await getSource(page)).toBe(FIXTURE);
     await expect(rect).toHaveAttribute('x', '20');
-    await expect(page.locator('#svg-status-bar')).toHaveText('SVG valid');
+    await expect(page.locator('#svg-status')).toHaveText('SVG valid');
   });
 
   test('should read the edit out in the status bar while dragging', async ({ page }) => {
@@ -87,9 +87,9 @@ test.describe('SVG Editor Preview Editing', () => {
     await page.mouse.move(box.x + 30, box.y + 30);
     await page.mouse.down();
     await page.mouse.move(box.x + 55, box.y + 40, { steps: 5 });
-    await expect(page.locator('#preview-status')).toHaveText('rect x="45" y="30"');
+    await expect(page.locator('#message')).toHaveText('rect x="45" y="30"');
     await page.mouse.up();
-    await expect(page.locator('#svg-status-bar')).toHaveText('SVG valid');
+    await expect(page.locator('#svg-status')).toHaveText('SVG valid');
   });
 
   test('should nudge the selection with the arrow keys, ten units with Shift', async ({ page }) => {

@@ -52,12 +52,12 @@ test.describe('SVG Editor modes', () => {
     expect(await pressed(page)).toEqual(['points']);
     for (const id of ['point-tools', 'turn-tools']) await expect(page.locator(`#${id}`)).toBeVisible();
     for (const id of ['select-tools', 'shape-tools', 'path-tools']) await expect(page.locator(`#${id}`)).toBeHidden();
-    await expect(page.locator('#preview-status')).toHaveText('Tap a path, polygon, polyline, or line to edit its points');
+    await expect(page.locator('#message')).toHaveText('Tap a path, polygon, polyline, or line to edit its points');
     await page.locator('#mode-shapes').click();
     expect(await pressed(page)).toEqual(['mode-shapes']);
     await expect(page.locator('#shape-tools')).toBeVisible();
     for (const id of ['select-tools', 'point-tools', 'turn-tools', 'path-tools']) await expect(page.locator(`#${id}`)).toBeHidden();
-    await expect(page.locator('#preview-status')).toHaveText('Pick a shape, then drag or tap on the drawing');
+    await expect(page.locator('#message')).toHaveText('Pick a shape, then drag or tap on the drawing');
     // Escape goes back to Select
     await page.keyboard.press('Escape');
     expect(await pressed(page)).toEqual(['mode-select']);
@@ -81,7 +81,7 @@ test.describe('SVG Editor modes', () => {
   test('should offer To path in Points for a shape that has no points until it is a path', async ({ page }) => {
     await page.locator('#points').click();
     await page.locator('.svg-container #r').click();
-    await expect(page.locator('#preview-status')).toHaveText(/A rect has no points to edit until it is a path/);
+    await expect(page.locator('#message')).toHaveText(/A rect has no points to edit until it is a path/);
     await expect(page.locator('#path-tools')).toBeVisible();
     await expect(page.locator('#point-add')).toBeDisabled();
     await page.locator('#topath').click();

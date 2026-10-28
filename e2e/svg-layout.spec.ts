@@ -18,6 +18,15 @@ const at = (page: Page, x: number, y: number) =>
 
 const box = async (page: Page, selector: string) => (await page.locator(selector).boundingBox())!;
 
+/** Squeeze the code pane away, dragging the bar between the panes to the page's edge. */
+async function squeezeCode(page: Page) {
+  const dragbar = await box(page, '#dragbar');
+  await page.mouse.move(dragbar.x + dragbar.width / 2, dragbar.y + dragbar.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(5, dragbar.y + dragbar.height / 2, { steps: 4 });
+  await page.mouse.up();
+}
+
 const FIXTURE = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
   <rect id="box" x="20" y="20" width="60" height="60" fill="#6291e0"/>
   <circle id="dot" cx="150" cy="150" r="30" fill="#aa0000"/>
@@ -44,27 +53,23 @@ test.describe('SVG Editor layout', () => {
 
   test('should end each pane with a strip as tall as the bar, side by side in one line', async ({ page }) => {
     const bar = await box(page, '#appbar nav');
-    const code = await box(page, '#svg-status-bar');
+    const code = await box(page, '#code-bar');
     const drawing = await box(page, '#context-bar');
     expect(code.height).toBe(bar.height);
     expect(drawing.height).toBe(bar.height);
     expect(code.y).toBe(drawing.y);
     expect(code.y + code.height).toBe(page.viewportSize()!.height);
-    expect(await page.locator('#svg-status-bar').textContent()).toMatch(/svg valid/i);
+    expect(await page.locator('#svg-status').textContent()).toMatch(/svg valid/i);
   });
 
   test('should keep the app\'s buttons in reach with the code pane squeezed away', async ({ page }) => {
-    const dragbar = await box(page, '#dragbar');
-    await page.mouse.move(dragbar.x + dragbar.width / 2, dragbar.y + dragbar.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(5, dragbar.y + dragbar.height / 2, { steps: 4 });
-    await page.mouse.up();
+    await squeezeCode(page);
     expect((await box(page, '#editor')).width).toBeLessThan(page.viewportSize()!.width * 0.15);
     for (const id of ['file-menu', 'view-menu', 'undo', 'redo', 'mode-select', 'points', 'mode-shapes', 'zoomin', 'zoomout', 'xray']) await expect(page.locator(`#${id}`)).toBeInViewport();
   });
 
   test('should say what the tool in hand does, what a drag does as it goes, and then what it did', async ({ page }) => {
-    const status = page.locator('#preview-status');
+    const status = page.locator('#message');
     await page.locator('#mode-shapes').click();
     await page.locator('#draw-rect').click();
     await expect(status).toHaveText('Drag across the drawing to draw a rectangle, or tap to place one');
@@ -82,35 +87,60 @@ test.describe('SVG Editor layout', () => {
   });
 
   test('should bring the standing hint back after what was done has been said', async ({ page }) => {
-    const status = page.locator('#preview-status');
+    const status = page.locator('#message');
     await setContent(page, FIXTURE.replace('<circle id="dot" cx="150" cy="150" r="30" fill="#aa0000"/>', '<path id="p" d="M120 120 L180 120 L150 180 Z"/>'));
     await page.locator('.svg-container #p').click();
     await page.locator('#points').click();
     await expect(status).toHaveText(/^Drag a point; tap an edge/, { timeout: 5000 });
   });
 
-  test('should close off the drawing\'s tools, and fit a message of up to three lines beside them, or raise a longer one above', async ({ page }) => {
+  test('should close off the drawing\'s tools, and say every message in the code\'s strip, beside its icon', async ({ page }) => {
     await expect(page.locator('#context-bar nav')).toHaveCSS('border-right-width', '1px');
-    const status = page.locator('#preview-status');
+    const status = page.locator('#message');
     await page.locator('#mode-shapes').click();
-    await page.locator('#draw-rect').click();
-    await expect(status).toHaveText('Drag across the drawing to draw a rectangle, or tap to place one');
-    await expect(status).not.toHaveClass(/above/);
-    const lines = await status.evaluate((el) => Math.round(el.getBoundingClientRect().height / parseFloat(getComputedStyle(el).lineHeight)));
-    expect(lines).toBe(2);
-    // the path tool's longer hint takes three lines, still beside the tools
     await page.locator('#draw-path').click();
     await expect(status).toHaveText(/^Tap to place points, drag to pull a curve/);
     await expect(status).not.toHaveClass(/above/);
-    // in Points, editing a path's points, the standing hint fits beside the point tools too
+    await expect(page.locator('#code-bar #message')).toHaveCount(1);
+    await expect(page.locator('#context-bar #message')).toHaveCount(0);
+    const icon = await box(page, '#svg-status');
+    const said = await box(page, '#message');
+    const strip = await box(page, '#code-bar');
+    expect(said.x).toBeGreaterThanOrEqual(icon.x + icon.width);
+    expect(said.y).toBeGreaterThanOrEqual(strip.y);
+    expect(said.y + said.height).toBeLessThanOrEqual(strip.y + strip.height);
+    // in Points, editing a path's points, the standing hint is said there too
     await page.locator('#points').click();
     await page.locator('.svg-container #box').click();
     await page.locator('#topath').click();
     await expect(status).toHaveText(/^Drag a point; tap an edge/, { timeout: 5000 });
     await expect(status).not.toHaveClass(/above/);
-    // a message longer than three lines there rises above the strip
-    await page.evaluate(() => (window as any).svgEditor.sayInPreview('The code has an error, so this element cannot be edited here. Fix the code first, then try again.'));
+  });
+
+  test('should raise a message longer than three lines above the code\'s strip', async ({ page }) => {
+    await page.setViewportSize({ width: 700, height: 720 });
+    const status = page.locator('#message');
+    await page.evaluate(() => (window as any).svgEditor.say('The code has an error, so this element cannot be edited here. Fix the code first, then try again, and once more after that if it still will not go.'));
     await expect(status).toHaveClass(/above/);
+    const said = await box(page, '#message');
+    expect(said.y + said.height).toBeLessThanOrEqual((await box(page, '#code-bar')).y);
+  });
+
+  test('should say a message over the foot of the drawing while the code pane is squeezed too narrow for it, and let presses through', async ({ page }) => {
+    await squeezeCode(page);
+    await page.locator('#mode-shapes').click();
+    await page.locator('#draw-polygon').click();
+    const status = page.locator('#message');
+    await expect(status).toHaveText('Tap to place each corner of the polygon, then tap the first again or press Done to close it');
+    await expect(page.locator('#context-bar #message')).toHaveClass(/above/);
+    const said = await box(page, '#message');
+    const strip = await box(page, '#context-bar');
+    expect(said.y + said.height).toBeLessThanOrEqual(strip.y);
+    expect(said.x).toBeGreaterThanOrEqual(strip.x);
+    await expect(status).toHaveCSS('pointer-events', 'none');
+    // with the code pane opened up again, it goes back beside the code's icon
+    await pressMenuItem(page, 'flip');
+    await expect(page.locator('#code-bar #message')).not.toHaveClass(/above/);
   });
 
   test('should say what went wrong, in the colour for it', async ({ page }) => {
@@ -119,17 +149,21 @@ test.describe('SVG Editor layout', () => {
     await page.locator('#draw-rect').click();
     const p = await at(page, 120, 40);
     await page.mouse.click(p.x, p.y);
-    const status = page.locator('#preview-status');
+    const status = page.locator('#message');
     await expect(status).toHaveText(/The code has an error/);
     await expect(status).toHaveClass(/error/);
     // the error colour that reads on the bar, not the drawing's own error's look
     await expect(status).toHaveCSS('color', 'rgb(159, 7, 18)');
     await expect(status).not.toHaveCSS('padding-top', '16px');
     await expect(status).not.toHaveCSS('text-align', 'center');
+    // the error's colours fill the icon's corner, and only that
+    await expect(page.locator('#svg-status')).toHaveCSS('background-color', 'rgb(254, 242, 242)');
+    await expect(page.locator('#code-bar')).toHaveCSS('background-color', 'rgb(213, 214, 219)');
+    await expect(status).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   });
 
   test('should take a tool\'s hint away with the tool, and say how to go on before a shape has points enough', async ({ page }) => {
-    const status = page.locator('#preview-status');
+    const status = page.locator('#message');
     await page.locator('#mode-shapes').click();
     await page.locator('#draw-rect').click();
     await page.locator('#draw-rect').click();
@@ -144,21 +178,19 @@ test.describe('SVG Editor layout', () => {
 test.describe('SVG Editor layout on a portrait tablet', () => {
   test.use({ viewport: { width: 820, height: 1180 }, hasTouch: true, isMobile: true });
 
-  test('should raise the message above the strip when the tools leave no room for it, and let presses through', async ({ page }) => {
+  test('should say a tool\'s hint in the code\'s strip, side by side and stacked, the drawing\'s tools taking none of its room', async ({ page }) => {
     await page.goto('/index.html');
     await expect(page.locator('.svg-container svg')).toBeVisible();
     await setContent(page, FIXTURE);
     await page.locator('#mode-shapes').tap();
     await page.locator('#draw-polygon').tap();
-    const status = page.locator('#preview-status');
-    await expect(status).toHaveClass(/above/);
-    const said = await box(page, '#preview-status');
-    const strip = await box(page, '#context-bar');
-    expect(said.y + said.height).toBeLessThanOrEqual(strip.y);
-    await expect(status).toHaveCSS('pointer-events', 'none');
-    // stacked, the strip is the full width, with room beside the tools
+    const status = page.locator('#code-bar #message');
+    await expect(status).toHaveText(/^Tap to place each corner of the polygon/);
+    await expect(status).not.toHaveClass(/above/);
+    // stacked, the code's strip is the full width, in the middle of the screen
     await pressMenuItem(page, 'flip', 'tap');
     await expect(status).not.toHaveClass(/above/);
+    expect((await box(page, '#code-bar')).width).toBe(820);
   });
 
   test('should take a finger on a bar for a resting hand while the pencil is down on the drawing', async ({ page }) => {
