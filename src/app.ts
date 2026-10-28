@@ -12,7 +12,7 @@ import {
 	SHAPE_KINDS, SHAPE_NAMES, NEW_SHAPE_COLOR, byPoints, pointsNeeded, paintOf, strokeWidthFor, snapAngle, drawnShape, placedShape, pointsList, draggedAnchor, penPathData, shapeMarkup, spacedClose,
 	type ShapeKind, type PointKind, type Anchor, type Pen,
 } from './draw';
-import {paintFrom, setStyleProperty, removeStyleProperty, strokeFirst, widthRange, writtenWidth, type Paint} from './paint';
+import {paintFrom, styleSets, setStyleProperty, removeStyleProperty, strokeFirst, widthRange, writtenWidth, type Paint} from './paint';
 import {GEOMETRY, SHAPES, plainLength, shapePathData, asPathChanges, conversionBlocked, type Length, type ShapePath} from './shapes';
 import {findSvgTarget, selectionChain, nextInChain, ordinalOf, boxCorners, handleCursor} from './select';
 import {planMove, planResize, planScaleAbout, planRotate, planMatrix, mirrorAbout, parentCenter, simplestTransform, parseTransform, listMatrix, commaIn, axisMaps, scaleMatrix, multiply, invert, applyToVector, applyToPoint, pixelsPerUnit, decimalsFor, roundTo, fmt, placesOf, IDENTITY, type Matrix, type Point, type Rect, type Handle, type EditPlan} from './geometry';
@@ -434,12 +434,11 @@ function attributeShows(el: Element, prop: ProbedProp): boolean {
 	return shows;
 }
 
-/** The elements a paint on a selection goes on, and whether it goes in each
- * one's style, where an attribute would not show: every selected element,
+/** The elements a paint on a selection goes on: every selected element,
  * and inside a group each element that paints itself otherwise than the
  * group would have it, so the whole of what was selected takes the paint.
  * They are found by painting the preview's copies with a probe for a moment. */
-function paintTargets(els: Element[], prop: ProbedProp): {el: Element; inStyle: boolean}[] {
+function paintTargets(els: Element[], prop: ProbedProp): Element[] {
 	const found: Element[] = [];
 	for (const top of topLevelOf(els)) {
 		found.push(top);
@@ -460,7 +459,16 @@ function paintTargets(els: Element[], prop: ProbedProp): {el: Element; inStyle: 
 			else el.setAttribute('style', style);
 		}
 	}
-	return found.map(el=>({el, inStyle: !attributeShows(el, prop)}));
+	return found;
+}
+
+/** Whether nothing selected, nor anything inside it, has a stroke for a
+ * width to show on, or with `andFill`, a stroke and a fill for an order to. */
+function strokeless(els: Element[], andFill = false): boolean {
+	return els.every(el=>[el, ...el.querySelectorAll(PAINTED)].every(e=>{
+		const css = getComputedStyle(e);
+		return css.getPropertyValue('stroke') === 'none' || (andFill && css.getPropertyValue('fill') === 'none');
+	}));
 }
 
 /** Whether an element would paint its stroke under its fill without a paint
@@ -1329,8 +1337,14 @@ class slick {
 		// outline in line with the button's side, and kept on the screen
 		const strip = trigger.closest('.strip');
 		const bar = trigger.closest('#appbar')?.getBoundingClientRect().bottom ?? r.bottom;
+		// measured with the whole screen to spread over, at its own width in
+		// full (a rounded-down one would leave it too narrow, and wrap it), and
+		// only then its height, which a narrow screen wraps it to
+		menu.style.left = '0px';
+		menu.style.top = '0px';
+		const width = Math.ceil(menu.getBoundingClientRect().width);
+		menu.style.left = `${Math.max(0, Math.min(r.left - 1, window.innerWidth - width))}px`;
 		menu.style.top = strip ? `${strip.getBoundingClientRect().top - MENU_DROP - menu.offsetHeight}px` : `${bar + MENU_DROP}px`;
-		menu.style.left = `${Math.max(0, Math.min(r.left - 1, window.innerWidth - menu.offsetWidth))}px`;
 		trigger.setAttribute('aria-expanded', 'true');
 		this.openMenu = {menu, trigger};
 		if (focusFirst) menu.querySelector<HTMLElement>('button, input')?.focus();
@@ -3820,8 +3834,10 @@ class slick {
 	private toggleBehind(): void {
 		const behind = !this.paintNow().behind;
 		this.pen.behind = behind;
+		// a shape under way takes it as it is drawn, and leaves the selection be
+		if (this.sketch) this.showSketch();
 		const where = behind ? 'behind' : 'in front of';
-		const els = this.selectedElements();
+		const els = this.sketch ? [] : this.selectedElements();
 		if (els.length === 0) {
 			this.refreshPaintTools();
 			this.announceAction(`New shapes' strokes go ${where} their fills`);
@@ -3830,8 +3846,8 @@ class slick {
 		if (this.orderElements(els, behind) === null) return;
 		const what = els.length > 1 ? `${els.length} elements` : els[0].tagName.toLowerCase();
 		// the order shows only where there is a stroke
-		const unseen = this.selectedElements().every(el=>[el, ...el.querySelectorAll(PAINTED)].every(e=>getComputedStyle(e).getPropertyValue('stroke') === 'none'));
-		this.announceAction(`${what}: stroke ${where} the fill${unseen ? ', with no stroke to show it: pick a Stroke colour' : ''}`);
+		const unseen = strokeless(this.selectedElements(), true);
+		this.announceAction(`${what}: stroke ${where} the fill${unseen ? ', which shows only with a fill and a stroke' : ''}`);
 	}
 
 	/** Write which of the stroke and the fill is painted first, in the style
@@ -3844,14 +3860,15 @@ class slick {
 		if (!parsed) return null;
 		const tops = topLevelOf(els);
 		const plans: Planned[] = [];
-		for (const {el} of paintTargets(els, 'paint-order')) {
+		for (const el of paintTargets(els, 'paint-order')) {
 			const found = this.sourceFor(el, parsed);
 			if (!found) return null;
 			const style = found.source.getAttribute('style');
 			// what is inside a selected element follows it, once it has changed
 			const next = behind ? setStyleProperty(style ?? '', 'paint-order', 'stroke')
 				: tops.includes(el) && behindWithout(el) ? setStyleProperty(style ?? '', 'paint-order', 'normal')
-					: removeStyleProperty(style ?? '', 'paint-order');
+					// a style without an order of its own is left as it was written
+					: styleSets(style, 'paint-order') ? removeStyleProperty(style ?? '', 'paint-order') : style;
 			const attrs: Record<string, string | null> = {style: next};
 			if (found.source.hasAttribute('paint-order')) attrs['paint-order'] = null;
 			else if (next === style) continue;
@@ -3910,7 +3927,7 @@ class slick {
 		const has = els.length > 1 ? 'have' : 'has';
 		const did = prop === 'stroke-width' ? `stroke width ${value}` : value === 'none' ? `${has} no ${prop}` : `${prop === 'fill' ? 'filled' : 'stroked'} ${value}`;
 		// a width shows only on a stroke
-		const unseen = prop === 'stroke-width' && this.selectedElements().every(el=>[el, ...el.querySelectorAll(PAINTED)].every(e=>getComputedStyle(e).getPropertyValue('stroke') === 'none'));
+		const unseen = prop === 'stroke-width' && strokeless(this.selectedElements());
 		this.announceAction(unseen ? `${what} ${did}, with no stroke to show it: pick a Stroke colour` : `${what} ${did}`);
 	}
 
@@ -3923,9 +3940,10 @@ class slick {
 		const parsed = this.parseOnce();
 		if (!parsed) return null;
 		const plans: Planned[] = [];
-		for (const {el, inStyle} of paintTargets(els, prop)) {
+		for (const el of paintTargets(els, prop)) {
 			const found = this.sourceFor(el, parsed);
 			if (!found) return null;
+			const inStyle = !attributeShows(el, prop);
 			const attrs = inStyle ? {style: setStyleProperty(found.source.getAttribute('style') ?? '', prop, value)} : {[prop]: value};
 			if (Object.entries(attrs).every(([name, v])=>found.source.getAttribute(name) === v)) continue;
 			plans.push({tag: found.tag, attrs});

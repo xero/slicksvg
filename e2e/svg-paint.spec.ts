@@ -178,6 +178,10 @@ test.describe('SVG Editor paint tools', () => {
     await expect(page.locator('#paint-width')).toHaveAttribute('aria-expanded', 'true');
     const shown = (await pop.boundingBox())!;
     expect(shown.y + shown.height).toBeLessThanOrEqual((await page.locator('#context-bar').boundingBox())!.y);
+    // on one row, with room for it, against the screen's edge
+    const [slider, behind] = [(await page.locator('#width-range').boundingBox())!, (await page.locator('#stroke-behind').boundingBox())!];
+    expect(Math.abs(behind.y - slider.y)).toBeLessThan(slider.height);
+    expect(shown.x + shown.width).toBeLessThanOrEqual(1600);
     // a drawing 200 across: a new line is 2 wide, and the slider runs to twenty times that
     const range = page.locator('#width-range');
     await expect(range).toHaveAttribute('max', '40');
@@ -277,6 +281,14 @@ test.describe('SVG Editor paint tools', () => {
     await page.locator('#paint-width').click();
     await page.locator('#stroke-behind').click();
     await expect(page.locator('#message')).toHaveText('New shapes\' strokes go behind their fills');
+    // and with a shape selected that has no stroke, it says the order cannot show
+    await page.keyboard.press('Escape');
+    await page.locator('.svg-container #box').click();
+    await page.locator('#paint-width').click();
+    await page.locator('#stroke-behind').click();
+    await expect(page.locator('#message')).toHaveText('rect: stroke behind the fill, which shows only with a fill and a stroke');
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
     await page.keyboard.press('Escape');
     await page.locator('#mode-shapes').click();
     await page.locator('#draw-rect').click();

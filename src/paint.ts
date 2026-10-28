@@ -82,8 +82,15 @@ export function removeStyleProperty(style: string, name: string): string | null 
 	return kept.length > 0 ? kept.map((part, i)=>i === 0 ? part.trimStart() : part).join(';') : null;
 }
 
-/** Whether a computed paint-order paints the stroke first, under the fill. */
-export const strokeFirst = (order: string): boolean=>order.trim().startsWith('stroke');
+/** Whether a computed paint-order paints the stroke first, under the fill:
+ * the stroke named before the fill, which an order leaving it out paints
+ * after what it names, as with markers first and then the stroke. */
+export function strokeFirst(order: string): boolean {
+	const named = order.trim().toLowerCase().split(/\s+/);
+	const stroke = named.indexOf('stroke');
+	const fill = named.indexOf('fill');
+	return stroke !== -1 && (fill === -1 || stroke < fill);
+}
 
 /** The stroke widths the width slider runs over for a drawing `size`
  * across: from nothing to twenty times the width a new line is drawn with

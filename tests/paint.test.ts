@@ -83,5 +83,8 @@ describe('Taking a paint out of a style', () => {
     expect(strokeFirst('stroke fill markers')).toBe(true);
     expect(strokeFirst('normal')).toBe(false);
     expect(strokeFirst('fill stroke')).toBe(false);
+    expect(strokeFirst('markers stroke')).toBe(true);
+    expect(strokeFirst('markers')).toBe(false);
+    expect(strokeFirst('markers fill')).toBe(false);
   });
 });
