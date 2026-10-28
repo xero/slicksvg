@@ -17,16 +17,17 @@ const at = (page: Page, x: number, y: number) =>
     return { x: p.x, y: p.y };
   }, [x, y] as [number, number]);
 
-/** A picker or the slider moved through some values, quickly, and let go on the last. */
-const move = (page: Page, id: string, values: string[]) =>
-  page.evaluate(([id, values]) => {
+/** A picker or the slider moved through some values, quickly, and let go on
+ * the last, or with `letGo` false, still held. */
+const move = (page: Page, id: string, values: string[], letGo = true) =>
+  page.evaluate(([id, values, letGo]) => {
     const input = document.getElementById(id) as HTMLInputElement;
     for (const value of values) {
       input.value = value;
       input.dispatchEvent(new Event('input', { bubbles: true }));
     }
-    input.dispatchEvent(new Event('change', { bubbles: true }));
-  }, [id, values] as [string, string[]]);
+    if (letGo) input.dispatchEvent(new Event('change', { bubbles: true }));
+  }, [id, values, letGo] as [string, string[], boolean]);
 
 async function drag(page: Page, from: [number, number], to: [number, number]) {
   const a = await at(page, ...from);
@@ -96,6 +97,42 @@ test.describe('SVG Editor paint tools', () => {
     await page.locator('.svg-container #shaded').click();
     await expect(page.locator('#paint-fill')).toHaveClass(/other/);
     await expect(page.locator('#fill-color')).toHaveAttribute('aria-label', 'Fill colour, a gradient or pattern');
+  });
+
+  test('should show a colour on the drawing as the picker moves, and write it into the code once, when it is let go', async ({ page }) => {
+    await page.locator('.svg-container #box').click();
+    await move(page, 'fill-color', ['#110000', '#ff00ff'], false);
+    await expect(page.locator('.svg-container #box')).toHaveCSS('fill', 'rgb(255, 0, 255)');
+    await expect(page.locator('#paint-fill')).toHaveCSS('--swatch', '#ff00ff');
+    await expect(page.locator('#message')).toHaveText('fill="#ff00ff"');
+    expect(await code(page)).toContain('fill="#6291e0"');
+    // where a style sheet paints it, it shows in its style as it will be written
+    await page.locator('.svg-container #dot').click();
+    expect(await code(page)).toContain('fill="#ff00ff"');
+    // at once, so no pause between them keeps the steps apart
+    await move(page, 'fill-color', ['#00ffff']);
+    await expect(page.locator('.svg-container #dot')).toHaveCSS('fill', 'rgb(0, 255, 255)');
+    expect(await code(page)).toContain('style="fill: #00ffff"');
+    await page.locator('#undo').click();
+    await page.locator('#undo').click();
+    expect(await code(page)).toContain('<rect id="box" x="10" y="10" width="50" height="50" fill="#6291e0"/>');
+  });
+
+  test('should write a paint shown but never settled once its picker or the slider lets go of the keys', async ({ page }) => {
+    await page.locator('.svg-container #box').click();
+    await page.locator('#fill-color').focus();
+    await move(page, 'fill-color', ['#ff00ff'], false);
+    expect(await code(page)).toContain('fill="#6291e0"');
+    await page.locator('#fill-color').blur();
+    expect(await code(page)).toContain('fill="#ff00ff"');
+    await page.locator('#stroke-color').fill('#000000');
+    await page.locator('#paint-width').click();
+    await page.locator('#width-range').focus();
+    await move(page, 'width-range', ['4.2'], false);
+    await expect(page.locator('.svg-container #box')).toHaveCSS('stroke-width', '4.2px');
+    expect(await code(page)).not.toContain('stroke-width');
+    await page.keyboard.press('Escape');
+    expect(await code(page)).toContain('stroke="#000000" stroke-width="4.2"');
   });
 
   test('should begin a step of its own when a picker left open moves again with something else selected', async ({ page }) => {

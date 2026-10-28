@@ -784,6 +784,11 @@ class slick {
 	private lastPaint: {run: string | null; at: number} | null = null;
 	/** The places the width slider writes to, for the drawing it was set for. */
 	private widthDecimals = 1;
+	/** A paint shown on the preview as a picker or the slider moves, not yet
+	 * written: the elements it shows on, found once for the run, and where on
+	 * each it shows; and what is to be written once the run settles. */
+	private livePaint: {key: string; targets: {el: Element; inStyle: boolean}[]} | null = null;
+	private pendingPaint: {key: string; selected: string; els: Element[]; prop: PaintProp; value: string; run: string | null} | null = null;
 	/** The app's one message line, in the code's strip: what was just said,
 	 * and until when it keeps the standing hint away. */
 	private message!: HTMLElement;
@@ -1925,6 +1930,9 @@ class slick {
 	}
 
 	private refreshSelection(): void {
+		// a paint shown on what was selected is written before it is let go,
+		// once the update that let it go is over, as the editor needs
+		if (this.pendingPaint && this.pendingPaint.selected !== this.selected.join(',')) queueMicrotask(()=>this.writePending());
 		const els = this.selectedElements();
 		const primary = els.at(-1) ?? null;
 		const corners = this.drawBox(this.selectBox, primary);
@@ -3748,13 +3756,15 @@ class slick {
 	// --- Paint
 	/** The paint tools: Fill and Stroke open the browser's own colour picker
 	 * on a press, laid over them unseen, and Width a slider and a field. A
-	 * picker or the slider gives values as it is moved, and each is written
-	 * as it comes; once one settles, what it did is said. */
+	 * picker or the slider gives values as it is moved, and each shows on the
+	 * drawing as it comes; once one settles, it is written and said. */
 	private setupPaint(): void {
 		for (const prop of ['fill', 'stroke'] as const) {
 			const picker = this.getTyped<HTMLInputElement>(`#${prop}-color`);
 			picker.addEventListener('input', ()=>this.applyPaint(prop, picker.value, false, picker.id));
 			picker.addEventListener('change', ()=>this.applyPaint(prop, picker.value, true, picker.id));
+			// a picker closed with no word that it settled leaves no paint unwritten
+			picker.addEventListener('blur', ()=>this.writePending());
 		}
 		const range = this.getTyped<HTMLInputElement>('#width-range');
 		const field = this.getTyped<HTMLInputElement>('#width-value');
@@ -3772,6 +3782,7 @@ class slick {
 		};
 		range.addEventListener('input', ()=>width(range, false));
 		range.addEventListener('change', ()=>width(range, true));
+		range.addEventListener('blur', ()=>this.writePending());
 		field.addEventListener('change', ()=>width(field, true));
 	}
 
@@ -3904,9 +3915,11 @@ class slick {
 	/** Paint the selection with a fill, a stroke, or a stroke's width, and
 	 * take it up for the shapes drawn next. With nothing selected, only those
 	 * take it; a shape under way, drawn a point at a time, takes it as it is
-	 * drawn. A value given while a picker or the slider is still moving is
-	 * read out; a settled one is said. Values from the same picker or slider
-	 * (`run`) in quick succession are one history step. */
+	 * drawn. A value given while a picker or the slider is still moving only
+	 * shows on the drawing, and is read out; a settled one is written into
+	 * the code, once, and said. Values the same picker or slider (`run`)
+	 * settles on in quick succession, as Safari's do while it moves, are one
+	 * history step. */
 	private applyPaint(prop: PaintProp, value: string, settled: boolean, run: string | null = null): void {
 		if (prop === 'fill') this.pen.fill = value;
 		else if (prop === 'stroke') this.pen.stroke = value;
@@ -3918,11 +3931,14 @@ class slick {
 			if (settled) this.announceAction(prop === 'stroke-width' ? `New strokes are ${value} wide` : value === 'none' ? `New shapes have no ${prop}${prop === 'stroke' ? ', and lines take the fill\'s colour' : ''}` : `New shapes are ${prop === 'fill' ? 'filled' : 'stroked'} ${value}`);
 			return;
 		}
-		if (this.paintElements(els, prop, value, run) === null) return;
 		if (!settled) {
+			this.showPaint(els, prop, value, run);
 			this.say(`${prop}="${value}"`);
 			return;
 		}
+		this.pendingPaint = null;
+		this.livePaint = null;
+		if (this.paintElements(els, prop, value, run) === null) return;
 		const what = els.length > 1 ? `${els.length} elements` : els[0].tagName.toLowerCase();
 		const has = els.length > 1 ? 'have' : 'has';
 		const did = prop === 'stroke-width' ? `stroke width ${value}` : value === 'none' ? `${has} no ${prop}` : `${prop === 'fill' ? 'filled' : 'stroked'} ${value}`;
@@ -3931,12 +3947,47 @@ class slick {
 		this.announceAction(unseen ? `${what} ${did}, with no stroke to show it: pick a Stroke colour` : `${what} ${did}`);
 	}
 
+	/** Show a paint on the preview's copies of what it will be written on, as
+	 * a picker or the slider moves, without writing it: what is inside a
+	 * group that paints itself, and where on each the paint shows, are found
+	 * once for the run, not at every value. A paint still unwritten from
+	 * another run, or for another selection, is written first. */
+	private showPaint(els: Element[], prop: PaintProp, value: string, run: string | null): void {
+		const selected = this.selected.join(',');
+		const key = `${run ?? ''}:${prop}:${selected}`;
+		if (this.pendingPaint && this.pendingPaint.key !== key) this.writePending();
+		let live = this.livePaint;
+		// a drawing drawn again since leaves the copies found no longer shown
+		if (live?.key !== key || live.targets.some(t=>!t.el.isConnected)) {
+			live = {key, targets: paintTargets(els, prop).map(el=>({el, inStyle: !attributeShows(el, prop)}))};
+			this.livePaint = live;
+		}
+		for (const {el, inStyle} of live.targets) {
+			if (inStyle && el instanceof SVGElement) el.style.setProperty(prop, value);
+			else el.setAttribute(prop, value);
+		}
+		this.pendingPaint = {key, selected, els, prop, value, run};
+		this.refreshPaintTools();
+	}
+
+	/** Write the paint shown but not yet written, if there is one: for a
+	 * picker that closed, or let go of the keys, with no word that it
+	 * settled, or the selection it was for let go. Where the drawing has been
+	 * drawn again since, it no longer shows, and is not written either. */
+	private writePending(): void {
+		const p = this.pendingPaint;
+		this.pendingPaint = null;
+		this.livePaint = null;
+		const els = p?.els.filter(el=>el.isConnected) ?? [];
+		if (p && els.length > 0) this.paintElements(els, p.prop, p.value, p.run, p.selected);
+	}
+
 	/** Write a paint on elements, where it shows on each, and on what inside
 	 * them paints itself otherwise. A paint from a picker or the slider
 	 * quickly after the last from it joins its history step, so one moved
 	 * is one step. False when every element was painted so already; null,
 	 * with a message, when the code cannot take it. */
-	private paintElements(els: Element[], prop: PaintProp, value: string, run: string | null): boolean | null {
+	private paintElements(els: Element[], prop: PaintProp, value: string, run: string | null, selected = this.selected.join(',')): boolean | null {
 		const parsed = this.parseOnce();
 		if (!parsed) return null;
 		const plans: Planned[] = [];
@@ -3951,7 +4002,7 @@ class slick {
 		if (plans.length === 0) return false;
 		// a picker left open, as Safari's colour panel is, and moved again once
 		// something else is selected, begins a step of its own
-		const key = run === null ? null : `${run}:${this.selected.join(',')}`;
+		const key = run === null ? null : `${run}:${selected}`;
 		const last = this.lastPaint;
 		const joins = key !== null && last?.run === key && Date.now() - last.at < PAINT_JOIN;
 		this.lastPaint = {run: key, at: Date.now()};
