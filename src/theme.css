@@ -145,6 +145,14 @@
       #preview {
         @apply w-full;
       }
+      /* stacked, the code's strip is mid-screen, far from the home gesture's */
+      #editor .strip {
+        height: var(--bar-height);
+        padding-bottom: 0;
+      }
+      #editor .cm-editor {
+        margin-bottom: var(--bar-height);
+      }
     }
 		.cm-editor {
 			@apply h-full;
@@ -477,7 +485,8 @@
       @apply flex items-center justify-center
 						 border-4 border-dashed border-bounds;
     }
-    .error {
+    /* the drawing's own error, not the strip's message, which is in the pane too */
+    .svg-preview-wrapper > .error {
       @apply text-err p-4 text-center;
     }
   }

@@ -95,6 +95,21 @@ test.describe('SVG Editor layout', () => {
     const status = page.locator('#preview-status');
     await expect(status).toHaveText(/The code has an error/);
     await expect(status).toHaveClass(/error/);
+    // the error colour that reads on the bar, not the drawing's own error's look
+    await expect(status).toHaveCSS('color', 'rgb(159, 7, 18)');
+    await expect(status).not.toHaveCSS('padding-top', '16px');
+    await expect(status).not.toHaveCSS('text-align', 'center');
+  });
+
+  test('should take a tool\'s hint away with the tool, and say how to go on before a shape has points enough', async ({ page }) => {
+    const status = page.locator('#preview-status');
+    await page.locator('#draw-rect').click();
+    await page.locator('#draw-rect').click();
+    await expect(status).toHaveText('', { timeout: 5000 });
+    await page.locator('#draw-polyline').click();
+    const p = await at(page, 100, 20);
+    await page.mouse.click(p.x, p.y);
+    await expect(status).toHaveText('Tap to place the next point', { timeout: 5000 });
   });
 });
 

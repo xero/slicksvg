@@ -901,7 +901,9 @@ class slick {
 		this.previewStatus.classList.toggle('error', kind === 'error');
 		this.heldUntil = Date.now() + ms;
 		clearTimeout(this.hintTimer);
-		this.hintTimer = setTimeout(()=>this.restoreHint(), ms);
+		// a timer can fire a moment before the clock says it is due, and the
+		// message it ends is the last one said, as each clears the one before
+		this.hintTimer = setTimeout(()=>this.restoreHint(true), ms);
 	}
 
 	/** Read out an edit in the preview's strip as a drag makes it, until the drag ends. */
@@ -919,14 +921,17 @@ class slick {
 		if (!force && Date.now() < this.heldUntil) return;
 		this.heldUntil = 0;
 		clearTimeout(this.hintTimer);
-		this.previewStatus.textContent = this.standingHint();
+		const hint = this.standingHint();
+		// a pointer hovering over a shape under way asks for this at every move
+		if (this.previewStatus.textContent !== hint) this.previewStatus.textContent = hint;
 		this.previewStatus.classList.remove('error');
 	}
 
 	/** What the preview's strip says while nothing else is to be said. */
 	private standingHint(): string {
 		const s = this.sketch;
-		if (s?.kind === 'polygon') return s.anchors.length < 3 ? 'Tap to place each corner' : 'Tap the first corner to close the polygon, or press Done';
+		if (s && s.anchors.length < pointsNeeded(s.kind)) return s.kind === 'polygon' ? 'Tap to place each corner' : s.kind === 'path' ? 'Tap to place the next point, or drag to pull a curve' : 'Tap to place the next point';
+		if (s?.kind === 'polygon') return 'Tap the first corner to close the polygon, or press Done';
 		if (s?.kind === 'polyline') return 'Tap the last point again, or press Done, to finish the polyline';
 		if (s?.kind === 'path') return 'Tap the first point to close the path, or the last to end it open; drag to pull a curve';
 		if (this.drawTool) return toolHint(this.drawTool);
@@ -1067,7 +1072,9 @@ class slick {
 	private guardBarsFromPalm(): void {
 		const stylus = (t: Touch): boolean=>(t as Touch & {touchType?: string}).touchType === 'stylus';
 		const track = (e: TouchEvent): void=>{
-			this.stylusDown = Array.from(e.touches).some(t=>stylus(t) && t.target instanceof Node && this.previewContainer.contains(t.target) && !this.inBar(t.target));
+			// a touch's target is where it began, which may since have been redrawn
+			// out of the document, as the marks of a shape under way are at each move
+			this.stylusDown = Array.from(e.touches).some(t=>stylus(t) && t.target instanceof Node && (!t.target.isConnected || this.previewContainer.contains(t.target)) && !this.inBar(t.target));
 		};
 		for (const type of ['touchstart', 'touchend', 'touchcancel'] as const) document.addEventListener(type, track, {capture: true, passive: true});
 		for (const bar of [this.get('appbar'), this.get('context-bar')]) {
@@ -3093,6 +3100,8 @@ class slick {
 		this.svgPreview.style.cursor = this.drawTool ? 'crosshair' : '';
 		this.drawBox(this.hoverBox, null);
 		if (this.drawTool) this.announceAction(toolHint(this.drawTool));
+		// a tool put down takes its hint with it
+		else this.restoreHint();
 	}
 
 	/** A press with a shape tool in hand starts drawing, unless the code does
@@ -3430,6 +3439,8 @@ class slick {
 		for (const kind of SHAPE_KINDS) this.get(`draw-${kind}`).classList.toggle('hide', s !== null && kind !== s.kind);
 		this.get('draw-done').toggleAttribute('disabled', !s || s.anchors.length < pointsNeeded(s.kind));
 		this.updateHistoryButtons();
+		// the hint follows the tools: a shape under way, or points edited, coming or going
+		this.restoreHint();
 	}
 
 	/** Remove the selection from the code, each element with the line it sat
