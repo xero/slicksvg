@@ -321,3 +321,28 @@ export function renameAttribute(source: string, tag: StartTag, from: string, to:
 		{from: tag.start + attr.valueStart, to: tag.start + attr.valueEnd, insert: escapeValue(value, attr.quote)},
 	];
 }
+
+/** Where new markup goes to be the last child of the element at `ordinal`.
+ * When the element's closing tag has its line to itself, the markup gets a
+ * line of its own before it, indented as the element's first child is, or a
+ * step in from the closing tag when there is none; otherwise it goes right
+ * before the closing tag. An element closed in its start tag is opened. */
+export function childInsertion(source: string, ordinal: number, markup: string): TextChange | null {
+	const tag = startTags(source).at(ordinal);
+	const extent = elementExtent(source, ordinal);
+	if (!tag || !extent) return null;
+	if (tag.selfClosing) {
+		const slash = source.lastIndexOf('/', tag.end - 1);
+		return {from: slash, to: tag.end, insert: `>${markup}</${tag.name}>`};
+	}
+	const close = source.lastIndexOf('</', extent.end - 1);
+	const lineStart = source.lastIndexOf('\n', close - 1) + 1;
+	const closeIndent = source.slice(lineStart, close);
+	if (lineStart <= tag.end || !/^[ \t]*$/.test(closeIndent)) return {from: close, to: close, insert: markup};
+	const child = startTags(source).at(ordinal + 1);
+	const childLine = child && child.start < close ? source.lastIndexOf('\n', child.start - 1) + 1 : -1;
+	const childIndent = childLine > tag.end ? source.slice(childLine, child?.start) : null;
+	const step = /\n(\t|[ ]+)</.exec(source)?.[1] ?? '  ';
+	const indent = childIndent !== null && /^[ \t]*$/.test(childIndent) ? childIndent : closeIndent + step;
+	return {from: lineStart, to: lineStart, insert: `${indent}${markup}\n`};
+}

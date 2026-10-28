@@ -7,7 +7,8 @@ import {tokyoNightDay} from '@fsegurai/codemirror-theme-tokyo-night-day';
 import {tokyoNightStorm} from '@fsegurai/codemirror-theme-tokyo-night-storm';
 import {linter, lintGutter, forceLinting} from '@codemirror/lint';
 import {findElementAtCursor, type ElementRef} from './xray';
-import {startTags, readAttribute, attributesOf, planAttributeEdits, applyChanges, stampSource, parseSource, elementExtent, removalRange, duplicateInsertion, SOURCE_ATTR, type StartTag, type TextChange} from './source-map';
+import {startTags, readAttribute, attributesOf, planAttributeEdits, applyChanges, stampSource, parseSource, elementExtent, removalRange, duplicateInsertion, childInsertion, SOURCE_ATTR, type StartTag, type TextChange} from './source-map';
+import {SHAPE_KINDS, SHAPE_NAMES, NEW_SHAPE_FILL, drawnShape, placedShape, shapeMarkup, spacedClose, type ShapeKind} from './draw';
 import {GEOMETRY, SHAPES, plainLength, shapePathData, asPathChanges, conversionBlocked, type Length, type ShapePath} from './shapes';
 import {findSvgTarget, selectionChain, nextInChain, ordinalOf, boxCorners, handleCursor} from './select';
 import {planMove, planResize, planScaleAbout, planRotate, planMatrix, mirrorAbout, parentCenter, simplestTransform, parseTransform, listMatrix, commaIn, axisMaps, scaleMatrix, multiply, invert, applyToVector, applyToPoint, pixelsPerUnit, decimalsFor, roundTo, fmt, placesOf, IDENTITY, type Matrix, type Point, type Rect, type Handle, type EditPlan} from './geometry';
@@ -182,7 +183,7 @@ function resetElementStyles(...elements: HTMLElement[]) {
 }
 
 // --- SVGEditor Class
-type GestureMode = 'move' | 'resize' | 'rotate' | 'point' | 'bend' | 'marquee';
+type GestureMode = 'move' | 'resize' | 'rotate' | 'point' | 'bend' | 'marquee' | 'draw';
 
 /** A point of a path, polygon, polyline, or line, as the edit functions address it. */
 type PointRef =
@@ -326,6 +327,18 @@ interface Gesture {
 	turn?: number;
 	/** Set when the box is round several selected points, not elements. */
 	points?: boolean;
+	/** The shape a drag with a shape tool is drawing. */
+	draft?: Draft;
+}
+
+/** A shape being drawn: the preview's stand-in for it, the screen to the
+ * drawing's units, the precision the zoom shows, and its attributes so far. */
+interface Draft {
+	kind: ShapeKind;
+	el: SVGElement;
+	toUnits: Matrix;
+	decimals: number;
+	attrs: Record<string, string>;
 }
 
 /** What a gesture shows on screen until it is written or taken back. */
@@ -593,6 +606,8 @@ class slick {
 	private moreBoxes: SVGPolygonElement[] = [];
 	private pressToggle = false;
 	private pointMode: PointMode | null = null;
+	/** The shape tool in hand, which the next press on the drawing draws with. */
+	private drawTool: ShapeKind | null = null;
 	private pointsGroup!: SVGGElement;
 	private spotGroup!: SVGGElement;
 	private marquee!: SVGRectElement;
@@ -841,7 +856,8 @@ class slick {
 			['point-symmetric', ()=>this.pointTool(()=>this.makeSymmetric())],
 			['point-curve', ()=>this.pointTool(()=>this.toggleCurve())],
 			['point-delete', ()=>this.pointTool(()=>this.deletePoint())],
-			['point-done', ()=>this.togglePointMode()]
+			['point-done', ()=>this.togglePointMode()],
+			...SHAPE_KINDS.map((kind): [string, () => void]=>[`draw-${kind}`, ()=>this.armShape(kind)])
 		]);
 		document.addEventListener('keydown', this.handleHistoryKeys);
 		this.updateHistoryButtons();
@@ -864,14 +880,15 @@ class slick {
 		// the dialog it keeps its own meaning
 		document.addEventListener('keydown', (e)=>{
 			if (e.key !== 'Escape') return;
-			if (this.gesture?.drags.length || this.gesture?.mode === 'marquee') {
+			if (this.gesture?.drags.length || this.gesture?.mode === 'marquee' || this.gesture?.mode === 'draw') {
 				this.cancelGesture();
 				return;
 			}
 			const target = e.target;
 			if (target instanceof Element && target.closest('.cm-editor, dialog')) return;
-			// point editing ends first; a second Escape clears the selection
-			if (this.pointMode) this.leavePointMode();
+			// a shape tool is put down first, then point editing ends; the next Escape clears the selection
+			if (this.drawTool) this.armShape(null);
+			else if (this.pointMode) this.leavePointMode();
 			else this.clearSelection();
 		});
 		this.svgPreview.addEventListener('touchstart', (e)=>this.handleTouchStart(e), {passive: false});
@@ -1115,6 +1132,10 @@ class slick {
 	private onPress(e: MouseEvent): void {
 		if (e.button !== 0) return;
 		e.preventDefault();
+		if (this.drawTool) {
+			this.pressDraw(e.clientX, e.clientY);
+			return;
+		}
 		if (this.pressPoint(e, e.clientX, e.clientY)) return;
 		this.pressMoved = false;
 		this.tapTarget = e.target;
@@ -1162,6 +1183,11 @@ class slick {
 	 * else a pan, and a finger that does not travel is a tap. */
 	private handleTouchStart(e: TouchEvent): void {
 		if (e.touches.length !== 1) return;
+		if (this.drawTool) {
+			this.pressDraw(e.touches[0].clientX, e.touches[0].clientY);
+			e.preventDefault();
+			return;
+		}
 		if (this.pressPoint(e, e.touches[0].clientX, e.touches[0].clientY)) return;
 		this.tapTarget = e.target;
 		this.pressToggle = false;
@@ -1371,7 +1397,8 @@ class slick {
 	}
 
 	private hoverAt(e: MouseEvent): void {
-		if (this.isPanning || this.gesture) return;
+		// with a shape tool in hand, nothing is picked out to select
+		if (this.isPanning || this.gesture || this.drawTool) return;
 		const pick = this.pickAt(e.target);
 		// a hand over the selection says it can be dragged, as over the canvas
 		this.svgPreview.style.cursor = this.onSelection(e.target) ? 'grab' : pick ? 'pointer' : '';
@@ -1412,7 +1439,7 @@ class slick {
 	 * something it works on. */
 	private refreshPointTools(editing: boolean): void {
 		this.get('point-tools').classList.toggle('hide', !editing);
-		for (const id of ['dark', 'flip']) this.get(id).classList.toggle('hide', editing);
+		for (const id of ['dark', 'flip', 'shape-tools']) this.get(id).classList.toggle('hide', editing);
 		this.get('point-several').setAttribute('aria-pressed', this.pointMode?.several ? 'true' : 'false');
 		// the tools wait for a drag to end before they look again
 		if (this.gesture?.drags.length) return;
@@ -1577,6 +1604,7 @@ class slick {
 			this.announceError('This element\'s points could not be read, so they cannot be edited here.');
 			return;
 		}
+		if (this.drawTool) this.armShape(null);
 		this.pointMode = {ordinal, selected: [], spot: null, several: false};
 		this.refreshSelection();
 		this.svgPreview.focus({preventScroll: true});
@@ -2213,6 +2241,13 @@ class slick {
 	/** A press on a point, or a resize or rotate handle, starts that gesture
 	 * on the selection. */
 	private onHandlePress(e: Event, x: number, y: number): void {
+		// a shape tool draws wherever it is pressed, on a handle too
+		if (this.drawTool) {
+			e.preventDefault();
+			e.stopPropagation();
+			this.pressDraw(x, y);
+			return;
+		}
 		const current = this.selectedElement();
 		const handle = e.target instanceof Element ? e.target.closest('[data-handle]')?.getAttribute('data-handle') : null;
 		// the box round several selected points takes a press on its handles before a point near one
@@ -2447,10 +2482,11 @@ class slick {
 		if (!g) return;
 		const sx = x - g.startX;
 		const sy = y - g.startY;
-		if (g.mode === 'marquee') {
+		if (g.mode === 'marquee' || g.mode === 'draw') {
 			if (!g.to && Math.hypot(sx, sy) < DRAG_THRESHOLD) return;
 			g.to = {x, y};
-			this.placeMarquee(g);
+			if (g.mode === 'draw') this.drawDraft(g, shift, alt);
+			else this.placeMarquee(g);
 			return;
 		}
 		if (g.drags.length === 0) {
@@ -2560,6 +2596,10 @@ class slick {
 			else this.clickSelect(this.tapTarget);
 			return;
 		}
+		if (g.mode === 'draw') {
+			this.finishDraw(g);
+			return;
+		}
 		if (g.drags.length === 0) {
 			if (!g.fromHandle) this.clickSelect(this.tapTarget, g.toggle);
 			else if (g.tapped && !g.pull) this.tapPoint(g.tapped, g.toggle);
@@ -2629,7 +2669,11 @@ class slick {
 		this.gesture = null;
 		this.clearHold();
 		this.placeMarquee(null);
-		this.svgPreview.style.cursor = '';
+		this.svgPreview.style.cursor = this.drawTool ? 'crosshair' : '';
+		if (g?.draft) {
+			g.draft.el.remove();
+			forceLinting(this.editor);
+		}
 		if (!g || g.drags.length === 0) return;
 		for (const d of g.drags) d.live.revert();
 		this.tapTarget = null;
@@ -2778,6 +2822,93 @@ class slick {
 		const made = this.elementForOrdinal(ordinal);
 		if (made) this.selectElement(made);
 		this.announceAction(`${name} duplicated`);
+	}
+
+	// --- Drawing
+	/** Take up a shape tool, or put it down when it is in hand already, or
+	 * with null. The next press on the drawing draws that shape, whatever it
+	 * lands on, and a tap places one; then the tool is put down and the new
+	 * shape is selected, for its handles to size and turn it. */
+	private armShape(kind: ShapeKind | null): void {
+		this.drawTool = kind === this.drawTool ? null : kind;
+		if (this.drawTool) this.leavePointMode();
+		for (const each of SHAPE_KINDS) this.get(`draw-${each}`).setAttribute('aria-pressed', each === this.drawTool ? 'true' : 'false');
+		this.svgPreview.style.cursor = this.drawTool ? 'crosshair' : '';
+		this.drawBox(this.hoverBox, null);
+		if (this.drawTool) this.announceAction(`Drag across the drawing to draw a ${SHAPE_NAMES[this.drawTool]}, or tap to place one`);
+	}
+
+	/** A press with a shape tool in hand starts drawing, unless the code does not parse. */
+	private pressDraw(x: number, y: number): void {
+		this.isPanning = false;
+		if (!parseSource(this.editor.state.doc.toString())) {
+			this.announceError('The code has an error, so a shape cannot be added here. Fix the code first.');
+			return;
+		}
+		this.gesture = {mode: 'draw', handle: null, fromHandle: false, toggle: false, startX: x, startY: y, targets: [], drags: [], point: null};
+	}
+
+	/** The preview's stand-in for a shape being drawn, last in the drawing as
+	 * the shape will be, and the frame it is drawn in: the drawing's own units. */
+	private startDraft(kind: ShapeKind): Draft | null {
+		const root = this.svgPreview.querySelector('.svg-container svg');
+		if (!(root instanceof SVGSVGElement)) return null;
+		const el = document.createElementNS(SVG_NS, kind);
+		el.setAttribute('fill', NEW_SHAPE_FILL);
+		root.appendChild(el);
+		const ctm = el.getScreenCTM();
+		const toUnits = ctm ? invert(toMatrix(ctm)) : null;
+		if (!ctm || !toUnits) {
+			el.remove();
+			return null;
+		}
+		return {kind, el, toUnits, decimals: decimalsFor(pixelsPerUnit(toMatrix(ctm))), attrs: {}};
+	}
+
+	/** Show the shape a drag draws, and read it out in the status bar. */
+	private drawDraft(g: Gesture, square: boolean, fromCenter: boolean): void {
+		if (!this.drawTool || !g.to) return;
+		if (!g.draft) g.draft = this.startDraft(this.drawTool) ?? undefined;
+		const draft = g.draft;
+		if (!draft) return;
+		const from = applyToPoint(draft.toUnits, g.startX, g.startY);
+		const to = applyToPoint(draft.toUnits, g.to.x, g.to.y);
+		draft.attrs = drawnShape(draft.kind, from, to, {square, fromCenter, decimals: draft.decimals});
+		for (const [name, value] of Object.entries(draft.attrs)) draft.el.setAttribute(name, value);
+		this.updateStatusBar(`${draft.kind} ${Object.entries(draft.attrs).map(([name, value])=>`${name}="${value}"`).join(' ')}`, false);
+	}
+
+	/** Write the shape a drag drew, or for a tap one a quarter the size of
+	 * the drawing with its middle where the tap was, as the drawing's last
+	 * child. The tool is put down and the new shape selected. */
+	private finishDraw(g: Gesture): void {
+		const kind = this.drawTool;
+		const draft = g.draft ?? (kind && !g.to ? this.startDraft(kind) : null);
+		const root = draft?.el.ownerSVGElement;
+		draft?.el.remove();
+		this.armShape(null);
+		if (!kind || !draft || !root) {
+			this.announceError('There is no <svg> element to draw in.');
+			return;
+		}
+		const box = root.getBoundingClientRect();
+		const attrs = g.to ? draft.attrs : placedShape(kind, applyToPoint(draft.toUnits, g.startX, g.startY), (Math.min(box.width, box.height) / 4) * pixelsPerUnit(draft.toUnits), draft.decimals);
+		const parsed = this.parseOnce();
+		if (!parsed) return;
+		const rootTag = this.rootTag(parsed.sourceText);
+		const insertion = rootTag ? childInsertion(parsed.sourceText, rootTag.ordinal, shapeMarkup(kind, attrs, spacedClose(parsed.sourceText))) : null;
+		if (!insertion) {
+			this.announceError('The drawing\'s closing tag could not be found, so the shape was not added.');
+			return;
+		}
+		// the new shape comes after every tag before where it goes
+		const ordinal = parsed.tags.filter(tag=>tag.start < insertion.from).length;
+		this.skipSync = true;
+		this.applyEdits([insertion], 'slick.draw');
+		const made = this.elementForOrdinal(ordinal);
+		if (made) this.selectElement(made);
+		this.svgPreview.focus({preventScroll: true});
+		this.announceAction(`${kind} drawn`);
 	}
 
 	/** Remove the selection from the code, each element with the line it sat

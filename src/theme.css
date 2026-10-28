@@ -218,8 +218,12 @@
 				@apply hidden;
 			}
 		}
-		#point-tools {
+		#point-tools, #shape-tools {
 			@apply flex flex-row items-center;
+		}
+		/* the shape tools stand apart from the view's own buttons */
+		#shape-tools {
+			@apply mr-3;
 		}
   }
   #editor {

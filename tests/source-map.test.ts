@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   renameElement, renameAttribute,
   scanTags, startTags, attributesOf, readAttribute, planAttributeEdits, applyChanges, stampSource, SOURCE_ATTR,
-  elementExtent, removalRange, duplicateInsertion,
+  elementExtent, removalRange, duplicateInsertion, childInsertion,
 } from '../src/source-map';
 
 const root = (source: string) => startTags(source)[0];
@@ -183,6 +183,41 @@ describe('Source map duplicate insertion', () => {
     const source = '<svg><rect/><circle/></svg>';
     expect(applyChanges(source, [duplicateInsertion(source, 1, '<rect x="1"/>')!])).toBe('<svg><rect/><rect x="1"/><circle/></svg>');
     expect(duplicateInsertion('<svg><g><rect/></svg>', 1, '')).toBeNull();
+  });
+});
+
+describe('Source map child insertion', () => {
+  const add = (source: string, markup = '<rect/>', ordinal = 0) => applyChanges(source, [childInsertion(source, ordinal, markup)!]);
+
+  it('should give a new last child a line of its own, indented as the first child is', () => {
+    expect(add('<svg>\n  <g>\n    <path/>\n  </g>\n  <circle/>\n</svg>')).toBe('<svg>\n  <g>\n    <path/>\n  </g>\n  <circle/>\n  <rect/>\n</svg>');
+    expect(add('<svg>\n\t<circle/>\n</svg>\n')).toBe('<svg>\n\t<circle/>\n\t<rect/>\n</svg>\n');
+    expect(add('<svg>\n<circle/>\n</svg>')).toBe('<svg>\n<circle/>\n<rect/>\n</svg>');
+  });
+
+  it('should indent a first child a step in from the closing tag, in the steps the source uses', () => {
+    expect(add('<svg>\n</svg>')).toBe('<svg>\n  <rect/>\n</svg>');
+    expect(add('<svg>\n\t<g>\n\t</g>\n</svg>', '<rect/>', 1)).toBe('<svg>\n\t<g>\n\t\t<rect/>\n\t</g>\n</svg>');
+    expect(add('<svg>\n    <g>\n    </g>\n</svg>', '<rect/>', 1)).toBe('<svg>\n    <g>\n        <rect/>\n    </g>\n</svg>');
+    // a first child sharing the start tag's line says nothing of the indent
+    expect(add('<svg><circle/>\n</svg>')).toBe('<svg><circle/>\n  <rect/>\n</svg>');
+  });
+
+  it('should put a new child right before a closing tag that shares its line', () => {
+    expect(add('<svg viewBox="0 0 2 2"><circle/></svg>')).toBe('<svg viewBox="0 0 2 2"><circle/><rect/></svg>');
+    expect(add('<svg>\n  <circle/></svg>')).toBe('<svg>\n  <circle/><rect/></svg>');
+    expect(add('<svg></svg>')).toBe('<svg><rect/></svg>');
+  });
+
+  it('should open an element closed in its start tag', () => {
+    expect(add('<svg viewBox="0 0 2 2"/>')).toBe('<svg viewBox="0 0 2 2"><rect/></svg>');
+    expect(add('<svg viewBox="0 0 2 2" />')).toBe('<svg viewBox="0 0 2 2" ><rect/></svg>');
+  });
+
+  it('should not count an element after this one as its child', () => {
+    expect(add('<svg>\n  <g>\n  </g>\n    <circle/>\n</svg>', '<rect/>', 1)).toBe('<svg>\n  <g>\n    <rect/>\n  </g>\n    <circle/>\n</svg>');
+    expect(childInsertion('<svg><g>', 1, '<rect/>')).toBeNull();
+    expect(childInsertion('<svg/>', 3, '<rect/>')).toBeNull();
   });
 });
 
