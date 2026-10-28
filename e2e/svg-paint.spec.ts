@@ -135,6 +135,18 @@ test.describe('SVG Editor paint tools', () => {
     expect(await code(page)).toContain('stroke="#000000" stroke-width="4.2"');
   });
 
+  test('should write a paint shown but never settled before a button that takes no focus, as Safari\'s do, paints or undoes', async ({ page }) => {
+    await page.locator('.svg-container #box').click();
+    await page.locator('#fill-color').focus();
+    await move(page, 'fill-color', ['#ff00ff'], false);
+    // a click that leaves the picker focused, so no blur writes it first
+    await page.evaluate(() => { document.getElementById('no-stroke')?.click(); });
+    expect(await code(page)).toContain('fill="#ff00ff" stroke="#999999"');
+    await move(page, 'fill-color', ['#00ff00'], false);
+    await page.evaluate(() => { document.getElementById('undo')?.click(); });
+    expect(await code(page)).toContain('fill="#ff00ff" stroke="#999999"');
+  });
+
   test('should begin a step of its own when a picker left open moves again with something else selected', async ({ page }) => {
     await page.locator('.svg-container #box').click();
     await move(page, 'fill-color', ['#110000', '#ff00ff']);

@@ -1392,6 +1392,10 @@ class slick {
 	}
 
 	private updateSVGPreview(): void {
+		// a paint shown on the copies drawn so far goes with them, unwritten,
+		// and they are not kept alive for it
+		this.pendingPaint = null;
+		this.livePaint = null;
 		const svgCode = this.editor.state.doc.toString();
 		try {
 			const svgContainer = document.createElement('div');
@@ -3843,6 +3847,7 @@ class slick {
 	 * inner half, as paint-order in the style; pressed again, the stroke goes
 	 * back over the fill. For the selection and the shapes drawn next. */
 	private toggleBehind(): void {
+		this.writePending();
 		const behind = !this.paintNow().behind;
 		this.pen.behind = behind;
 		// a shape under way takes it as it is drawn, and leaves the selection be
@@ -3921,6 +3926,10 @@ class slick {
 	 * settles on in quick succession, as Safari's do while it moves, are one
 	 * history step. */
 	private applyPaint(prop: PaintProp, value: string, settled: boolean, run: string | null = null): void {
+		const key = `${run ?? ''}:${prop}:${this.selected.join(',')}`;
+		// a paint still unwritten from another run, or for another selection,
+		// is written first, before the drawing it draws again is looked at
+		if (this.pendingPaint && this.pendingPaint.key !== key) this.writePending();
 		if (prop === 'fill') this.pen.fill = value;
 		else if (prop === 'stroke') this.pen.stroke = value;
 		else this.pen.width = value;
@@ -3932,7 +3941,7 @@ class slick {
 			return;
 		}
 		if (!settled) {
-			this.showPaint(els, prop, value, run);
+			this.showPaint(els, prop, value, run, key);
 			this.say(`${prop}="${value}"`);
 			return;
 		}
@@ -3950,15 +3959,12 @@ class slick {
 	/** Show a paint on the preview's copies of what it will be written on, as
 	 * a picker or the slider moves, without writing it: what is inside a
 	 * group that paints itself, and where on each the paint shows, are found
-	 * once for the run, not at every value. A paint still unwritten from
-	 * another run, or for another selection, is written first. */
-	private showPaint(els: Element[], prop: PaintProp, value: string, run: string | null): void {
+	 * once for the run, not at every value. */
+	private showPaint(els: Element[], prop: PaintProp, value: string, run: string | null, key: string): void {
 		const selected = this.selected.join(',');
-		const key = `${run ?? ''}:${prop}:${selected}`;
-		if (this.pendingPaint && this.pendingPaint.key !== key) this.writePending();
 		let live = this.livePaint;
-		// a drawing drawn again since leaves the copies found no longer shown
-		if (live?.key !== key || live.targets.some(t=>!t.el.isConnected)) {
+		// a drawing drawn again lets go of the copies found, in updateSVGPreview
+		if (live?.key !== key) {
 			live = {key, targets: paintTargets(els, prop).map(el=>({el, inStyle: !attributeShows(el, prop)}))};
 			this.livePaint = live;
 		}
@@ -4114,10 +4120,13 @@ class slick {
 	}
 
 	private undoEdit(focusEditor = true): void {
+		// a paint shown but not yet written is the last thing done
+		this.writePending();
 		if (undo(this.editor)) this.announceAction('Undid last change');
 		if (focusEditor) this.editor.focus();
 	}
 	private redoEdit(focusEditor = true): void {
+		this.writePending();
 		if (redo(this.editor)) this.announceAction('Redid last change');
 		if (focusEditor) this.editor.focus();
 	}
