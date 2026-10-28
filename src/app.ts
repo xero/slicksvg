@@ -39,7 +39,7 @@ const HOLD_SLOP = 10;
 const HANDLE_SIZE = window.matchMedia('(pointer: coarse)').matches ? 14 : 8;
 const ROTATE_OFFSET = 24;
 /** The room, in pixels, the preview's message needs beside its tools before it moves above them. */
-const STATUS_ROOM = 240;
+const STATUS_ROOM = 160;
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 /** Safari's pinch event, which the DOM typings leave out. */
@@ -918,6 +918,7 @@ class slick {
 		const ms = kind === 'error' ? 6000 : 2500;
 		this.previewStatus.textContent = message;
 		this.previewStatus.classList.toggle('error', kind === 'error');
+		this.placeStatus();
 		this.heldUntil = Date.now() + ms;
 		clearTimeout(this.hintTimer);
 		// a timer can fire a moment before the clock says it is due, and the
@@ -929,6 +930,7 @@ class slick {
 	private readOut(message: string): void {
 		this.previewStatus.textContent = message;
 		this.previewStatus.classList.remove('error');
+		this.placeStatus();
 		this.heldUntil = Infinity;
 		clearTimeout(this.hintTimer);
 	}
@@ -942,7 +944,10 @@ class slick {
 		clearTimeout(this.hintTimer);
 		const hint = this.standingHint();
 		// a pointer hovering over a shape under way asks for this at every move
-		if (this.previewStatus.textContent !== hint) this.previewStatus.textContent = hint;
+		if (this.previewStatus.textContent !== hint) {
+			this.previewStatus.textContent = hint;
+			this.placeStatus();
+		}
 		this.previewStatus.classList.remove('error');
 	}
 
@@ -1081,16 +1086,28 @@ class slick {
 		for (const nav of document.querySelectorAll('nav')) this.fitBar(nav);
 		this.guardBarsFromPalm();
 		this.setupMenus();
-		// the preview's message sits beside its tools while there is room there,
-		// and above the strip, across the foot of the drawing, while there is not
 		const strip = this.get('context-bar');
 		const tools = strip.querySelector('nav');
-		const placeStatus = (): void=>{
-			this.previewStatus.classList.toggle('above', strip.clientWidth - (tools?.offsetWidth ?? 0) < STATUS_ROOM);
-		};
-		const sizes = new ResizeObserver(placeStatus);
+		const sizes = new ResizeObserver(()=>this.placeStatus());
 		sizes.observe(strip);
 		if (tools) sizes.observe(tools);
+	}
+
+	/** The preview's message sits beside its tools, on two lines at most,
+	 * while that is room enough for it, and above the strip, whole, across
+	 * the foot of the drawing, while it is not. */
+	private placeStatus(): void {
+		const el = this.previewStatus;
+		const strip = el.parentElement;
+		const tools = strip?.querySelector('nav');
+		if (!strip || !tools) return;
+		if (strip.clientWidth - tools.offsetWidth < STATUS_ROOM) {
+			el.classList.add('above');
+			return;
+		}
+		el.classList.remove('above');
+		// held to two lines, a message with more has some hidden below them
+		if (el.scrollHeight > el.clientHeight + 1) el.classList.add('above');
 	}
 
 	/** A hand drawing with a pencil rests on the screen, and iPadOS lets the

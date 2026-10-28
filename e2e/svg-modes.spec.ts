@@ -302,6 +302,23 @@ test.describe('SVG Editor app bar on a portrait tablet', () => {
     expect(history.x - (view.x + view.width)).toBeGreaterThan(100);
   });
 
+  test('should set each group of the app bar apart by one edge, with none of a gap, and close the last off', async ({ page }) => {
+    await page.goto('/index.html');
+    await expect(page.locator('.svg-container svg')).toBeVisible();
+    const edges = await page.evaluate(() => ['history', 'modes', 'tools', 'zoom'].map((id) => {
+      const el = document.getElementById(id)!;
+      const css = getComputedStyle(el);
+      const r = el.getBoundingClientRect();
+      return { left: r.left, right: r.right, before: css.borderLeftWidth, after: css.borderRightWidth };
+    }));
+    for (let i = 1; i < edges.length; i++) {
+      expect(Math.abs(edges[i].left - edges[i - 1].right)).toBeLessThan(0.5);
+      expect(edges[i - 1].after).toBe('0px');
+    }
+    expect(edges.every((e) => e.before === '1px')).toBe(true);
+    expect(edges.at(-1)!.after).toBe('1px');
+  });
+
   test('should close up the gap when the bar is too narrow for it', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/index.html');

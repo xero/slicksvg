@@ -89,6 +89,20 @@ test.describe('SVG Editor layout', () => {
     await expect(status).toHaveText(/^Drag a point; tap the outline/, { timeout: 5000 });
   });
 
+  test('should close off the drawing\'s tools, and fit a message of two lines beside them, or raise a longer one above', async ({ page }) => {
+    await expect(page.locator('#context-bar nav')).toHaveCSS('border-right-width', '1px');
+    const status = page.locator('#preview-status');
+    await page.locator('#mode-shapes').click();
+    await page.locator('#draw-rect').click();
+    await expect(status).toHaveText('Drag across the drawing to draw a rectangle, or tap to place one');
+    await expect(status).not.toHaveClass(/above/);
+    const lines = await status.evaluate((el) => Math.round(el.getBoundingClientRect().height / parseFloat(getComputedStyle(el).lineHeight)));
+    expect(lines).toBe(2);
+    await page.locator('#draw-path').click();
+    await expect(status).toHaveText(/^Tap to place each point of the path/);
+    await expect(status).toHaveClass(/above/);
+  });
+
   test('should say what went wrong, in the colour for it', async ({ page }) => {
     await setContent(page, FIXTURE.replace('</svg>', ''));
     await page.locator('#mode-shapes').click();

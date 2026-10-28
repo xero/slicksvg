@@ -287,19 +287,27 @@
     @apply flex flex-row items-stretch;
   }
   #context-bar nav > div:not(.hide) ~ div:not(.hide) {
-    @apply ml-1 pl-1 border-l border-bounds;
+    @apply border-l border-bounds;
+  }
+  /* the last of them closed off too, where the message begins */
+  #context-bar nav {
+    @apply pr-0 border-r border-bounds;
   }
   /* the app's menus at the start of its bar, and its tools at the end; a bar
      too narrow for both closes the gap, and scrolls */
   #appbar nav > #history {
     @apply ml-auto;
   }
-  /* buttons that belong together: one edge round them, a fainter one between */
-  .joined {
-    @apply flex flex-row items-stretch mx-1 border-x border-bounds;
-    & > button + button {
-      border-left: 1px solid color-mix(in srgb, var(--color-bounds) 50%, transparent);
-    }
+  /* buttons that belong together: one edge before them, and the last group
+     in the bar an edge after it too; joined ones have a fainter one between */
+  .group, .joined {
+    @apply flex flex-row items-stretch border-l border-bounds;
+  }
+  #appbar nav > :last-child {
+    @apply border-r;
+  }
+  .joined > button + button {
+    border-left: 1px solid color-mix(in srgb, var(--color-bounds) 50%, transparent);
   }
   /* a button that opens a menu has a corner cut in, to say there is more under it */
   nav button[aria-haspopup] {
@@ -359,15 +367,23 @@
     flex: 0 1 auto;
     min-width: 0;
   }
+  /* the message beside the tools: two lines at the size of the buttons' names */
   #preview-status {
-    @apply flex-1 min-w-0 m-0 px-3 self-center truncate text-sm text-nav-txt;
+    @apply flex-1 min-w-0 m-0 px-3 self-center overflow-hidden leading-tight text-nav-txt;
+    font-size: 0.6875rem;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow-wrap: break-word;
     &.error {
       @apply text-err-fg;
     }
-    /* with no room beside the tools, the message rises above them, whole,
-       and lets presses through to the drawing */
+    /* with no room beside the tools for it, the message rises above them,
+       whole, and lets presses through to the drawing */
     &.above {
-      @apply absolute left-2 right-2 py-2 bg-menu rounded-sm pointer-events-none whitespace-normal overflow-visible;
+      @apply absolute left-2 right-2 py-2 bg-menu rounded-sm pointer-events-none overflow-visible text-sm leading-normal;
+      display: block;
+      -webkit-line-clamp: unset;
       bottom: calc(100% + 0.5rem);
       box-shadow: 0 0 0 1px var(--color-bounds);
       &:empty {
