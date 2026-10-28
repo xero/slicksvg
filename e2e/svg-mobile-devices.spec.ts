@@ -17,7 +17,6 @@ test.describe('SVG Editor Mobile Devices E2E Tests', () => {
       // Check all essential UI elements are accessible
       await expect(page.locator('#file-menu')).toBeVisible();
       await expect(page.locator('#view-menu')).toBeVisible();
-      await expect(page.locator('#view-menu')).toBeVisible();
       await expect(page.locator('#rotate')).toBeVisible();
       
       // Test basic functionality

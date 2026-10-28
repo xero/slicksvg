@@ -20,12 +20,10 @@ test.describe('SVG Editor Accessibility E2E Tests', () => {
     // Tab through all interactive elements using their IDs for more reliable selection
     const interactiveElements = [
       '#file-menu',
-      '#file-menu',
       '#optimize',
       '#rotate',
       '#flipx',
       '#flipy',
-      '#view-menu',
       '#view-menu',
       '#zoomin',
       '#zoomout'

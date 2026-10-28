@@ -80,7 +80,7 @@ test.describe('SVG Editor Tablet-Specific E2E Tests', () => {
       await expect(page.getByRole('complementary')).toBeVisible();
       
       // Test that controls are appropriately sized
-      const controls = ['#file-menu', '#view-menu', '#view-menu', '#rotate', '#flipx', '#flipy'];
+      const controls = ['#file-menu', '#view-menu', '#rotate', '#flipx', '#flipy'];
       
       for (const control of controls) {
         const element = page.locator(control);
@@ -329,7 +329,7 @@ test.describe('SVG Editor Tablet-Specific E2E Tests', () => {
       expect(focusedElement).toBeTruthy();
       
       // Test that all controls are reachable via keyboard/voice
-      const controls = ['#file-menu', '#view-menu', '#view-menu', '#rotate'];
+      const controls = ['#file-menu', '#view-menu', '#rotate'];
       
       for (const control of controls) {
         await page.locator(control).focus();
@@ -347,8 +347,8 @@ test.describe('SVG Editor Tablet-Specific E2E Tests', () => {
       
       // Simulate switch control navigation (sequential focus)
       const interactiveElements = [
-        '#file-menu', '#view-menu', '#view-menu', '#rotate', '#flipx', '#flipy',
-        '#zoomin', '#zoomout', '#file-menu'
+        '#file-menu', '#view-menu', '#rotate', '#flipx', '#flipy',
+        '#zoomin', '#zoomout'
       ];
       
       for (const element of interactiveElements) {

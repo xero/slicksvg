@@ -231,8 +231,8 @@ test.describe('SVG Editor Mobile Accessibility E2E Tests', () => {
       
       // Test that focused elements are clearly visible
       const interactiveElements = [
-        '#file-menu', '#view-menu', '#view-menu', '#rotate', '#flipx', '#flipy',
-        '#zoomin', '#zoomout', '#file-menu'
+        '#file-menu', '#view-menu', '#rotate', '#flipx', '#flipy',
+        '#zoomin', '#zoomout'
       ];
       
       for (const selector of interactiveElements) {
@@ -267,8 +267,8 @@ test.describe('SVG Editor Mobile Accessibility E2E Tests', () => {
       
       // Test sequential navigation through all interactive elements
       const interactiveSelectors = [
-        '#file-menu', '#view-menu', '#view-menu', '#rotate', '#flipx', '#flipy',
-        '#zoomin', '#zoomout', '#file-menu'
+        '#file-menu', '#view-menu', '#rotate', '#flipx', '#flipy',
+        '#zoomin', '#zoomout'
       ];
       
       // Start navigation
@@ -370,7 +370,7 @@ test.describe('SVG Editor Mobile Accessibility E2E Tests', () => {
       await expect(page.getByRole('complementary')).toBeVisible();
       
       // Controls should still be accessible when zoomed
-      const controls = ['#file-menu', '#view-menu', '#view-menu', '#rotate'];
+      const controls = ['#file-menu', '#view-menu', '#rotate'];
       
       for (const control of controls) {
         const element = page.locator(control);

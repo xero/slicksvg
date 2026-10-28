@@ -142,7 +142,7 @@ test.describe('SVG Status Bar E2E Tests', () => {
 		await expect(statusBar).toHaveText('SVG valid');
 
 		// Toggle dark mode
-				await pressMenuItem(page, 'dark');
+		await pressMenuItem(page, 'dark');
 
 		// Status bar should still be visible and functional
 		await expect(statusBar).toBeVisible();

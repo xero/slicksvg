@@ -237,6 +237,12 @@ const ADD_POINT_REACH = 12;
 const POINT_REACH = window.matchMedia('(pointer: coarse)').matches ? 22 : 10;
 const POINT_ELEMENTS = /^(path|polygon|polyline|line)$/;
 
+/** Whether a tag is a shape that has no points to edit until it is a path. */
+const pointlessShape = (tag: string): boolean=>SHAPES.includes(tag) && !POINT_ELEMENTS.test(tag);
+
+/** A tag with "a" or "an" before it, for a sentence's start. */
+const withArticle = (tag: string): string=>`${/^[aeiou]/.test(tag) ? 'An' : 'A'} ${tag}`;
+
 /** The source behind a preview element: the text, the start tag, and the
  * parsed element the planners read. */
 interface Found {sourceText: string; tag: StartTag; source: Element}
@@ -682,6 +688,8 @@ class slick {
 	private sketchGroup!: SVGGElement;
 	/** What the preview's strip says, and until when a message keeps the standing hint away. */
 	private previewStatus!: HTMLElement;
+	/** The name of the button between Out and In, which says how far in the view is. */
+	private zoomShown!: HTMLElement;
 	private heldUntil = 0;
 	private hintTimer: ReturnType<typeof setTimeout> | undefined;
 	/** Whether the pencil is down on the drawing, while which a touch on a bar is a resting hand. */
@@ -712,6 +720,7 @@ class slick {
 		this.modal = this.getTyped('dialog');
 		this.statusBar = this.get('svg-status-bar');
 		this.previewStatus = this.get('preview-status');
+		this.zoomShown = this.getTyped('#zoom-reset > span');
 		statusBarUpdateCallback = this.updateStatusBar.bind(this);
 		this.initializeEditor();
 		this.initializePreview();
@@ -948,7 +957,7 @@ class slick {
 		if (this.pointMode) return 'Drag a point; tap the outline to pick a segment, or double-click it to add a point';
 		if (this.mode === 'points') {
 			const tag = this.selected.length === 1 ? this.selectedElement()?.tagName.toLowerCase() ?? '' : '';
-			return SHAPES.includes(tag) ? `${/^[aeiou]/.test(tag) ? 'An' : 'A'} ${tag} has no points until it is a path: press To path` : 'Tap a path, polygon, polyline, or line to edit its points';
+			return pointlessShape(tag) ? `${withArticle(tag)} has no points until it is a path: press To path` : 'Tap a path, polygon, polyline, or line to edit its points';
 		}
 		if (this.mode === 'shapes') return 'Pick a shape, then drag or tap on the drawing';
 		return '';
@@ -1118,8 +1127,21 @@ class slick {
 				// opened from the keys, the first item takes them
 				else this.showMenu(menu, trigger, e.detail === 0);
 			});
+			// the down arrow on a menu's button opens it, onto its first item
+			trigger.addEventListener('keydown', (e)=>{
+				if (e.key !== 'ArrowDown' || this.openMenu?.menu === menu) return;
+				e.preventDefault();
+				this.showMenu(menu, trigger, true);
+			});
+			// the keys leaving the menu, by Tab, take it with them
+			menu.addEventListener('focusout', (e)=>{
+				const to = e.relatedTarget;
+				if (this.openMenu?.menu === menu && to instanceof Node && !menu.contains(to) && !trigger.contains(to)) this.closeMenu();
+			});
 			menu.addEventListener('click', (e)=>{
-				if (e.target instanceof Element && e.target.closest('button')) this.closeMenu();
+				// an item pressed from the keys gives them back to the menu's button,
+				// unless the item moved them elsewhere, as Size does to its dialog
+				if (e.target instanceof Element && e.target.closest('button')) this.closeMenu(menu.contains(document.activeElement));
 			});
 			menu.addEventListener('keydown', (e)=>{
 				const items = Array.from(menu.querySelectorAll<HTMLElement>('button'));
@@ -1132,10 +1154,13 @@ class slick {
 		}
 		const outside = (e: Event): void=>{
 			const open = this.openMenu;
+			// a press that closed a menu but ended in no click leaves none to swallow
+			if (!open) this.swallowClick = false;
 			if (!open || !(e.target instanceof Node) || open.menu.contains(e.target) || open.trigger.contains(e.target)) return;
 			e.preventDefault();
 			e.stopPropagation();
-			this.swallowClick = e.type === 'mousedown';
+			// only the main button's press ends in a click
+			this.swallowClick = e instanceof MouseEvent && e.button === 0;
 			this.closeMenu();
 		};
 		document.addEventListener('mousedown', outside, {capture: true});
@@ -1372,11 +1397,9 @@ class slick {
 		this.panY = view.panY;
 		// the button between Out and In says how far in the view is
 		const pct = `${Math.round(view.zoom * 100)}%`;
-		const reset = this.get('zoom-reset');
-		const shown = reset.querySelector('span');
-		if (shown && shown.textContent !== pct) {
-			shown.textContent = pct;
-			reset.setAttribute('aria-label', `Reset zoom, at ${pct}`);
+		if (this.zoomShown.textContent !== pct) {
+			this.zoomShown.textContent = pct;
+			this.zoomShown.parentElement?.setAttribute('aria-label', `Reset zoom, at ${pct}`);
 		}
 		this.drawBox(this.hoverBox, null);
 		this.applySVGStyles(animate);
@@ -1666,14 +1689,18 @@ class slick {
 	/** The element under a press, inside any group. */
 	private leafAt(target: EventTarget | null): Element | null {
 		const root = this.svgPreview.querySelector('.svg-container svg');
-		return root instanceof SVGSVGElement ? findSvgTarget(target, root) : null;
+		if (!(root instanceof SVGSVGElement)) return null;
+		const leaf = findSvgTarget(target, root);
+		// a text run belongs to its text, as it does when picked in Select
+		return leaf ? selectionChain(leaf, root).at(-1) ?? null : null;
 	}
 
 	/** Say whose points are being edited, or why an element picked in Points has none. */
 	private announcePoints(el: Element): void {
 		const tag = el.tagName.toLowerCase();
 		if (this.pointMode) this.announceAction(`Editing the points of ${tag}: drag a point, tap the outline to pick a segment, double-click it to add a point, Delete removes one`);
-		else if (SHAPES.includes(tag)) this.announceError(`${/^[aeiou]/.test(tag) ? 'An' : 'A'} ${tag} has no points to edit until it is a path: press To path.`);
+		else if (pointlessShape(tag)) this.announceError(`${withArticle(tag)} has no points to edit until it is a path: press To path.`);
+		else if (POINT_ELEMENTS.test(tag)) this.announceError(`This ${tag}'s points could not be read, so they cannot be edited here.`);
 		else this.announceError(`This ${tag} has no points to edit.`);
 	}
 
@@ -1732,7 +1759,7 @@ class slick {
 		}
 		// with a shape tool in hand, nothing is picked out to select
 		if (this.isPanning || this.gesture || this.drawTool) return;
-		const pick = this.pickAt(e.target);
+		const pick = this.mode === 'points' ? this.leafAt(e.target) : this.pickAt(e.target);
 		// a hand over the selection says it can be dragged, as over the canvas
 		this.svgPreview.style.cursor = this.onSelection(e.target) ? 'grab' : pick ? 'pointer' : '';
 		this.drawBox(this.hoverBox, pick && !this.selectedElements().includes(pick) ? pick : null);
@@ -1750,7 +1777,9 @@ class slick {
 		// has them, and editing follows the selection from one element to the next
 		const ordinal = els.length === 1 ? this.selected.at(-1) : undefined;
 		if (this.mode !== 'points' || !primary || ordinal === undefined) this.pointMode = null;
-		else if (this.pointMode?.ordinal !== ordinal) {
+		// the same place in the code can hold another element after an undo,
+		// as a rect does again after its To path is undone
+		else if (this.pointMode?.ordinal !== ordinal || !POINT_ELEMENTS.test(primary.tagName.toLowerCase())) {
 			const editable = POINT_ELEMENTS.test(primary.tagName.toLowerCase()) && pointsOf(primary) !== null;
 			this.pointMode = editable ? {ordinal, selected: [], spot: null, several: this.pointMode?.several ?? false} : null;
 		}
@@ -1781,7 +1810,7 @@ class slick {
 		const mode = this.mode;
 		for (const [id, m] of [['mode-select', 'select'], ['points', 'points'], ['mode-shapes', 'shapes']] as const) this.get(id).setAttribute('aria-pressed', mode === m ? 'true' : 'false');
 		const tag = this.selectedElement()?.tagName.toLowerCase() ?? '';
-		const pointless = this.selected.length === 1 && SHAPES.includes(tag) && !POINT_ELEMENTS.test(tag);
+		const pointless = this.selected.length === 1 && pointlessShape(tag);
 		const shown: Record<string, boolean> = {
 			'select-tools': mode === 'select', 'point-tools': mode === 'points', 'turn-tools': mode !== 'shapes',
 			'path-tools': mode === 'select' || (mode === 'points' && pointless), 'shape-tools': mode === 'shapes',
@@ -2077,7 +2106,7 @@ class slick {
 			this.pointMode.spot = null;
 		}
 		if (!this.applyEdits(changes.sort((a, b)=>a.from - b.from), 'slick.topath')) return;
-		this.announceAction(one && count === 1 ? `${one} made a path: press Enter to edit its points` : `${count} ${count === 1 ? 'shape' : 'shapes'} made ${count === 1 ? 'a path' : 'paths'}${refusal ? `; ${refusal}` : ''}`);
+		this.announceAction(one && count === 1 ? `${one} made a path${this.mode === 'points' ? '' : ': press Enter to edit its points'}` : `${count} ${count === 1 ? 'shape' : 'shapes'} made ${count === 1 ? 'a path' : 'paths'}${refusal ? `; ${refusal}` : ''}`);
 	}
 
 	/** Select the anchor at a place, after an edit that may have moved the
@@ -3827,8 +3856,9 @@ class slick {
 	}
 
 	private resetViewState(): void {
-		this.zoomLevel = 1;
-		this.panX = this.panY = this.lastPanX = this.lastPanY = this.rotationDegrees = 0;
+		// through setView, so the button between Out and In says 100% again
+		this.setView({zoom: 1, panX: 0, panY: 0});
+		this.lastPanX = this.lastPanY = this.rotationDegrees = 0;
 		this.flipX = this.flipY = this.isPanning = false;
 		this.pinch = null;
 	}

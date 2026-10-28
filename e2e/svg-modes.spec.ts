@@ -118,6 +118,32 @@ test.describe('SVG Editor modes', () => {
     await expect(page.locator('.points rect')).toHaveCount(3);
   });
 
+  test('should stop editing a path\'s points when an undo puts the rect it was back', async ({ page }) => {
+    await page.locator('#points').click();
+    await page.locator('.svg-container #r').click();
+    await page.locator('#topath').click();
+    await expect(page.locator('.points rect')).toHaveCount(4);
+    await page.locator('#undo').click();
+    await expect(page.locator('.svg-container #r')).toHaveJSProperty('tagName', 'rect');
+    await expect(page.locator('.points rect')).toHaveCount(0);
+    await expect(page.locator('#point-several')).toBeDisabled();
+    await expect(page.locator('#path-tools')).toBeVisible();
+  });
+
+  test('should outline in Points what a tap would pick, and pick a text run\'s text', async ({ page }) => {
+    await setContent(page, FIXTURE.replace('</svg>', '  <text id="t" x="120" y="150" font-size="20"><tspan id="run">Hi</tspan></text>\n</svg>'));
+    await page.locator('#points').click();
+    const path = (await page.locator('.svg-container #p').boundingBox())!;
+    await page.mouse.move(path.x + path.width - 6, path.y + 6);
+    // the path's own box, give or take the outline's margin, not its group's, twice as wide
+    const hover = (await page.locator('.select-overlay .hover-box').boundingBox())!;
+    const group = (await page.locator('.svg-container #grp').boundingBox())!;
+    expect(Math.abs(hover.width - path.width)).toBeLessThan(10);
+    expect(group.width - hover.width).toBeGreaterThan(50);
+    await page.locator('.svg-container #run').click();
+    expect(await editorSelection(page)).toMatch(/^<text id="t"/);
+  });
+
   test('should remove the selection with the Delete button, there to press only with something selected', async ({ page }) => {
     const remove = page.locator('#delete');
     await expect(remove).toBeDisabled();
@@ -202,6 +228,32 @@ test.describe('SVG Editor menus', () => {
     await expect(page.locator('.select-overlay .select-box')).toBeVisible();
   });
 
+  test('should give the keys back to a menu\'s button when an item is pressed from them, open on the down arrow, and close when the keys tab away', async ({ page }) => {
+    await page.locator('#view-menu').focus();
+    await page.keyboard.press('ArrowDown');
+    await expect(page.locator('#view-items')).toBeVisible();
+    await expect(page.locator('#dark')).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#view-items')).toBeHidden();
+    await expect(page.locator('#view-menu')).toBeFocused();
+    await expect(page.locator('body')).toHaveClass(/dark/);
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#view-items')).toBeVisible();
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Tab');
+    await expect(page.locator('#view-items')).toBeHidden();
+  });
+
+  test('should close a menu with a right press and still take the next click', async ({ page }) => {
+    await page.locator('#file-menu').click();
+    const svg = (await page.locator('.svg-container svg').boundingBox())!;
+    await page.mouse.click(svg.x + 150, svg.y + 160, { button: 'right' });
+    await expect(page.locator('#file-items')).toBeHidden();
+    await page.locator('#zoomin').click();
+    await expect(page.locator('#zoom-reset')).toHaveText('120%');
+  });
+
   test('should open the resolution dialog from the File menu', async ({ page }) => {
     await pressMenuItem(page, 'resolution');
     await expect(page.locator('dialog')).toBeVisible();
@@ -221,6 +273,14 @@ test.describe('SVG Editor zoom control', () => {
     await page.locator('#zoomout').click();
     await expect(reset).toHaveText('83%');
     await reset.click();
+    await expect(reset).toHaveText('100%');
+    // a file opened starts at its own size, and the button says so
+    await page.locator('#zoomin').click();
+    await expect(reset).toHaveText('120%');
+    const chooser = page.waitForEvent('filechooser');
+    await pressMenuItem(page, 'upload');
+    await (await chooser).setFiles({ name: 'a.svg', mimeType: 'image/svg+xml', buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="5" height="5"/></svg>') });
+    await expect(page.locator('.svg-container rect')).toBeVisible();
     await expect(reset).toHaveText('100%');
   });
 });
